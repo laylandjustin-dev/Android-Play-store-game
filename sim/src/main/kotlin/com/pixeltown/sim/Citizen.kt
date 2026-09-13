@@ -29,6 +29,13 @@ class Citizen(
     var workCell: Int = World.NONE
 
     /**
+     * Under arms and marching. The weekly job assignment leaves these citizens alone: without the
+     * flag, a civ would call up an army on the first of the month and reassign half of it to
+     * farming a week later, mid-campaign.
+     */
+    var enlisted: Boolean = false
+
+    /**
      * The cause this person leans toward regardless of circumstance, and how strongly.
      *
      * Without it the electorate is a hive mind: citizens in the same town are in near-identical

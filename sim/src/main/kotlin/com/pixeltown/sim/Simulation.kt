@@ -3,6 +3,7 @@ package com.pixeltown.sim
 import com.pixeltown.sim.GameConfig.Economy
 import com.pixeltown.sim.GameConfig.Life
 import com.pixeltown.sim.GameConfig.Politics
+import com.pixeltown.sim.GameConfig.Rivals as RivalConfig
 import com.pixeltown.sim.GameConfig.Survival as SurvivalConfig
 import com.pixeltown.sim.GameConfig.Time
 import com.pixeltown.sim.GameConfig.World as WorldConfig
@@ -90,6 +91,19 @@ class Simulation(
 
     /** Every election held, newest last. The Ledger's record of who governed and why. */
     val elections = ArrayList<ElectionResult>()
+
+    /** How every civ feels about every other one. */
+    val relations = Relations(civs.size)
+
+    /** Armies and raiding parties currently in the field. */
+    private val armies = ArrayList<Army>()
+
+    private var nextArmyId = 0
+
+    /** Military strength per civ, recomputed once per tick. */
+    private val strength = DoubleArray(civs.size)
+
+    val armiesInField: List<Army> get() = armies
 
     val buildings: List<Building> get() = allBuildings
 
@@ -244,6 +258,9 @@ class Simulation(
         driftMoraleAndInfluence()
         advanceTech()
         updateUnrest()
+        runDiplomacy()
+        marchArmies()
+        fightBattles()
         updateCivStatistics()
         checkEndState()
     }
@@ -286,7 +303,7 @@ class Simulation(
         for (civ in civs) {
             val members = membersOf(civ.id)
             if (members.isEmpty()) continue
-            campaigns[civ.id] = CouncilSystem.chooseCandidates(members, rng)
+            campaigns[civ.id] = CouncilSystem.chooseCandidates(members, rng, CouncilSystem.agendaBiasOf(civ))
             endorsements[civ.id] = null
         }
     }
@@ -581,6 +598,343 @@ class Simulation(
         )
     }
 
+    // ------------------------------------------------------------------ rivals
+
+    /**
+     * Diplomacy is resolved at season boundaries, not daily: four decision points a year, the same
+     * cadence the Premier works to.
+     *
+     * Every civ runs this. The player's civ is not special — it can be extorted, traded with, and
+     * invaded on exactly the same terms, and it makes its own demands the same way.
+     */
+    private fun runDiplomacy() {
+        if (day % Time.DAYS_PER_SEASON != 0L || day == 0L) return
+
+        relations.decay(RivalConfig.TENSION_DECAY_PER_SEASON)
+        applyBorderFriction()
+
+        for (actor in civs) {
+            if (actor.isExtinct) continue
+            val aggression = aggressionOf(actor)
+            for (other in civs) {
+                if (other.id == actor.id || other.isExtinct) continue
+                if (relations.atWar(actor.id, other.id)) continue
+
+                val tension = relations.tensionBetween(actor.id, other.id)
+                when {
+                    tension >= RivalConfig.TENSION_WAR_THRESHOLD &&
+                        aggression > RivalConfig.WAR_AGGRESSION_MIN &&
+                        !relations.inTruce(actor.id, other.id, day) -> declareWar(actor, other)
+
+                    tension >= RivalConfig.TENSION_RAID_THRESHOLD &&
+                        aggression > RivalConfig.RAID_AGGRESSION_MIN -> launchRaid(actor, other)
+
+                    aggression >= RivalConfig.TRIBUTE_AGGRESSION_THRESHOLD ->
+                        demandTribute(actor, other)
+
+                    else -> attemptTrade(actor, other)
+                }
+            }
+        }
+
+        endExhaustedWars()
+    }
+
+    /** Aggression is derived from the civ's own condition, never scripted. */
+    fun aggressionOf(civ: Civilization): Double {
+        val members = membersOf(civ.id)
+        if (members.isEmpty()) return 0.0
+        val militaryShare = members.count { it.job == Job.SOLDIER }.toDouble() / members.size
+        val consumption = members.sumOf { it.dailyFoodNeed() }
+        val foodSecurity = DiplomacySystem.foodSecurityOf(civ, consumption)
+        return DiplomacySystem.aggressionOf(civ, militaryShare, foodSecurity)
+    }
+
+    /** Civs working land close to each other rub along badly. */
+    private fun applyBorderFriction() {
+        val contested = HashSet<Long>()
+        for (cell in 0 until world.cellCount) {
+            val owner = world.ownerCivId[cell].toInt()
+            if (owner < 0) continue
+            val x = cell % world.width
+            val y = cell / world.width
+            val r = RivalConfig.BORDER_FRICTION_RADIUS
+            var dy = -r
+            while (dy <= r) {
+                var dx = -r
+                while (dx <= r) {
+                    val nx = x + dx
+                    val ny = y + dy
+                    if (world.inBounds(nx, ny)) {
+                        val neighbour = world.ownerCivId[world.index(nx, ny)].toInt()
+                        if (neighbour >= 0 && neighbour != owner) {
+                            contested.add(pairKey(owner, neighbour))
+                        }
+                    }
+                    dx += r
+                }
+                dy += r
+            }
+        }
+        for (key in contested) {
+            val a = (key shr 32).toInt()
+            val b = (key and 0xFFFFFFFFL).toInt()
+            relations.raise(a, b, RivalConfig.TENSION_BORDER_FRICTION)
+        }
+    }
+
+    private fun pairKey(a: Int, b: Int): Long {
+        val lo = minOf(a, b).toLong()
+        val hi = maxOf(a, b).toLong()
+        return (lo shl 32) or hi
+    }
+
+    /**
+     * Surplus-for-deficit: both sides end up better off, and the tension between them eases.
+     *
+     * Nobody trades with a civ that has been raiding them. Without that condition, hostile pairs
+     * went on trading right through the raids and the resulting goodwill cancelled the resentment
+     * out — tension could never climb to war, and 150-year runs contained none.
+     */
+    private fun attemptTrade(seller: Civilization, buyer: Civilization) {
+        if (relations.tensionBetween(seller.id, buyer.id) >= RivalConfig.TENSION_RAID_THRESHOLD) return
+        val members = membersOf(seller.id)
+        if (members.isEmpty()) return
+        val reserve = members.sumOf { it.dailyFoodNeed() } * RivalConfig.TRADE_SURPLUS_DAYS
+        val food = DiplomacySystem.tradeableSurplus(seller, Resource.FOOD, reserve)
+        if (food <= 1.0) return
+
+        val price = food * RivalConfig.TRADE_PRICE
+        if (buyer[Resource.WEALTH] < price) return
+
+        seller.take(Resource.FOOD, food)
+        buyer.add(Resource.FOOD, food)
+        buyer.take(Resource.WEALTH, price)
+        seller.add(Resource.WEALTH, price)
+
+        relations.ease(seller.id, buyer.id, RivalConfig.TENSION_TRADE_RELIEF)
+        relations.recordTrade(seller.id, buyer.id)
+        chronicle.record(
+            ChronicleEvent(
+                day, ChronicleEventKind.TRADE, seller.id, detail = buyer.name, value = food.toInt(),
+            ),
+        )
+    }
+
+    /** Pay up or take the tension. A civ submits when it is clearly the weaker party. */
+    private fun demandTribute(demander: Civilization, target: Civilization) {
+        if (strength[demander.id] <= 0.0) return
+        val submits = DiplomacySystem.shouldSubmit(strength[target.id], strength[demander.id])
+
+        if (submits) {
+            val food = target[Resource.FOOD] * RivalConfig.TRIBUTE_FOOD_FRACTION
+            val wealth = target[Resource.WEALTH] * RivalConfig.TRIBUTE_WEALTH_FRACTION
+            demander.add(Resource.FOOD, target.take(Resource.FOOD, food))
+            demander.add(Resource.WEALTH, target.take(Resource.WEALTH, wealth))
+            relations.raise(demander.id, target.id, RivalConfig.TENSION_BORDER_FRICTION)
+            chronicle.record(
+                ChronicleEvent(
+                    day, ChronicleEventKind.TRADE, demander.id,
+                    detail = "TRIBUTE from ${target.name}", value = food.toInt(),
+                ),
+            )
+        } else {
+            relations.raise(demander.id, target.id, RivalConfig.TENSION_TRIBUTE_REFUSED)
+        }
+    }
+
+    private fun declareWar(aggressor: Civilization, defender: Civilization) {
+        relations.declareWar(aggressor.id, defender.id, day)
+        chronicle.record(
+            ChronicleEvent(day, ChronicleEventKind.WAR_DECLARED, aggressor.id, detail = defender.name),
+        )
+        muster(aggressor, defender, Army.Kind.WAR, RivalConfig.WAR_PARTY_SHARE)
+    }
+
+    private fun launchRaid(raider: Civilization, target: Civilization) {
+        if (armies.any { it.civId == raider.id && it.targetCivId == target.id }) return
+        if (muster(raider, target, Army.Kind.RAID, RivalConfig.RAID_PARTY_SHARE)) {
+            relations.raise(raider.id, target.id, RivalConfig.TENSION_RAID_LAUNCHED)
+            chronicle.record(
+                ChronicleEvent(day, ChronicleEventKind.RAID, raider.id, detail = target.name),
+            )
+        }
+    }
+
+    /** Forms a force from a civ's standing soldiers and sends it at the enemy's home. */
+    private fun muster(civ: Civilization, target: Civilization, kind: Army.Kind, share: Double): Boolean {
+        val available = soldiersOf(civ.id).filter { soldier -> armies.none { soldier.id in it.members } }
+        val size = (available.size * share).toInt()
+        if (size < RivalConfig.MIN_PARTY_SIZE) return false
+
+        val army = Army(
+            id = nextArmyId++,
+            civId = civ.id,
+            targetCivId = target.id,
+            targetCell = target.homeSite,
+            kind = kind,
+            startedOnDay = day,
+        )
+        for (soldier in available.take(size)) {
+            army.members.add(soldier.id)
+            soldier.enlisted = true
+            soldier.workCell = target.homeSite
+        }
+        army.startingSize = army.members.size
+        armies.add(army)
+        return true
+    }
+
+    /** Wars end when both sides are tired of them. */
+    private fun endExhaustedWars() {
+        for (a in civs.indices) {
+            for (b in a + 1 until civs.size) {
+                if (!relations.atWar(a, b)) continue
+                if (relations.tensionBetween(a, b) < RivalConfig.PEACE_TENSION ||
+                    civs[a].isExtinct || civs[b].isExtinct
+                ) {
+                    relations.makePeace(a, b, day)
+                            for (army in armies) {
+                        val involved = (army.civId == a && army.targetCivId == b) ||
+                            (army.civId == b && army.targetCivId == a)
+                        if (involved) army.returning = true
+                    }
+                    chronicle.record(
+                        ChronicleEvent(day, ChronicleEventKind.PEACE, a, detail = civs[b].name),
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Armies walk. They are made of real citizens moving across the map cell by cell, so a war is
+     * visible on screen as columns of pixels converging — the most dramatic thing the game draws.
+     */
+    private fun marchArmies() {
+        if (armies.isEmpty()) return
+
+        for (army in armies) {
+            // Casualties and old age thin an army out; drop anyone who is no longer with us.
+            army.members.retainAll { byId[it]?.alive == true }
+            if (army.kind == Army.Kind.RAID && day - army.startedOnDay > RivalConfig.RAID_MAX_DAYS) {
+                army.returning = true
+            }
+            if (army.isBroken()) army.returning = true
+
+            val destination = if (army.returning) civ(army.civId).homeSite else army.targetCell
+            for (id in army.members) {
+                val soldier = byId[id] ?: continue
+                soldier.workCell = destination
+            }
+        }
+
+        // Wars wear both sides down until someone sues for peace.
+        for (a in civs.indices) {
+            for (b in a + 1 until civs.size) {
+                if (relations.atWar(a, b)) relations.ease(a, b, RivalConfig.WAR_WEARINESS_PER_DAY)
+            }
+        }
+
+        // Disbanding returns soldiers to the workforce.
+        val disbanded = armies.filter { it.members.isEmpty() || (it.returning && it.atHome()) }
+        for (army in disbanded) {
+            for (id in army.members) byId[id]?.let { it.enlisted = false; it.workCell = World.NONE }
+        }
+        armies.removeAll(disbanded)
+    }
+
+    private fun Army.atHome(): Boolean {
+        val home = civ(civId).homeSite
+        val hx = home % world.width
+        val hy = home / world.width
+        return members.all { id ->
+            val soldier = byId[id] ?: return@all true
+            maxOf(abs(soldier.x - hx), abs(soldier.y - hy)) <= RivalConfig.ENGAGEMENT_RANGE
+        }
+    }
+
+    /**
+     * Battle: attrition over days with a random component, never a single dice roll. Walls count
+     * for the defender, which is what makes them worth their stone.
+     */
+    private fun fightBattles() {
+        if (armies.isEmpty()) return
+
+        for (army in armies) {
+            if (army.returning || army.members.isEmpty()) continue
+            val defenderCiv = civ(army.targetCivId)
+            if (defenderCiv.isExtinct) {
+                army.returning = true
+                continue
+            }
+
+            val attackers = army.members.mapNotNull { byId[it] }
+            if (attackers.isEmpty()) continue
+
+            // Defenders are whoever is standing near the fighting.
+            val defenders = membersOf(defenderCiv.id).filter { defender ->
+                attackers.any { maxOf(abs(it.x - defender.x), abs(it.y - defender.y)) <= RivalConfig.ENGAGEMENT_RANGE }
+            }
+            if (defenders.isEmpty()) continue
+
+            val defendingSoldiers = defenders.filter { it.job == Job.SOLDIER }
+            val wallBonus = if (effects[defenderCiv.id].safetyBonus > 0.15) RivalConfig.WALL_DEFENCE_BONUS else 1.0
+
+            val attackStrength = DiplomacySystem.strengthOf(
+                attackers, civ(army.civId).traits, techMultiplier(civ(army.civId)), CivEffects.NONE,
+            )
+            val defenceStrength = DiplomacySystem.strengthOf(
+                defendingSoldiers, defenderCiv.traits, techMultiplier(defenderCiv), effects[defenderCiv.id],
+            ) * wallBonus
+
+            val (attackerLosses, defenderLosses) = DiplomacySystem.resolveBattleDay(
+                attackStrength, defenceStrength, attackers.size, defenders.size, rng,
+            )
+
+            for (casualty in attackers.take(attackerLosses)) kill(casualty, DeathCause.COMBAT)
+            for (casualty in defenders.take(defenderLosses)) kill(casualty, DeathCause.COMBAT)
+            if (attackerLosses + defenderLosses > 0) {
+                compactDead()
+                refreshPopulationIndex()
+            }
+
+            // A raid takes what it came for and leaves.
+            if (army.kind == Army.Kind.RAID && defenderLosses > 0) {
+                val stolen = defenderCiv.take(
+                    Resource.FOOD,
+                    defenderCiv[Resource.FOOD] * RivalConfig.RAID_FOOD_STOLEN_FRACTION,
+                )
+                civ(army.civId).add(Resource.FOOD, stolen)
+                relations.raise(army.civId, defenderCiv.id, RivalConfig.TENSION_RAID_SUCCEEDED)
+                army.returning = true
+                chronicle.record(
+                    ChronicleEvent(
+                        day, ChronicleEventKind.RAID, army.civId,
+                        detail = "stole from ${defenderCiv.name}", value = stolen.toInt(),
+                    ),
+                )
+            }
+        }
+        armies.removeAll { it.members.isEmpty() }
+    }
+
+    /** What the player knows about each rival, for the Rivals screen. */
+    fun rivalReports(): List<RivalReport> = civs.filter { !it.isPlayer }.map { rival ->
+        RivalReport(
+            civId = rival.id,
+            name = rival.name,
+            personality = rival.personality,
+            population = rival.population,
+            militaryStrength = strength[rival.id],
+            techTier = rival.techTier,
+            tension = relations.tensionBetween(GameConfig.World.PLAYER_CIV_ID, rival.id),
+            atWar = relations.atWar(GameConfig.World.PLAYER_CIV_ID, rival.id),
+            trades = relations.tradeCount(GameConfig.World.PLAYER_CIV_ID, rival.id),
+            aggression = aggressionOf(rival),
+        )
+    }
+
     // ------------------------------------------------------------------ the player's levers
 
     /**
@@ -765,9 +1119,30 @@ class Simulation(
             GameConfig.Buildings.SHELTER_QUALITY_HOUSED
         }
 
-    /** Walls and watchtowers above the baseline; rivals will push this down from M5. */
-    private fun safetyOf(civId: Int): Double =
-        (SurvivalConfig.SAFETY_BASELINE + effects[civId].safetyBonus).coerceIn(0.0, 1.0)
+    /**
+     * Walls and watchtowers above the baseline, less the shadow of the strongest rival with a
+     * reason to attack. A town that has never built a wall, next to a militant neighbour, feels
+     * it in the survival score every day.
+     */
+    private fun safetyOf(civId: Int): Double = DiplomacySystem.safetyFor(
+        baseline = SurvivalConfig.SAFETY_BASELINE,
+        wallsAndTowers = effects[civId].safetyBonus,
+        ownStrength = strength[civId],
+        worstThreatStrength = worstThreatTo(civId),
+        atWar = relations.anyWar(civId),
+    )
+
+    /** The strongest rival that currently has cause to come for this civ. */
+    private fun worstThreatTo(civId: Int): Double {
+        var worst = 0.0
+        for (other in civs) {
+            if (other.id == civId || other.isExtinct) continue
+            val hostile = relations.atWar(civId, other.id) ||
+                relations.tensionBetween(civId, other.id) >= RivalConfig.TENSION_RAID_THRESHOLD
+            if (hostile && strength[other.id] > worst) worst = strength[other.id]
+        }
+        return worst
+    }
 
     /** Clinic and healer capacity per head. */
     private fun careAccessOf(civId: Int): Double {
@@ -854,6 +1229,7 @@ class Simulation(
 
     private fun kill(citizen: Citizen, cause: DeathCause) {
         citizen.alive = false
+        citizen.enlisted = false
         world.occupantId[world.index(citizen.x, citizen.y)] = World.NONE
         EconomySystem.releaseClaim(citizen, workClaims)
 
@@ -1058,8 +1434,19 @@ class Simulation(
     private fun updateCivStatistics() {
         val counts = IntArray(civs.size)
         for (citizen in living) counts[citizen.civId]++
-        for (civ in civs) civ.population = counts[civ.id]
+        for (civ in civs) {
+            civ.population = counts[civ.id]
+            strength[civ.id] = DiplomacySystem.strengthOf(
+                soldiersOf(civ.id), civ.traits, techMultiplier(civ), effects[civ.id],
+            )
+        }
     }
+
+    private fun soldiersOf(civId: Int): List<Citizen> =
+        membersOf(civId).filter { it.job == Job.SOLDIER }
+
+    /** A civ's military strength, as the Rivals screen reports it. */
+    fun strengthOf(civId: Int): Double = strength[civId]
 
     private fun checkEndState() {
         val player = civs.firstOrNull { it.isPlayer } ?: return
@@ -1116,11 +1503,19 @@ class Simulation(
             seed: Long,
             playerTraits: TraitAllocation,
             settlers: Int = WorldConfig.STARTING_SETTLERS,
+            /**
+             * How many civilisations share the map. The full game is always
+             * [WorldConfig.TOTAL_CIV_COUNT]; a solo run isolates the economy from the rivals,
+             * which is what the balance tests and the M7 harness need in order to attribute a
+             * collapse to the right cause.
+             */
+            civCount: Int = WorldConfig.TOTAL_CIV_COUNT,
         ): Simulation {
+            require(civCount in 1..WorldConfig.TOTAL_CIV_COUNT) { "unsupported civ count $civCount" }
             val rng = SimRandom(seed)
             val generated = WorldGenerator.generate(rng)
-            val civs = ArrayList<Civilization>(WorldConfig.TOTAL_CIV_COUNT)
-            for (id in 0 until WorldConfig.TOTAL_CIV_COUNT) {
+            val civs = ArrayList<Civilization>(civCount)
+            for (id in 0 until civCount) {
                 val isPlayer = id == WorldConfig.PLAYER_CIV_ID
                 civs.add(
                     Civilization(

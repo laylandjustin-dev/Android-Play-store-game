@@ -25,9 +25,17 @@ class BalanceTest {
     private val farmingAllocation = TraitAllocation.of(3, 4, 3, 4, 8)
     private val badAllocation = TraitAllocation.of(8, 3, 3, 3, 1)
 
+    /**
+     * These are tests of the *economy*, so they run a civ alone on the map.
+     *
+     * Once rivals landed (M5) the same allocation was ground down to 51 people in 200 years by
+     * raids and invasion — true, and interesting, but it meant this test could fail for two quite
+     * different reasons and no longer said which. The rival pressure is measured separately, in
+     * `a colony fares worse with rivals on the map`.
+     */
     @Test
     fun `a farming people stabilise and grow for two centuries`() {
-        val sim = Simulation.newRun(1L, farmingAllocation)
+        val sim = Simulation.newRun(1L, farmingAllocation, civCount = 1)
         val target = 200 * Time.DAYS_PER_YEAR
 
         var populationAtFifty = 0
@@ -51,7 +59,7 @@ class BalanceTest {
     @Test
     fun `a colony that cannot farm collapses quickly`() {
         for (seed in longArrayOf(1L, 42L)) {
-            val sim = Simulation.newRun(seed, badAllocation)
+            val sim = Simulation.newRun(seed, badAllocation, civCount = 1)
             sim.runUntilEnd(maxDays = 60 * Time.DAYS_PER_YEAR)
             assertTrue(sim.endState == EndState.COLLAPSE, "seed $seed survived on Farming 1")
             assertTrue(sim.year < 30, "seed $seed took ${sim.year} years to fail")
@@ -60,8 +68,8 @@ class BalanceTest {
 
     @Test
     fun `farming beats a careless allocation on every measure`() {
-        val good = Simulation.newRun(42L, farmingAllocation)
-        val bad = Simulation.newRun(42L, badAllocation)
+        val good = Simulation.newRun(42L, farmingAllocation, civCount = 1)
+        val bad = Simulation.newRun(42L, badAllocation, civCount = 1)
         val days = 40 * Time.DAYS_PER_YEAR
         good.run(days)
         bad.run(days)
@@ -72,10 +80,30 @@ class BalanceTest {
     }
 
     @Test
+    fun `a colony fares worse with rivals on the map`() {
+        // The same seed and the same allocation, alone and then sharing the island with four
+        // other civilisations. Rivals must cost something real, or none of M5 matters.
+        val alone = Simulation.newRun(1L, farmingAllocation, civCount = 1)
+        val crowded = Simulation.newRun(1L, farmingAllocation)
+        val days = 150 * Time.DAYS_PER_YEAR
+        alone.run(days)
+        crowded.run(days)
+
+        assertTrue(
+            crowded.populationOf(0) < alone.populationOf(0),
+            "sharing the map with four rivals cost nothing: ${crowded.populationOf(0)} vs ${alone.populationOf(0)} alone",
+        )
+        assertTrue(
+            crowded.chronicle.deathsBy(DeathCause.COMBAT) > 0,
+            "150 years beside four rivals produced no fighting",
+        )
+    }
+
+    @Test
     fun `the child share of a colony settles at a sustainable level`() {
         // A 14-year childhood means the birth rate decides the dependency ratio. Too high and the
         // workforce cannot feed the dependants; too low and nothing ever grows.
-        val sim = Simulation.newRun(1L, farmingAllocation)
+        val sim = Simulation.newRun(1L, farmingAllocation, civCount = 1)
         sim.run(60 * Time.DAYS_PER_YEAR)
         val mine = sim.citizens.filter { it.civId == 0 }
         assertTrue(mine.isNotEmpty(), "the colony died before the measurement")
@@ -91,7 +119,7 @@ class BalanceTest {
             careless.fertilityRecoveryPerDay < GameConfig.Terrain.FERTILITY_DRAIN_PER_FARM_DAY,
             "a Farming-3 people recover soil faster than they drain it, so land never exhausts",
         )
-        val sim = Simulation.newRun(1L, careless)
+        val sim = Simulation.newRun(1L, careless, civCount = 1)
         sim.run(30 * Time.DAYS_PER_YEAR)
         if (sim.endState != null) return // collapsing is also an acceptable outcome here
 

@@ -60,12 +60,22 @@ data class Agenda(private val weights: DoubleArray) {
         /**
          * A candidate's platform: one category they care about most, a second they will tolerate,
          * and a floor under the rest so no agenda ignores a category entirely.
+         *
+         * [favours] tilts the draw toward a category — that is how a civ's personality reaches its
+         * politics. A militant people elect generals more often than a mercantile one does, which
+         * is what keeps a standing army in existence in peacetime and stops the whole map settling
+         * into a permanent, eventless peace.
          */
-        fun random(rng: SimRandom): Agenda {
+        fun random(rng: SimRandom, favours: BuildingCategory? = null): Agenda {
             val raw = DoubleArray(BuildingCategory.entries.size) {
                 PoliticsConfig.AGENDA_FLOOR + rng.nextDouble(0.0, PoliticsConfig.AGENDA_NOISE)
             }
-            raw[rng.nextInt(raw.size)] += PoliticsConfig.AGENDA_PRIMARY_WEIGHT
+            val primary = if (favours != null && rng.chance(PoliticsConfig.PERSONALITY_AGENDA_CHANCE)) {
+                favours.ordinal
+            } else {
+                rng.nextInt(raw.size)
+            }
+            raw[primary] += PoliticsConfig.AGENDA_PRIMARY_WEIGHT
             raw[rng.nextInt(raw.size)] += PoliticsConfig.AGENDA_SECONDARY_WEIGHT
             return of(raw)
         }

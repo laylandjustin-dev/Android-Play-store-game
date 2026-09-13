@@ -21,7 +21,11 @@ internal object CouncilSystem {
      * The [PoliticsConfig.CANDIDATE_COUNT] citizens with the highest influence stand for Premier.
      * Ties break by id so a rerun of the same seed produces the same ballot.
      */
-    fun chooseCandidates(members: List<Citizen>, rng: SimRandom): List<Candidate> {
+    fun chooseCandidates(
+        members: List<Citizen>,
+        rng: SimRandom,
+        favours: BuildingCategory? = null,
+    ): List<Candidate> {
         val eligible = members
             .filter { it.ageYears >= PoliticsConfig.VOTING_AGE_YEARS }
             .sortedWith(compareByDescending<Citizen> { it.influence }.thenBy { it.id })
@@ -33,7 +37,7 @@ internal object CouncilSystem {
                 name = NameGenerator.name(rng),
                 ageYears = citizen.ageYears,
                 job = citizen.job,
-                agenda = Agenda.random(rng),
+                agenda = Agenda.random(rng, favours),
                 temperament = Temperament.entries[rng.nextInt(Temperament.entries.size)],
             )
         }
@@ -146,6 +150,20 @@ internal object CouncilSystem {
 
         // A personal leaning on top of circumstance. Hardship still swamps it.
         into[citizen.politicalBias.ordinal] += citizen.politicalBiasStrength
+    }
+
+    /**
+     * The cause a people's character inclines them toward. The player's civ has no such pull —
+     * their politics is whatever their own condition makes it.
+     */
+    fun agendaBiasOf(civ: Civilization): BuildingCategory? = when {
+        civ.isPlayer -> null
+        else -> when (civ.personality) {
+            Personality.MILITANT -> BuildingCategory.MILITARY
+            Personality.EXPANSIONIST -> BuildingCategory.FARMS
+            Personality.MERCANTILE -> BuildingCategory.LIFESTYLE
+            Personality.ISOLATIONIST -> BuildingCategory.HEALTH
+        }
     }
 
     // ------------------------------------------------------------------ the Premier's decisions

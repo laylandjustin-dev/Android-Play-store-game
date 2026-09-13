@@ -649,6 +649,9 @@ object GameConfig {
         const val AGENDA_PRIMARY_WEIGHT = 0.55
         const val AGENDA_SECONDARY_WEIGHT = 0.25
 
+        /** How often a rival civ's candidate runs on the platform its people's character favours. */
+        const val PERSONALITY_AGENDA_CHANCE = 0.55
+
         /**
          * How strongly each felt need pushes a voter toward the matching category. The electorate
          * is a feedback loop on the state of the town: hungry citizens vote farms, sick citizens
@@ -709,6 +712,16 @@ object GameConfig {
         const val DETAIL_RADIUS_CELLS = 24
 
         // aggression = 0.5*militaryShare + 0.3*(1 - foodSecurity) + 0.2*personalityBias
+        /**
+         * A civ with this share of its people under arms scores full marks on the military term.
+         *
+         * The design's formula uses the raw share, but a realistic army is a tenth of a town, so
+         * the term never exceeded 0.05 and aggression never came near the raid and war thresholds:
+         * 150 years produced not one war. Normalising against a reference share keeps the formula's
+         * shape and gives it a usable range.
+         */
+        const val MILITARY_SHARE_REFERENCE = 0.20
+
         const val AGGRESSION_W_MILITARY = 0.5
         const val AGGRESSION_W_HUNGER = 0.3
         const val AGGRESSION_W_PERSONALITY = 0.2
@@ -723,18 +736,99 @@ object GameConfig {
         /** Interactions are resolved at season boundaries. */
         const val TENSION_MAX = 1.0
         const val TENSION_DECAY_PER_SEASON = 0.05
-        const val TENSION_TRADE_RELIEF = 0.12
+        /**
+         * Trade cools a relationship, but it cannot buy permanent peace: at 0.12 a season, with
+         * every pair of civs trading every season, tension sat at exactly zero for 150 years while
+         * borders were being contested the whole time.
+         */
+        const val TENSION_TRADE_RELIEF = 0.03
         const val TENSION_TRIBUTE_REFUSED = 0.25
-        const val TENSION_BORDER_FRICTION = 0.06
+        const val TENSION_BORDER_FRICTION = 0.07
+        /**
+         * Being raided is remembered. Without this the escalation ladder had a rung missing:
+         * friction and refused tribute alone topped out around 0.54, so raiding went on
+         * indefinitely and war — the thing raids are supposed to lead to — never arrived.
+         */
+        const val TENSION_RAID_LAUNCHED = 0.10
+        const val TENSION_RAID_SUCCEEDED = 0.14
+
         const val TENSION_RAID_THRESHOLD = 0.45
         const val TENSION_WAR_THRESHOLD = 0.75
+
+        /**
+         * Aggression a civ needs before it will act on maximum tension and actually invade.
+         *
+         * Gating war on both high tension and aggression above 0.5 was over-constrained: with a
+         * realistic army and full granaries, aggression tops out near 0.4, so tension pinned at
+         * 1.00, trade froze, raids ran forever and no war was ever declared. A lower bar restores
+         * the cycle the design describes — trade, friction, raids, war, exhaustion, peace, trade.
+         */
+        const val WAR_AGGRESSION_MIN = 0.30
+
+        /** Aggression needed to send a raiding party. */
+        const val RAID_AGGRESSION_MIN = 0.25
 
         const val TRIBUTE_FOOD_FRACTION = 0.10
         const val TRIBUTE_WEALTH_FRACTION = 0.15
         const val RAID_FOOD_STOLEN_FRACTION = 0.18
         const val RAID_CASUALTY_FRACTION = 0.04
 
-        // strength = sum(soldiers * (0.4 + 0.18*Hunting) * skill) * techMult * wallBonus
+        /** Seasons between diplomatic contacts with the same civ. */
+        const val CONTACT_INTERVAL_SEASONS = 1
+
+        /** A civ must hold this many days of food before it will trade any away. */
+        const val TRADE_SURPLUS_DAYS = 45
+
+        /** Fraction of a surplus a civ is willing to trade in one exchange. */
+        const val TRADE_FRACTION = 0.25
+
+        /** Wealth paid per unit of food or material received in trade. */
+        const val TRADE_PRICE = 0.8
+
+        /** A tribute demand is made when aggression clears this and tension is not yet war. */
+        const val TRIBUTE_AGGRESSION_THRESHOLD = 0.45
+
+        /** A civ pays tribute rather than fight when it is this much weaker. */
+        const val TRIBUTE_SUBMIT_STRENGTH_RATIO = 0.7
+
+        /** Cells within which two civs' claims count as competing. */
+        const val BORDER_FRICTION_RADIUS = 6
+
+        /** Soldiers sent on a raid, as a share of the civ's standing army. */
+        const val RAID_PARTY_SHARE = 0.5
+
+        /** Soldiers committed to a war, as a share of the civ's standing army. */
+        const val WAR_PARTY_SHARE = 0.8
+
+        /** How close armies must be before they fight. */
+        const val ENGAGEMENT_RANGE = 3
+
+        /** A raiding party gives up and goes home after this long. */
+        const val RAID_MAX_DAYS = 120
+
+        /**
+         * War weariness: tension falls by this each day a war runs, so wars end. Slow enough that
+         * a war is a campaign rather than a season's mood — at 0.004 wars burned out in weeks and
+         * were immediately re-declared, 637 times in 135 years.
+         */
+        const val WAR_WEARINESS_PER_DAY = 0.0015
+
+        /** After a peace, neither side may declare war again for this long. */
+        const val PEACE_COOLDOWN_DAYS = 1_080
+
+        /** A war ends when tension falls below this. */
+        const val PEACE_TENSION = 0.35
+
+        /** Below this share of its starting strength, an army breaks off and goes home. */
+        const val ARMY_BROKEN_AT = 0.35
+
+        /** Minimum soldiers before a civ will start anything. */
+        const val MIN_PARTY_SIZE = 3
+
+        /** How strongly a rival's strength advantage reduces the safety a citizen feels. */
+        const val THREAT_SAFETY_PENALTY = 0.45
+
+                // strength = sum(soldiers * (0.4 + 0.18*Hunting) * skill) * techMult * wallBonus
         const val COMBAT_DAYS = 9
         const val COMBAT_DAILY_ATTRITION = 0.12
         const val COMBAT_RANDOM_SPREAD = 0.20

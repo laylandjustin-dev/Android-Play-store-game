@@ -29,6 +29,7 @@ pixeltown/
 │       ├── BuildingSystem.kt  Siting, construction, upkeep, and effect aggregation.
 │       ├── Politics.kt        Agendas, candidates, premiers, elections, names, pitch lines.
 │       ├── CouncilSystem.kt   The vote, the Premier's decisions, and unrest.
+│       ├── Diplomacy.kt      Relations, armies, and the arithmetic of posture and battle.
 │       ├── Palette.kt         Terrain/civ/building colours as plain ints.
 │       └── Viewport.kt        The visible rectangle of the world, in cells.
 └── app/          Android application — Compose UI, bitmap upload, billing, persistence.
@@ -229,6 +230,38 @@ buildings) per order; it now reads the world grid, which already records every f
 *Rule of thumb this established: anything called once per citizen per tick may not itself walk a
 collection.* Worth checking against on every new system.
 
+**AD-32 — All five civs are simulated at full detail.** The brief allows a coarser budget for
+rivals outside the player's view (`Rivals.DETAIL_RADIUS_CELLS`). Measurement says it is not needed:
+a five-civ tick with several thousand citizens costs ~0.6ms, and the same brief insists rivals
+"use the same simulation code — not a fake stat-ticker". Two update paths would also be two places
+for behaviour to drift. The constant is kept for M7, when phone-side 100x performance is
+confronted properly.
+
+**AD-33 — Personality reaches a rival's politics through its elections.** Rivals elect Premiers
+like everyone else, so with purely random agendas nobody kept a standing army, nobody felt
+threatened, nobody voted military, and 150-year runs contained zero wars — a stable, eventless
+peace. A rival civ's candidates now run on the platform its people's character favours 55% of the
+time (militants build armies, mercantiles build plazas). The player's civ has no such pull: its
+politics is whatever its own condition makes it.
+
+**AD-34 — Nobody trades with a civ that is raiding them.** Every pair traded every season, and
+the goodwill exactly cancelled the resentment raids created, so tension could never climb to war.
+Trade now stops above the raid threshold, which lets the escalation ladder actually work: trade,
+friction, raids, war, exhaustion, peace, trade again.
+
+**AD-35 — Aggression's military term is normalised against a reference army size.** The design's
+formula uses the raw share of a civ under arms, but a realistic army is a tenth of a town, so that
+term never exceeded 0.05 and aggression never approached the raid or war thresholds. A civ with
+`MILITARY_SHARE_REFERENCE` (20%) of its people under arms now scores full marks on that term.
+Gating war on aggression above 0.5 was over-constrained for the same reason and is now 0.30.
+
+**AD-36 — The truce overflow.** `inTruce` computed `day - peaceMadeOn` against a `Long.MIN_VALUE`
+sentinel for "no war has ever ended". That subtraction overflows to a negative number, which read
+as *in truce* — so every pair of civs was permanently at truce and **no war was ever declared in
+any run**, silently. The "never" case is now checked explicitly, and a test covers it. Worth
+remembering: a sentinel that participates in arithmetic is a bug waiting for the right question to
+be asked of it.
+
 ### Decisions recorded ahead of implementation
 
 **AD-8 — Entitlements are read only at run start.** The simulation snapshots its starting
@@ -269,6 +302,12 @@ then commit with a message naming the milestone. Do not move on with a red build
   starting sites, the pixel renderer and the viewport. The Compose gesture layer
   (`WorldGestures.kt`) and the HUD are written but **unbuilt and unrun** — see below. "Zoom and
   pan smoothly at 60fps" is therefore not yet verified on a device.
+- **M5 — Rivals.** Done and tested. Relations with symmetric tension, derived posture, trade,
+  tribute demands, border friction, raids and sustained war; armies that are real citizens
+  marching across the map; battle as multi-day attrition with walls favouring the defender;
+  safety in the survival score answering to the strongest hostile neighbour; a Rivals report for
+  the UI. Gate met — see the table below. `sim/build/preview/war.png` shows a campaign in
+  progress.
 - **M4 — Buildings, the Premier, and the council.** Done and tested. The 20-building catalogue
   across five categories and six tiers, construction from builder output (half-built structures
   are inert), upkeep and ruin, housing, annual elections with a campaign window, candidate
@@ -311,8 +350,26 @@ One farming run (seed 1), all five civs simulated:
 
 Tick cost with M4 systems active: 0.28ms at 460 people, 0.59ms at 2,300 — linear.
 
-Still open at M4: **wealth has no sink** (2.9M banked by year 200 against a 6/day upkeep bill);
-trade, tribute and war are its sinks at M5. And a **Hunting-8 civ is still non-viable** — the
+### M5 measurements
+
+150-year runs, farming allocation, all five civs (counts are across the whole map):
+
+| Seed | Final populations | Wars | Raids | Trades | Combat deaths | Civs extinct |
+|---|---|---|---|---|---|---|
+| 1 | 70 / 142 / 196 / 721 / 0 | 165 | 57 | 2,065 | 503 | 1 |
+| 42 | 337 / 485 / 0 / 0 / 0 | 149 | 56 | 1,483 | 188 | 3 |
+| 555 | 120 / 0 / 0 / 93 / 531 | 159 | 41 | 1,298 | 228 | 2 |
+
+Rivals grow and decline independently, and civilisations really do die — on seed 42 only two of
+five survive. The pressure is now strong enough that the M3 economy gate had to be split: those
+tests run `civCount = 1` so a failure means the economy broke, not that someone invaded, and a
+separate test asserts that sharing the map with four rivals costs something real.
+
+**Wars are frequent** — roughly one per pair per decade. That is within the spirit of a hostile
+map but is a prime candidate for the M7 harness to tune, along with the extinction rate.
+
+Wealth now has sinks — trade pays for grain and tribute is extorted in it — though the sums are
+still large. And a **Hunting-8 civ is still non-viable** — the
 Premier now sets the food share, but the farm/hunt split inside it stays fixed (AD-25).
 
 Against the §12 targets: runs are currently **too survivable** — a naive spread should fail in

@@ -39,7 +39,8 @@ internal object EconomySystem {
         claims: HashMap<Int, Int>,
         weights: Map<Job, Double>,
     ) {
-        val workers = members.filter { it.isAdult }
+        // Soldiers in the field keep their job and their marching orders.
+        val workers = members.filter { it.isAdult && !it.enlisted }
         if (workers.isEmpty()) return
 
         val dailyConsumption = members.sumOf { it.dailyFoodNeed() }

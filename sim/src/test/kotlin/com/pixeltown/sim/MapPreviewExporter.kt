@@ -51,6 +51,22 @@ class MapPreviewExporter {
         val matureFrame = IntArray(mature.world.cellCount)
         FrameRenderer(mature.world).render(mature, matureFrame, ownershipTint = 0.18f)
         writePng(File(outputDir, "colony-year-60.png"), mature.world, matureFrame, scale)
+
+        // A war in progress: armies are real citizens, so a campaign shows up on the map as
+        // columns of one civ's colour pushing into another's territory.
+        val war = Simulation.newRun(1L, TraitAllocation.of(3, 4, 3, 4, 8))
+        val warRenderer = FrameRenderer(war.world)
+        val warFrame = IntArray(war.world.cellCount)
+        var best = 0
+        while (war.endState == null && war.year < 120) {
+            war.step()
+            val marching = war.armiesInField.sumOf { it.size }
+            if (marching > best && war.armiesInField.any { it.kind == Army.Kind.WAR }) {
+                best = marching
+                warRenderer.render(war, warFrame, ownershipTint = 0.18f)
+            }
+        }
+        if (best > 0) writePng(File(outputDir, "war.png"), war.world, warFrame, scale)
     }
 
     private fun writePng(file: File, world: World, pixels: IntArray, scale: Int) {

@@ -57,6 +57,7 @@ enum class ChronicleEventKind {
     DISASTER,
     RAID,
     WAR_DECLARED,
+    PEACE,
     TRADE,
     COUP,
     RUN_ENDED,
