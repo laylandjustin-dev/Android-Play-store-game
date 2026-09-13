@@ -122,10 +122,25 @@ class EconomyTest {
         sim.run(5 * Time.DAYS_PER_YEAR)
         val civ = sim.civ(0)
         assertTrue(civ[Resource.KNOWLEDGE] > 0.0, "no knowledge was produced in five years")
-        val everHadArtisan = sim.citizens.any { it.job == Job.ARTISAN }
-        if (everHadArtisan) {
-            assertTrue(civ[Resource.WEALTH] > 0.0, "artisans were at work but produced no wealth")
-        }
+    }
+
+    @Test
+    fun `an artisan produces wealth`() {
+        // Tested directly rather than through a run: building upkeep is charged daily in wealth,
+        // so a town's wealth store can sit at zero while its artisans are earning steadily. That
+        // is correct behaviour, and it makes the store a bad signal for whether work happened.
+        val world = World(16, 16)
+        for (i in 0 until world.cellCount) world.setTerrain(i, TerrainType.PLAIN)
+        val civ = Civilization(0, "Test", TraitAllocation.EVEN_SPREAD, Personality.MERCANTILE, 0)
+        val artisan = Citizen(
+            id = 1, x = 8, y = 8, civId = 0, sex = Sex.FEMALE,
+            ageDays = 30 * Time.DAYS_PER_YEAR, hp = 100f, nutrition = 1f, morale = 0.5f,
+            survival = 70f, job = Job.ARTISAN, skill = 0.5f, influence = 0f,
+        )
+
+        EconomySystem.produce(world, civ, listOf(artisan), severity = 0.0, effects = CivEffects.NONE)
+
+        assertTrue(civ[Resource.WEALTH] > 0.0, "an artisan at work produced no wealth")
     }
 
     @Test

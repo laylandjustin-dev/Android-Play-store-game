@@ -73,7 +73,7 @@ internal object EconomySystem {
         while (queue.isNotEmpty()) reassign(queue.removeFirst(), Job.IDLE, claims)
 
         for (worker in workers) {
-            if (worker.workCell == World.NONE || !stillWorkable(world, worker)) {
+            if (worker.workCell == World.NONE || !stillWorkable(world, civ, worker)) {
                 claimWorkCell(world, civ, worker, claims)
             }
         }
@@ -129,13 +129,13 @@ internal object EconomySystem {
     // ------------------------------------------------------------------ work cells
 
     /** True if the citizen's current work cell still suits their job. */
-    private fun stillWorkable(world: World, citizen: Citizen): Boolean {
+    private fun stillWorkable(world: World, civ: Civilization, citizen: Citizen): Boolean {
         val cell = citizen.workCell
         if (cell == World.NONE) return false
         return when (citizen.job) {
             Job.FARMER -> world.fertility[cell] > TerrainConfig.FERTILITY_ABANDON_THRESHOLD
             Job.HUNTER -> world.wildGame[cell] > TerrainConfig.FERTILITY_ABANDON_THRESHOLD
-            Job.GATHERER -> gatherValue(world, cell) > 0f
+            Job.GATHERER -> gatherValue(world, cell) > 0f && !gatheringTheWrongThing(world, cell, civ)
             else -> true
         }
     }
@@ -171,7 +171,7 @@ internal object EconomySystem {
                 val value = when (citizen.job) {
                     Job.FARMER -> world.fertility[cell].toDouble()
                     Job.HUNTER -> world.wildGame[cell].toDouble()
-                    Job.GATHERER -> gatherValue(world, cell).toDouble()
+                    Job.GATHERER -> gatherValue(world, cell).toDouble() * gatherPreference(world, cell, civ)
                     else -> 0.0
                 }
                 if (value <= TerrainConfig.FERTILITY_ABANDON_THRESHOLD) continue
@@ -203,6 +203,40 @@ internal object EconomySystem {
         return dx <= 1 && dy <= 1
     }
 
+    /**
+     * Gatherers work toward what the town is short of.
+     *
+     * Without this, forest and hill score almost identically and the distance penalty decides:
+     * a town ringed by hills quarried 1,250 stone and gathered 18 wood, and since almost every
+     * building costs wood, the Premier could never afford to order anything at all.
+     */
+    private fun gatherPreference(world: World, cell: Int, civ: Civilization): Double {
+        val wood = civ[Resource.WOOD]
+        val stone = civ[Resource.STONE]
+        return when (world.terrainAt(cell)) {
+            TerrainType.FOREST -> if (wood <= stone) SCARCITY_PREFERENCE else 1.0
+            TerrainType.HILL -> if (stone < wood) SCARCITY_PREFERENCE else 1.0
+            else -> 1.0
+        }
+    }
+
+    /** True when a gatherer is stockpiling the resource the town already has far too much of. */
+    private fun gatheringTheWrongThing(world: World, cell: Int, civ: Civilization): Boolean {
+        val wood = civ[Resource.WOOD]
+        val stone = civ[Resource.STONE]
+        return when (world.terrainAt(cell)) {
+            TerrainType.FOREST -> wood > stone * GLUT_RATIO && stone > 0.0
+            TerrainType.HILL -> stone > wood * GLUT_RATIO && wood > 0.0
+            else -> false
+        }
+    }
+
+    /** How much a scarce resource outweighs an abundant one when choosing where to gather. */
+    private const val SCARCITY_PREFERENCE = 2.0
+
+    /** A gatherer abandons a cell once its resource outstrips the other by this much. */
+    private const val GLUT_RATIO = 4.0
+
     /** Wood from forest, stone from hill and mountain-adjacent ground. */
     private fun gatherValue(world: World, cell: Int): Float = when (world.terrainAt(cell)) {
         TerrainType.FOREST -> 1.0f
@@ -217,9 +251,16 @@ internal object EconomySystem {
      * One day of work for one civ. Workers only produce if they are standing on their work cell,
      * so walking to the fields costs real time.
      */
-    fun produce(world: World, civ: Civilization, members: List<Citizen>, severity: Double) {
+    fun produce(
+        world: World,
+        civ: Civilization,
+        members: List<Citizen>,
+        severity: Double,
+        effects: CivEffects,
+    ) {
         val traits = civ.traits
-        val seasonMod = traits.seasonalYieldMultiplier(severity)
+        // Irrigation puts a floor under the seasonal swing: winter still bites, but less.
+        val seasonMod = max(traits.seasonalYieldMultiplier(severity), effects.seasonFloor)
         val techMultiplier = 1.0 + GameConfig.Tech.MULTIPLIER_PER_TIER * civ.techTier
         val unrestPenalty = 1.0 - GameConfig.Politics.UNREST_WORK_PENALTY_AT_MAX * civ.unrest
 
@@ -243,7 +284,8 @@ internal object EconomySystem {
             when (citizen.job) {
                 Job.FARMER -> if (atWork) {
                     val fertility = world.fertility[cell].toDouble()
-                    food += fertility * traits.farmYield * effort * seasonMod * Economy.FARM_OUTPUT_SCALE
+                    food += fertility * traits.farmYield * effort * seasonMod *
+                        Economy.FARM_OUTPUT_SCALE * effects.farmYieldBonus
                     world.fertility[cell] = max(
                         0f,
                         world.fertility[cell] - TerrainConfig.FERTILITY_DRAIN_PER_FARM_DAY.toFloat(),
@@ -259,7 +301,8 @@ internal object EconomySystem {
                     val output = Economy.GATHERER_OUTPUT * effort
                     if (world.terrainAt(cell) == TerrainType.FOREST) wood += output else stone += output
                 }
-                Job.SCHOLAR -> knowledge += Economy.SCHOLAR_OUTPUT * effort
+                Job.SCHOLAR -> knowledge += Economy.SCHOLAR_OUTPUT * Economy.KNOWLEDGE_OUTPUT_SCALE *
+                    effort * effects.knowledgeMultiplier
                 Job.ARTISAN -> wealth += Economy.ARTISAN_OUTPUT * effort
                 // Builders consume their output into construction (M4); healers raise care
                 // access; soldiers contribute strength, not goods.
@@ -267,6 +310,17 @@ internal object EconomySystem {
             }
 
             growSkill(citizen)
+        }
+
+        // Mills turn surplus grain into money.
+        if (effects.foodToWealth > 0.0) {
+            val dailyNeed = members.sumOf { it.dailyFoodNeed() }
+            val surplus = max(0.0, civ[Resource.FOOD] - dailyNeed * 30)
+            // Capped at a day's consumption: a mill is a building, not a money printer. Without
+            // this a fifty-year run banked 1.6 million wealth.
+            val converted = min(surplus * effects.foodToWealth, dailyNeed * MILL_DAILY_CONVERSION_CAP)
+            civ.take(Resource.FOOD, converted)
+            wealth += converted
         }
 
         civ.add(Resource.FOOD, food)
@@ -318,6 +372,13 @@ internal object EconomySystem {
 
     /** Jobs that send a citizen out to a specific cell. */
     private val FIELD_JOBS = setOf(Job.FARMER, Job.HUNTER, Job.GATHERER)
+
+    /**
+     * A mill may convert at most this multiple of the town's daily consumption into wealth each
+     * day. Uncapped, a fifty-year run banked 1.6 million wealth against an upkeep bill of six a
+     * day. Wealth gets its real sinks — trade, tribute, war — at M5.
+     */
+    private const val MILL_DAILY_CONVERSION_CAP = 0.10
 
     /** Fixed order so job assignment never depends on map iteration order. */
     private val JOB_ORDER = listOf(

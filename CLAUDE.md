@@ -25,6 +25,10 @@ pixeltown/
 │       ├── Chronicle.kt       The rolling event record behind the feed and the return report.
 │       ├── Simulation.kt      The tick: founding, work, feeding, ageing, death, pairing, birth.
 │       ├── EconomySystem.kt   Job assignment, work cells, production, soil and game recovery.
+│       ├── Building.kt        Building types, specs, instances, and aggregated civ effects.
+│       ├── BuildingSystem.kt  Siting, construction, upkeep, and effect aggregation.
+│       ├── Politics.kt        Agendas, candidates, premiers, elections, names, pitch lines.
+│       ├── CouncilSystem.kt   The vote, the Premier's decisions, and unrest.
 │       ├── Palette.kt         Terrain/civ/building colours as plain ints.
 │       └── Viewport.kt        The visible rectangle of the world, in cells.
 └── app/          Android application — Compose UI, bitmap upload, billing, persistence.
@@ -190,6 +194,41 @@ Hunting-8 civ dies in 1-2 years, because the fixed weights put 46% of its workfo
 it has no talent for. The allocation screen offers Hunting as a path, so this must be resolved
 when Premier agendas land (M4) — it is a known gap, not a finished balance.
 
+**AD-27 — Citizens carry a personal political leaning, or the electorate is a hive mind.** People
+in one town are in near-identical condition, so they compute near-identical needs and every
+election came back 95-0 — which would make the Council screen, and the player's influence levers,
+pointless. Each citizen now draws a small bias toward one category at birth. Elections are now
+contested (typical split 35/29/23) while a famine or a raid still swings the town as a bloc.
+
+**AD-28 — Unrest is a threshold, not a slope.** The first version raised unrest whenever
+suffering x need-gap cleared 0.02, which almost any Premier managed: unrest saturated within a
+year, every run, and the emigration and coups that followed (23 coups in 13 years) killed
+colonies that M3 kept alive for centuries.
+
+**AD-29 — Two workforce shares are protected from the agenda entirely.** Food, which no ideology
+may starve below `MIN_FOOD_WORKER_SHARE`, and materials. A town that never gathers wood can never
+build anything, and almost every building costs wood — one run quarried 1,250 stone, gathered 18,
+and never laid a foundation in fifty years. Gatherers also now work toward whichever of wood or
+stone the town is short of.
+
+**AD-30 — Knowledge output is scaled, not the tier costs.** The design fixes both scholar output
+(0.20/day) and the tier costs (120 x 2.6^tier), and the two contradict its own stated intent that
+tier 6 be "a genuine grind that most runs don't reach": at face value a town of 150 reached tier 6
+in about twelve years. The cost curve is the spine of the whole incremental layer, so it is kept
+exactly as written and `KNOWLEDGE_OUTPUT_SCALE` (0.10) adjusts the other side. Tier 6 now lands
+around year 200.
+
+**AD-31 — The per-tick population index, and the O(population^2) trap.** Systems that need "this
+civ's citizens" used to filter the whole living list, and two of them — care access in the
+survival score, and housing slack in the conception check — did so *per citizen*. At 2,300 people
+a tick cost 6.6ms against the 1ms budget 100x speed needs, and the cost was growing
+super-linearly. The tick now builds one index per civ (members, healers, housed) and reads it:
+**6.6ms → 0.59ms, and linear again.** Building site search was a second offender, O(cells x
+buildings) per order; it now reads the world grid, which already records every footprint.
+
+*Rule of thumb this established: anything called once per citizen per tick may not itself walk a
+collection.* Worth checking against on every new system.
+
 ### Decisions recorded ahead of implementation
 
 **AD-8 — Entitlements are read only at run start.** The simulation snapshots its starting
@@ -225,6 +264,12 @@ then commit with a message naming the milestone. Do not move on with a red build
   starting sites, the pixel renderer and the viewport. The Compose gesture layer
   (`WorldGestures.kt`) and the HUD are written but **unbuilt and unrun** — see below. "Zoom and
   pan smoothly at 60fps" is therefore not yet verified on a device.
+- **M4 — Buildings, the Premier, and the council.** Done and tested. The 20-building catalogue
+  across five categories and six tiers, construction from builder output (half-built structures
+  are inert), upkeep and ruin, housing, annual elections with a campaign window, candidate
+  agendas/temperaments/pitch lines, the vote as a feedback loop on the town's condition, all four
+  player influence levers, unrest with emigration and coups, and tech tiers. Gate met: a 50-year
+  run produces ~63 buildings of 14 kinds and 50 contested elections.
 - **M3 — Economy & jobs.** Done and tested. Resources, weekly job assignment with hunger
   overriding politics, spatial work cells, farming/hunting/gathering/scholarship/craft, skill
   growth and reassignment cost, soil drain and recovery, game depletion and regrowth, territory
@@ -248,6 +293,22 @@ then commit with a message naming the milestone. Do not move on with a red build
 | farm+elem 3/4/3/6/6 | 300y [2666] | 300y [1097] | 300y [708] |
 | hunter 5/4/8/3/3 | 2y [50] | 1y [51] | 1y [55] |
 | bad 8/3/3/3/1 | 0y [50] | 0y [50] | 0y [50] |
+
+### M4 pacing measurements
+
+One farming run (seed 1), all five civs simulated:
+
+| Year | Player pop | Tech tier | Buildings (kinds) |
+|---|---|---|---|
+| 50 | 131 | 3 | 63 (14) |
+| 100 | 297 | 4 | 63 (14) |
+| 200 | 1,329 | 6 | 63 (14) |
+
+Tick cost with M4 systems active: 0.28ms at 460 people, 0.59ms at 2,300 — linear.
+
+Still open at M4: **wealth has no sink** (2.9M banked by year 200 against a 6/day upkeep bill);
+trade, tribute and war are its sinks at M5. And a **Hunting-8 civ is still non-viable** — the
+Premier now sets the food share, but the farm/hunt split inside it stays fixed (AD-25).
 
 Against the §12 targets: runs are currently **too survivable** — a naive spread should fail in
 80-140 years and a good one should reach 300 only about one run in three. Both are expected to

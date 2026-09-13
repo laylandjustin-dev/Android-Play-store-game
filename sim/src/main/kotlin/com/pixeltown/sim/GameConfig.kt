@@ -309,6 +309,12 @@ object GameConfig {
          * stretch rather than a formality.
          */
         const val CONCEIVE_BASE = 0.0012
+
+        /**
+         * Housing slack for a town with no housing at all. Not zero: a colony has to be able to
+         * grow enough to build its first house.
+         */
+        const val HOUSING_SLACK_WITHOUT_HOUSING = 0.5
         const val GESTATION_DAYS = 270
         const val CHILD_UNTIL_YEARS = 14
 
@@ -409,17 +415,197 @@ object GameConfig {
             Job.SOLDIER to 0.02,
         )
 
+        /**
+         * Floor under the share of the workforce on food, whatever the Premier's agenda says.
+         * Without it a Zealot with a Tech agenda simply starves the town in year one, which is a
+         * failure of the model rather than an interesting political outcome.
+         */
+        const val MIN_FOOD_WORKER_SHARE = 0.45
+
+                /**
+         * Share of the workforce kept on materials and construction whatever the agenda says.
+         * A town that never gathers wood can never build anything, and almost every building
+         * costs wood — one run quarried 1,250 stone, gathered 18 wood, and never laid a single
+         * foundation in fifty years.
+         */
+        const val INFRASTRUCTURE_WORKER_SHARE = 0.18
+        const val BUILDER_SHARE_OF_INFRASTRUCTURE = 0.35
+
         /** In a food crisis, this share of the workforce is pushed onto food production. */
         const val CRISIS_FOOD_WORKER_SHARE = 0.85
 
         const val GATHERER_OUTPUT = 0.35
         const val BUILDER_OUTPUT = 1.0
         const val SCHOLAR_OUTPUT = 0.20
+
+        /**
+         * Absolute scale for knowledge, the mirror of [FARM_OUTPUT_SCALE].
+         *
+         * The design fixes both scholar output (0.20/day) and the tier costs (120 x 2.6^tier),
+         * and the two are inconsistent with its own stated intent that "tier 6 is a genuine grind
+         * that most runs don't reach": at face value a town of 150 reached tier 6 in about twelve
+         * years. The tier costs are kept exactly as specified and the output is scaled instead,
+         * since the cost curve is the thing the whole incremental spine is shaped around.
+         */
+        const val KNOWLEDGE_OUTPUT_SCALE = 0.10
         const val ARTISAN_OUTPUT = 0.30
 
         /** Healer care capacity, in citizens fully covered per healer. */
         const val HEALER_CARE_CAPACITY = 12.0
         const val HEALER_RANGE_CELLS = 20
+    }
+
+    // ---------------------------------------------------------------- buildings
+
+    /**
+     * The building catalogue: every cost and every effect, in one table.
+     *
+     * Tiers gate availability — tier 0 is buildable from the founding, tier 6 needs the full tech
+     * tree. Costs rise steeply with tier so that late buildings are a genuine commitment of
+     * builder-years, not a formality.
+     */
+    object Buildings {
+
+        /** Wealth upkeep is charged daily; a civ that cannot pay it loses buildings to ruin. */
+        const val UPKEEP_GRACE_DAYS = 30
+
+        /** A building with no residents still shelters people within this radius, at this quality. */
+        const val SHELTER_QUALITY_HOUSED = 1.0
+
+        /**
+         * How far a new building may be sited from the civ's home cell. The built area grows with
+         * the town: at a fixed 18 cells a colony ran out of room at 63 buildings and then never
+         * built again, while its population grew past 1,300 with nowhere to live.
+         */
+        const val BASE_SITE_DISTANCE = 14
+        const val SITE_DISTANCE_PER_CITIZEN = 0.035
+        const val MAX_SITE_DISTANCE = 46
+
+        /** Minimum gap between buildings, so towns do not become solid blocks. */
+        const val SITE_SPACING = 1
+
+        val CATALOGUE: List<BuildingSpec> = listOf(
+            // ---- Farms: storage, yield, and turning surplus into money ----
+            BuildingSpec(
+                BuildingType.FIELD, BuildingCategory.FARMS, tier = 0, footprint = 2,
+                buildPointsRequired = 60.0, woodCost = 20.0, stoneCost = 0.0, upkeepWealth = 0.02,
+                farmYieldBonus = 0.06, range = 10,
+            ),
+            BuildingSpec(
+                BuildingType.GRANARY, BuildingCategory.FARMS, tier = 1, footprint = 2,
+                buildPointsRequired = 140.0, woodCost = 60.0, stoneCost = 20.0, upkeepWealth = 0.05,
+                foodStorageBonus = 600.0,
+            ),
+            BuildingSpec(
+                BuildingType.IRRIGATION, BuildingCategory.FARMS, tier = 2, footprint = 2,
+                buildPointsRequired = 220.0, woodCost = 70.0, stoneCost = 60.0, upkeepWealth = 0.08,
+                farmYieldBonus = 0.10, seasonFloor = 0.55, range = 12,
+            ),
+            BuildingSpec(
+                BuildingType.MILL, BuildingCategory.FARMS, tier = 3, footprint = 2,
+                buildPointsRequired = 320.0, woodCost = 120.0, stoneCost = 80.0, upkeepWealth = 0.12,
+                foodToWealth = 0.08, foodStorageBonus = 200.0,
+            ),
+
+            // ---- Health: care access, disease, and infant survival ----
+            BuildingSpec(
+                BuildingType.HUT, BuildingCategory.HEALTH, tier = 0, footprint = 2,
+                buildPointsRequired = 70.0, woodCost = 25.0, stoneCost = 0.0, upkeepWealth = 0.02,
+                careCapacity = 14.0, range = 14,
+            ),
+            BuildingSpec(
+                BuildingType.CLINIC, BuildingCategory.HEALTH, tier = 1, footprint = 2,
+                buildPointsRequired = 170.0, woodCost = 60.0, stoneCost = 30.0, upkeepWealth = 0.06,
+                careCapacity = 45.0, diseaseResistBonus = 0.05, range = 18,
+            ),
+            BuildingSpec(
+                BuildingType.AQUEDUCT, BuildingCategory.HEALTH, tier = 2, footprint = 2,
+                buildPointsRequired = 260.0, woodCost = 40.0, stoneCost = 140.0, upkeepWealth = 0.09,
+                careCapacity = 30.0, diseaseResistBonus = 0.12, range = 22,
+            ),
+            BuildingSpec(
+                BuildingType.HOSPITAL, BuildingCategory.HEALTH, tier = 3, footprint = 3,
+                buildPointsRequired = 420.0, woodCost = 150.0, stoneCost = 120.0, upkeepWealth = 0.16,
+                careCapacity = 120.0, diseaseResistBonus = 0.10, range = 24,
+            ),
+
+            // ---- Military: strength, safety, and deterrence ----
+            BuildingSpec(
+                BuildingType.WATCHTOWER, BuildingCategory.MILITARY, tier = 0, footprint = 2,
+                buildPointsRequired = 80.0, woodCost = 30.0, stoneCost = 10.0, upkeepWealth = 0.03,
+                militaryStrength = 6.0, safetyBonus = 0.08, range = 20,
+            ),
+            BuildingSpec(
+                BuildingType.BARRACKS, BuildingCategory.MILITARY, tier = 1, footprint = 2,
+                buildPointsRequired = 190.0, woodCost = 70.0, stoneCost = 40.0, upkeepWealth = 0.08,
+                militaryStrength = 28.0, safetyBonus = 0.10,
+            ),
+            BuildingSpec(
+                BuildingType.WALL, BuildingCategory.MILITARY, tier = 2, footprint = 2,
+                buildPointsRequired = 300.0, woodCost = 30.0, stoneCost = 190.0, upkeepWealth = 0.06,
+                militaryStrength = 14.0, safetyBonus = 0.22,
+            ),
+            BuildingSpec(
+                BuildingType.ARMOURY, BuildingCategory.MILITARY, tier = 3, footprint = 2,
+                buildPointsRequired = 380.0, woodCost = 110.0, stoneCost = 130.0, upkeepWealth = 0.14,
+                militaryStrength = 60.0, safetyBonus = 0.10,
+            ),
+
+            // ---- Tech: knowledge rate, build speed, and the tier ladder ----
+            BuildingSpec(
+                BuildingType.WORKSHOP, BuildingCategory.TECH, tier = 0, footprint = 2,
+                buildPointsRequired = 90.0, woodCost = 35.0, stoneCost = 15.0, upkeepWealth = 0.04,
+                buildSpeedBonus = 0.12, knowledgeMultiplier = 0.10,
+            ),
+            BuildingSpec(
+                BuildingType.LIBRARY, BuildingCategory.TECH, tier = 1, footprint = 2,
+                buildPointsRequired = 200.0, woodCost = 80.0, stoneCost = 40.0, upkeepWealth = 0.09,
+                knowledgeMultiplier = 0.45,
+            ),
+            BuildingSpec(
+                BuildingType.ACADEMY, BuildingCategory.TECH, tier = 2, footprint = 3,
+                buildPointsRequired = 340.0, woodCost = 130.0, stoneCost = 90.0, upkeepWealth = 0.15,
+                knowledgeMultiplier = 0.80, buildSpeedBonus = 0.10,
+            ),
+            BuildingSpec(
+                BuildingType.OBSERVATORY, BuildingCategory.TECH, tier = 4, footprint = 3,
+                buildPointsRequired = 520.0, woodCost = 160.0, stoneCost = 180.0, upkeepWealth = 0.22,
+                knowledgeMultiplier = 1.40,
+            ),
+
+            // ---- Lifestyle: housing, morale, influence ----
+            BuildingSpec(
+                BuildingType.HOUSING, BuildingCategory.LIFESTYLE, tier = 0, footprint = 2,
+                buildPointsRequired = 75.0, woodCost = 30.0, stoneCost = 5.0, upkeepWealth = 0.02,
+                housingCapacity = 8, moraleBonus = 0.02, range = 12,
+            ),
+            BuildingSpec(
+                BuildingType.PLAZA, BuildingCategory.LIFESTYLE, tier = 1, footprint = 3,
+                buildPointsRequired = 160.0, woodCost = 40.0, stoneCost = 70.0, upkeepWealth = 0.05,
+                moraleBonus = 0.10, influenceBonus = 0.04, range = 16,
+            ),
+            BuildingSpec(
+                BuildingType.TEMPLE, BuildingCategory.LIFESTYLE, tier = 2, footprint = 2,
+                buildPointsRequired = 280.0, woodCost = 90.0, stoneCost = 110.0, upkeepWealth = 0.10,
+                moraleBonus = 0.14, influenceBonus = 0.05, range = 18,
+            ),
+            BuildingSpec(
+                BuildingType.THEATRE, BuildingCategory.LIFESTYLE, tier = 3, footprint = 3,
+                buildPointsRequired = 400.0, woodCost = 150.0, stoneCost = 90.0, upkeepWealth = 0.18,
+                moraleBonus = 0.20, influenceBonus = 0.06, range = 20,
+            ),
+        )
+
+        private val BY_TYPE: Map<BuildingType, BuildingSpec> = CATALOGUE.associateBy { it.type }
+
+        fun spec(type: BuildingType): BuildingSpec = BY_TYPE.getValue(type)
+
+        fun inCategory(category: BuildingCategory): List<BuildingSpec> =
+            CATALOGUE.filter { it.category == category }
+
+        /** Everything a civ at [techTier] is allowed to build, best tier first. */
+        fun available(category: BuildingCategory, techTier: Int): List<BuildingSpec> =
+            inCategory(category).filter { it.tier <= techTier }.sortedByDescending { it.tier }
     }
 
     // ---------------------------------------------------------------- tech
@@ -438,8 +624,14 @@ object GameConfig {
     object Politics {
         const val TERM_LENGTH_DAYS = Time.DAYS_PER_YEAR
         const val CANDIDATE_COUNT = 3
+
+        /** Candidates are announced this many days before the vote, so the player can campaign. */
+        const val CAMPAIGN_DAYS = 30
         const val VOTING_AGE_YEARS = 16
-        /** The Premier acts once per season, not every tick. */
+        /** Days between the Premier's decision points — once a season. */
+        const val DAYS_PER_DECISION = Time.DAYS_PER_SEASON
+
+                /** The Premier acts once per season, not every tick. */
         const val DECISIONS_PER_YEAR = Time.SEASONS_PER_YEAR
 
         /** How far each temperament deviates from need-based building, 0..1. */
@@ -450,7 +642,37 @@ object GameConfig {
             Temperament.ZEALOT to 0.85,
         )
 
-        // Influence economy (the player's lever).
+        // Agenda generation: a primary cause, a tolerated second, and a floor under the rest so
+        // no candidate ignores a category entirely.
+        const val AGENDA_FLOOR = 0.06
+        const val AGENDA_NOISE = 0.10
+        const val AGENDA_PRIMARY_WEIGHT = 0.55
+        const val AGENDA_SECONDARY_WEIGHT = 0.25
+
+        /**
+         * How strongly each felt need pushes a voter toward the matching category. The electorate
+         * is a feedback loop on the state of the town: hungry citizens vote farms, sick citizens
+         * vote health, frightened citizens vote military.
+         */
+        const val VOTE_HUNGER_WEIGHT = 1.5
+        const val VOTE_HEALTH_WEIGHT = 1.2
+        const val VOTE_FEAR_WEIGHT = 1.0
+        const val VOTE_HOMELESS_WEIGHT = 0.9
+        const val VOTE_CURIOSITY_WEIGHT = 0.35
+
+        /** Baseline pull toward every category, so a contented town still has opinions. */
+        const val VOTE_BASELINE = 0.30
+
+        /** Range of a citizen's personal political bias, drawn once at birth. */
+        const val VOTE_BIAS_MAX = 0.9
+
+        /** A Premier builds at most this many things per decision point. */
+        const val BUILD_ORDERS_PER_DECISION = 2
+
+        /** Share of the workforce a Premier puts on construction while anything is unfinished. */
+        const val BUILDER_SHARE_WHILE_BUILDING = 0.14
+
+                // Influence economy (the player's lever).
         const val INFLUENCE_POINTS_PER_DAY_BASE = 0.08
         const val INFLUENCE_POINTS_PER_PLAZA = 0.04
         const val INFLUENCE_POINTS_PER_TEMPLE = 0.05
@@ -464,6 +686,13 @@ object GameConfig {
         const val VETOES_PER_YEAR = 1
 
         // Unrest
+        /**
+         * Unrest only builds once the town is both suffering and badly governed. The first
+         * version raised it whenever pressure cleared 0.02, which almost any Premier did: unrest
+         * saturated within a year, every run, and the resulting emigration and coups killed
+         * colonies that M3 had kept alive for centuries. It is now a threshold, not a ratchet.
+         */
+        const val UNREST_PRESSURE_THRESHOLD = 0.15
         const val UNREST_PER_DAY_PER_UNMET_NEED = 0.002
         const val UNREST_DECAY_PER_DAY = 0.0015
         const val UNREST_WORK_PENALTY_AT_MAX = 0.45

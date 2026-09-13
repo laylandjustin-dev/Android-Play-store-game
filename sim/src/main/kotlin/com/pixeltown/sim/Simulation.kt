@@ -2,6 +2,7 @@ package com.pixeltown.sim
 
 import com.pixeltown.sim.GameConfig.Economy
 import com.pixeltown.sim.GameConfig.Life
+import com.pixeltown.sim.GameConfig.Politics
 import com.pixeltown.sim.GameConfig.Survival as SurvivalConfig
 import com.pixeltown.sim.GameConfig.Time
 import com.pixeltown.sim.GameConfig.World as WorldConfig
@@ -37,6 +38,74 @@ class Simulation(
 
     /** Work cell -> citizen id, so two workers never claim the same field. */
     private val workClaims = HashMap<Int, Int>()
+
+    /** Every structure on the map, finished or not. */
+    private val allBuildings = ArrayList<Building>()
+
+    /** The same buildings, indexed by civ. */
+    private val buildingsByCiv = Array(civs.size) { ArrayList<Building>() }
+
+    /**
+     * Per-civ population index, rebuilt once per tick.
+     *
+     * Without it, systems that needed "this civ's citizens" filtered the whole living list on
+     * every call, and two of them — care access in the survival score, and housing slack in the
+     * conception check — did so *per citizen*, making the tick O(population^2). At 2,300 people a
+     * tick cost 6.6ms against a 1ms budget at 100x speed.
+     */
+    private val membersByCiv = Array(civs.size) { ArrayList<Citizen>() }
+    private val healersByCiv = IntArray(civs.size)
+    private val housedByCiv = IntArray(civs.size)
+
+    private fun refreshPopulationIndex() {
+        for (list in membersByCiv) list.clear()
+        healersByCiv.fill(0)
+        housedByCiv.fill(0)
+        for (citizen in living) {
+            membersByCiv[citizen.civId].add(citizen)
+            if (citizen.job == Job.HEALER) healersByCiv[citizen.civId]++
+            if (citizen.homeBuildingId != null) housedByCiv[citizen.civId]++
+        }
+    }
+
+    private var nextBuildingId = 0
+
+    /** Per-civ building effects, recomputed whenever the building list changes. */
+    private val effects = Array(civs.size) { CivEffects.NONE }
+
+    /** The sitting Premier of each civ, null before the first election. */
+    private val premiers = arrayOfNulls<Premier>(civs.size)
+
+    /** The agenda a Premier was elected on, so a petition can be reverted when it expires. */
+    private val electedAgendas = arrayOfNulls<Agenda>(civs.size)
+
+    /** Candidates during the campaign window, per civ. */
+    private val campaigns = arrayOfNulls<List<Candidate>>(civs.size)
+
+    /** The candidate the player has endorsed this campaign. */
+    private val endorsements = arrayOfNulls<Int>(civs.size)
+
+    /** True when the player has vetoed the Premier's next build order. */
+    private val vetoPending = BooleanArray(civs.size)
+
+    /** Every election held, newest last. The Ledger's record of who governed and why. */
+    val elections = ArrayList<ElectionResult>()
+
+    val buildings: List<Building> get() = allBuildings
+
+    /**
+     * Buildings belonging to one civ. Indexed rather than filtered: this is read several times
+     * per tick per civ, and scanning a list of hundreds of buildings each time showed up as a
+     * dominant cost once towns grew.
+     */
+    fun buildingsOf(civId: Int): List<Building> = buildingsByCiv[civId]
+
+    fun premierOf(civId: Int): Premier? = premiers[civId]
+
+    fun effectsOf(civId: Int): CivEffects = effects[civId]
+
+    /** The candidates standing in [civId]'s current election, or null outside a campaign. */
+    fun campaignFor(civId: Int): List<Candidate>? = campaigns[civId]
 
     /** Set when the run reaches a terminal state; null while it is still running. */
     var endState: EndState? = null
@@ -93,6 +162,7 @@ class Simulation(
         }
 
         civ.add(Resource.FOOD, settlers * Economy.STARTING_FOOD_PER_SETTLER)
+        refreshEffects(civ.id)
         civ.population = placed.size
         world.ownerCivId[civ.homeSite] = civ.id.toByte()
         chronicle.record(
@@ -115,7 +185,10 @@ class Simulation(
             job = if (ageDays < Life.CHILD_UNTIL_YEARS * Time.DAYS_PER_YEAR) Job.CHILD else Job.IDLE,
             skill = 0f,
             influence = 0f,
-        )
+        ).apply {
+            politicalBias = BuildingCategory.entries[rng.nextInt(BuildingCategory.entries.size)]
+            politicalBiasStrength = rng.nextDouble(0.0, Politics.VOTE_BIAS_MAX).toFloat()
+        }
         living.add(citizen)
         byId[citizen.id] = citizen
         world.occupantId[cell] = citizen.id
@@ -148,19 +221,29 @@ class Simulation(
     fun step() {
         clock.runTicks(1) { /* the clock only counts days; the systems below are the tick */ }
 
+        refreshPopulationIndex()
+
         ageEveryone()
+        runCouncil()
         assignJobsIfDue()
         produceGoods()
+        advanceConstruction()
+        payUpkeep()
         feedEveryone()
+        assignHousing()
         updateBodies()
         recomputeSurvival()
         applyDisease()
         resolveDeaths()
+        // Deaths have compacted the population; rebuild the index before the rest of the tick.
+        refreshPopulationIndex()
         formPairs()
         conceiveAndBirth()
         moveEveryone()
         EconomySystem.regenerateLand(world, civs)
         driftMoraleAndInfluence()
+        advanceTech()
+        updateUnrest()
         updateCivStatistics()
         checkEndState()
     }
@@ -185,6 +268,368 @@ class Simulation(
 
     // ------------------------------------------------------------------ systems
 
+    // ------------------------------------------------------------------ the council
+
+    /**
+     * The political year: candidates are announced, the vote is held, and the Premier acts once
+     * per season. Between those moments this does nothing at all.
+     */
+    private fun runCouncil() {
+        val dayOfYear = (day % Time.DAYS_PER_YEAR).toInt()
+
+        if (dayOfYear == Time.DAYS_PER_YEAR - Politics.CAMPAIGN_DAYS) openCampaigns()
+        if (dayOfYear == 0 && day > 0) holdElections()
+        if (dayOfYear % Politics.DAYS_PER_DECISION == 0 && day > 0) premierDecisions()
+    }
+
+    private fun openCampaigns() {
+        for (civ in civs) {
+            val members = membersOf(civ.id)
+            if (members.isEmpty()) continue
+            campaigns[civ.id] = CouncilSystem.chooseCandidates(members, rng)
+            endorsements[civ.id] = null
+        }
+    }
+
+    private fun holdElections() {
+        for (civ in civs) {
+            val members = membersOf(civ.id)
+            val candidates = campaigns[civ.id]
+            if (members.isEmpty() || candidates.isNullOrEmpty()) continue
+
+            val result = CouncilSystem.holdVote(
+                members = members,
+                candidates = candidates,
+                effects = effects[civ.id],
+                civ = civ,
+                endorsed = endorsements[civ.id],
+            ) ?: continue
+
+            civ.termCount++
+            civ.vetoesUsedThisYear = 0
+            installPremier(
+                civ,
+                Premier(
+                    citizenId = result.winnerCitizenId,
+                    name = result.winnerName,
+                    agenda = result.agenda,
+                    temperament = result.temperament,
+                    electedOnDay = day,
+                    termNumber = civ.termCount,
+                ),
+            )
+
+            val recorded = result.copy(day = day, termNumber = civ.termCount)
+            elections.add(recorded)
+            chronicle.record(
+                ChronicleEvent(
+                    day, ChronicleEventKind.ELECTION, civ.id, result.winnerCitizenId,
+                    detail = "${result.winnerName} (${result.temperament.name.lowercase()}, ${result.agenda.dominant.name.lowercase()})",
+                    value = result.totalVotes,
+                ),
+            )
+            campaigns[civ.id] = null
+            endorsements[civ.id] = null
+        }
+    }
+
+    private fun installPremier(civ: Civilization, premier: Premier) {
+        premiers[civ.id] = premier
+        electedAgendas[civ.id] = premier.agenda
+    }
+
+    /**
+     * The Premier acts four times a year, not every tick: they set job weights from their agenda
+     * and place up to [Politics.BUILD_ORDERS_PER_DECISION] build orders.
+     */
+    private fun premierDecisions() {
+        for (civ in civs) {
+            val premier = premiers[civ.id] ?: continue
+            val members = membersOf(civ.id)
+            if (members.isEmpty()) continue
+
+            // A petition the player bought lasts a year, then the Premier reverts to their platform.
+            if (premier.petitionActive && day - premier.electedOnDay >= Time.DAYS_PER_YEAR) {
+                electedAgendas[civ.id]?.let { premier.clearPetition(it) }
+            }
+
+            repeat(Politics.BUILD_ORDERS_PER_DECISION) {
+                placeBuildOrder(civ, premier, members)
+            }
+        }
+    }
+
+    /** Chooses what to build and where, and lays the foundation. Construction happens over time. */
+    private fun placeBuildOrder(civ: Civilization, premier: Premier, members: List<Citizen>) {
+        val need = townNeeds(civ, members)
+        val category = CouncilSystem.chooseCategory(premier, need, rng)
+        val options = GameConfig.Buildings.available(category, civ.techTier)
+        if (options.isEmpty()) return
+
+        // Best available tier the civ can actually pay for.
+        val spec = options.firstOrNull {
+            civ[Resource.WOOD] >= it.woodCost && civ[Resource.STONE] >= it.stoneCost
+        } ?: return
+
+        if (vetoPending[civ.id]) {
+            vetoPending[civ.id] = false
+            chronicle.record(
+                ChronicleEvent(day, ChronicleEventKind.BUILDING_COMPLETED, civ.id, detail = "VETOED ${spec.type.name}"),
+            )
+            return
+        }
+
+        val site = BuildingSystem.findSite(world, civ, spec.footprint) ?: return
+        civ.take(Resource.WOOD, spec.woodCost)
+        civ.take(Resource.STONE, spec.stoneCost)
+
+        val building = Building(
+            id = nextBuildingId++,
+            type = spec.type,
+            civId = civ.id,
+            x = site % world.width,
+            y = site / world.width,
+        )
+        allBuildings.add(building)
+        buildingsByCiv[civ.id].add(building)
+        BuildingSystem.place(world, building)
+    }
+
+    /** How badly the town wants each category right now — the average of its citizens' needs. */
+    private fun townNeeds(civ: Civilization, members: List<Citizen>): Map<BuildingCategory, Double> {
+        if (members.isEmpty()) return BuildingCategory.entries.associateWith { 0.0 }
+        val totals = DoubleArray(BuildingCategory.entries.size)
+        for (citizen in members) {
+            CouncilSystem.accumulateNeeds(citizen, effects[civ.id], civ, members.size, totals)
+        }
+        return BuildingCategory.entries.associateWith { totals[it.ordinal] / members.size }
+    }
+
+    // ------------------------------------------------------------------ buildings
+
+    private fun advanceConstruction() {
+        for (civ in civs) {
+            val civBuildings = buildingsOf(civ.id)
+            if (civBuildings.none { !it.isComplete }) continue
+            val builders = membersOf(civ.id).filter { it.job == Job.BUILDER }
+            val completed = BuildingSystem.advanceConstruction(
+                builders = builders,
+                buildings = civBuildings,
+                effects = effects[civ.id],
+                traits = civ.traits,
+                techMultiplier = techMultiplier(civ),
+            )
+            for (building in completed) {
+                premiers[civ.id]?.built?.add(building.type)
+                chronicle.record(
+                    ChronicleEvent(
+                        day, ChronicleEventKind.BUILDING_COMPLETED, civ.id,
+                        detail = building.type.name, value = building.id,
+                    ),
+                )
+            }
+            if (completed.isNotEmpty()) refreshEffects(civ.id)
+        }
+    }
+
+    /**
+     * Upkeep is charged daily in wealth. A civ that cannot pay accrues unrest, and after a grace
+     * period loses a building to ruin — which is what stops a town over-building into collapse.
+     */
+    private fun payUpkeep() {
+        for (civ in civs) {
+            val upkeep = effects[civ.id].upkeepWealth
+            if (upkeep <= 0.0) {
+                civ.unpaidUpkeepDays = 0
+                continue
+            }
+            val paid = civ.take(Resource.WEALTH, upkeep)
+            if (paid >= upkeep - 1e-9) {
+                civ.unpaidUpkeepDays = 0
+                continue
+            }
+            civ.unpaidUpkeepDays++
+            if (civ.unpaidUpkeepDays >= GameConfig.Buildings.UPKEEP_GRACE_DAYS) {
+                civ.unpaidUpkeepDays = 0
+                ruinOneBuilding(civ)
+            }
+        }
+    }
+
+    /** The newest completed building falls down first: a town abandons its extravagances. */
+    private fun ruinOneBuilding(civ: Civilization) {
+        val victim = buildingsOf(civ.id).lastOrNull { it.isComplete } ?: return
+        BuildingSystem.remove(world, victim)
+        allBuildings.remove(victim)
+        buildingsByCiv[civ.id].remove(victim)
+        for (citizen in living) {
+            if (citizen.homeBuildingId == victim.id) citizen.homeBuildingId = null
+        }
+        refreshEffects(civ.id)
+        chronicle.record(
+            ChronicleEvent(day, ChronicleEventKind.BUILDING_COMPLETED, civ.id, detail = "RUINED ${victim.type.name}"),
+        )
+    }
+
+    /** Homeless citizens move into housing with space. Shelter is a big share of survival. */
+    private fun assignHousing() {
+        if (day % HOUSING_REVIEW_INTERVAL_DAYS != 0L) return
+        for (civ in civs) {
+            val homes = buildingsOf(civ.id).filter { it.isComplete && it.spec.housingCapacity > 0 }
+            if (homes.isEmpty()) continue
+            for (home in homes) home.residents = 0
+
+            var index = 0
+            for (citizen in living) {
+                if (citizen.civId != civ.id) continue
+                citizen.homeBuildingId = null
+                while (index < homes.size && homes[index].residents >= homes[index].spec.housingCapacity) {
+                    index++
+                }
+                if (index >= homes.size) break
+                homes[index].residents++
+                citizen.homeBuildingId = homes[index].id
+            }
+        }
+    }
+
+    private fun refreshEffects(civId: Int) {
+        effects[civId] = BuildingSystem.aggregate(buildingsOf(civId))
+        civs[civId].foodStorageCapacity =
+            Economy.BASE_FOOD_STORAGE_CAPACITY + effects[civId].foodStorageBonus
+    }
+
+    // ------------------------------------------------------------------ tech and unrest
+
+    /** Knowledge buys tiers. Costs scale steeply, so tier 6 is the work of centuries. */
+    private fun advanceTech() {
+        for (civ in civs) {
+            if (civ.techTier >= GameConfig.Tech.MAX_TIER) continue
+            val cost = GameConfig.Tech.COST_BASE * Math.pow(GameConfig.Tech.COST_GROWTH, (civ.techTier + 1).toDouble())
+            if (civ[Resource.KNOWLEDGE] < cost) continue
+            civ.take(Resource.KNOWLEDGE, cost)
+            civ.techTier++
+            chronicle.record(
+                ChronicleEvent(day, ChronicleEventKind.TECH_TIER, civ.id, value = civ.techTier),
+            )
+        }
+    }
+
+    /**
+     * Unrest, emigration and coups. A Premier who ignores what the town feels loses it: work
+     * output falls, people leave, and past [Politics.UNREST_COUP_THRESHOLD] the highest-influence
+     * citizen takes the office mid-term.
+     */
+    private fun updateUnrest() {
+        // Weekly: this walks every citizen's felt needs, and doing it daily made it the single
+        // most expensive thing in the tick. Unrest moves on the scale of seasons anyway, so the
+        // per-step change is scaled up to keep the same pace.
+        if (day % UNREST_REVIEW_INTERVAL_DAYS != 0L) return
+        for (civ in civs) {
+            val members = membersOf(civ.id)
+            if (members.isEmpty()) continue
+            val premier = premiers[civ.id]
+
+            val needGap = if (premier == null) 0.0 else {
+                val need = townNeeds(civ, members)
+                val wanted = Agenda.of(need)
+                premier.agenda.distanceTo(wanted)
+            }
+            val meanSurvival = members.sumOf { it.survival.toDouble() } / members.size
+            repeat(UNREST_REVIEW_INTERVAL_DAYS.toInt()) {
+                CouncilSystem.updateUnrest(civ, needGap, meanSurvival)
+            }
+
+            if (civ.unrest > Politics.UNREST_EMIGRATION_THRESHOLD) {
+                for (citizen in members) {
+                    if (citizen.isAdult && rng.chance(Politics.UNREST_EMIGRATION_DAILY_CHANCE * civ.unrest)) {
+                        kill(citizen, DeathCause.EMIGRATION)
+                    }
+                }
+                compactDead()
+                refreshPopulationIndex()
+            }
+
+            if (civ.unrest > Politics.UNREST_COUP_THRESHOLD && rng.chance(Politics.UNREST_COUP_DAILY_CHANCE)) {
+                stageCoup(civ, members)
+            }
+        }
+    }
+
+    private fun stageCoup(civ: Civilization, members: List<Citizen>) {
+        val usurper = members
+            .filter { it.ageYears >= Politics.VOTING_AGE_YEARS }
+            .maxWithOrNull(compareBy<Citizen> { it.influence }.thenByDescending { -it.id }) ?: return
+
+        civ.termCount++
+        installPremier(
+            civ,
+            Premier(
+                citizenId = usurper.id,
+                name = NameGenerator.name(rng),
+                // A usurper governs to the town's actual grievance — that is why they had support.
+                agenda = Agenda.of(townNeeds(civ, members)),
+                temperament = Temperament.AMBITIOUS,
+                electedOnDay = day,
+                termNumber = civ.termCount,
+                byCoup = true,
+            ),
+        )
+        civ.unrest *= 0.4
+        chronicle.record(
+            ChronicleEvent(day, ChronicleEventKind.COUP, civ.id, usurper.id, detail = premiers[civ.id]?.name),
+        )
+    }
+
+    // ------------------------------------------------------------------ the player's levers
+
+    /**
+     * Endorse a candidate during the campaign, adding
+     * [Politics.ENDORSE_VOTE_WEIGHT_BONUS] to their standing with every voter.
+     */
+    fun endorse(civId: Int, candidateCitizenId: Int): Boolean {
+        val candidates = campaigns[civId] ?: return false
+        if (candidates.none { it.citizenId == candidateCitizenId }) return false
+        if (!spendInfluence(civId, Politics.COST_ENDORSE)) return false
+        endorsements[civId] = candidateCitizenId
+        return true
+    }
+
+    /** Petition the sitting Premier to shift one agenda weight. Reverts after a year. */
+    fun petition(civId: Int, category: BuildingCategory, delta: Double): Boolean {
+        val premier = premiers[civId] ?: return false
+        if (!spendInfluence(civId, Politics.COST_PETITION)) return false
+        premier.applyPetition(category, delta)
+        return true
+    }
+
+    /** Veto the Premier's next build order. One per year. */
+    fun veto(civId: Int): Boolean {
+        val civ = civ(civId)
+        if (civ.vetoesUsedThisYear >= Politics.VETOES_PER_YEAR) return false
+        if (!spendInfluence(civId, Politics.COST_VETO)) return false
+        civ.vetoesUsedThisYear++
+        vetoPending[civId] = true
+        return true
+    }
+
+    /** Call an early election. Expensive, and the town may return the same Premier. */
+    fun callReferendum(civId: Int): Boolean {
+        if (!spendInfluence(civId, Politics.COST_REFERENDUM)) return false
+        val members = membersOf(civId)
+        if (members.isEmpty()) return false
+        campaigns[civId] = CouncilSystem.chooseCandidates(members, rng)
+        endorsements[civId] = null
+        return true
+    }
+
+    private fun spendInfluence(civId: Int, cost: Int): Boolean {
+        val civ = civ(civId)
+        if (civ.influencePoints < cost) return false
+        civ.influencePoints -= cost
+        return true
+    }
+
     /**
      * Jobs are reassigned weekly, not daily: reassignment costs skill, and a workforce that
      * reshuffles every tick would never learn its trades.
@@ -200,17 +645,17 @@ class Simulation(
     }
 
     /**
-     * The job weights a civ works to. A Premier's agenda replaces this at M4.
+     * The job weights a civ works to: the sitting Premier's agenda, translated into a workforce.
+     * Before the first election a civ works to the default farm-heavy split.
      *
-     * Deliberately a fixed, farm-heavy split rather than one derived from the civ's traits. Tying
-     * the food share to the farmYield/huntYield ratio was tried and made every civ worse: those
-     * coefficients are similar, but a farm cell (fertility ~0.85) out-produces a game cell
-     * (~0.5, and falling as it is hunted), so splitting by coefficient sent half the workforce to
-     * the weaker job and cut an even-spread colony from ~100 years to under 10. Choosing a food
-     * strategy is the Premier's job, informed by what the town actually needs (M4) — not
-     * something to infer from the trait sheet.
+     * The farm/hunt split inside the food share stays fixed — see AD-25 in CLAUDE.md, where
+     * deriving it from trait ratios was measured and made every allocation worse.
      */
-    private fun jobWeightsFor(civ: Civilization): Map<Job, Double> = Economy.DEFAULT_JOB_WEIGHTS
+    private fun jobWeightsFor(civ: Civilization): Map<Job, Double> {
+        val premier = premiers[civ.id] ?: return Economy.DEFAULT_JOB_WEIGHTS
+        val building = buildingsOf(civ.id).any { !it.isComplete }
+        return CouncilSystem.jobWeightsFor(premier.agenda, building)
+    }
 
     /** Worked land belongs to the civ that works it, which is what the map shows as territory. */
     private fun claimTerritory(civ: Civilization, members: List<Citizen>) {
@@ -225,11 +670,12 @@ class Simulation(
         for (civ in civs) {
             val members = membersOf(civ.id)
             if (members.isEmpty()) continue
-            EconomySystem.produce(world, civ, members, severity)
+            EconomySystem.produce(world, civ, members, severity, effects[civ.id])
         }
     }
 
-    private fun membersOf(civId: Int): List<Citizen> = living.filter { it.civId == civId }
+    /** This civ's citizens, from the per-tick index. Read-only: callers must not mutate it. */
+    private fun membersOf(civId: Int): List<Citizen> = membersByCiv[civId]
 
     private fun ageEveryone() {
         for (citizen in living) {
@@ -303,8 +749,8 @@ class Simulation(
         var score = SurvivalConfig.W_HEALTH * healthNorm +
             SurvivalConfig.W_NUTRITION * citizen.nutrition +
             SurvivalConfig.W_SHELTER * shelterQuality(citizen) +
-            SurvivalConfig.W_SAFETY * SurvivalConfig.SAFETY_BASELINE +
-            SurvivalConfig.W_CARE * SurvivalConfig.CARE_BASELINE +
+            SurvivalConfig.W_SAFETY * safetyOf(citizen.civId) +
+            SurvivalConfig.W_CARE * careAccessOf(citizen.civId) +
             SurvivalConfig.W_MORALE * citizen.morale
 
         score -= severity * (1.0 - traits.elementsShelter)
@@ -313,7 +759,23 @@ class Simulation(
     }
 
     private fun shelterQuality(citizen: Citizen): Double =
-        if (citizen.homeBuildingId == null) SurvivalConfig.SHELTER_QUALITY_HOMELESS else 1.0
+        if (citizen.homeBuildingId == null) {
+            SurvivalConfig.SHELTER_QUALITY_HOMELESS
+        } else {
+            GameConfig.Buildings.SHELTER_QUALITY_HOUSED
+        }
+
+    /** Walls and watchtowers above the baseline; rivals will push this down from M5. */
+    private fun safetyOf(civId: Int): Double =
+        (SurvivalConfig.SAFETY_BASELINE + effects[civId].safetyBonus).coerceIn(0.0, 1.0)
+
+    /** Clinic and healer capacity per head. */
+    private fun careAccessOf(civId: Int): Double {
+        val population = civs[civId].population
+        if (population <= 0) return SurvivalConfig.CARE_BASELINE
+        val capacity = effects[civId].careCapacity + healersByCiv[civId] * Economy.HEALER_CARE_CAPACITY
+        return (capacity / population).coerceIn(0.0, 1.0)
+    }
 
     /** Zero until [SurvivalConfig.AGE_FRAILTY_ONSET_FRACTION] of lifespan, then rising to the cap. */
     private fun ageFrailty(citizen: Citizen, traits: TraitAllocation): Double {
@@ -336,7 +798,8 @@ class Simulation(
     private fun applyDisease() {
         for (citizen in living) {
             val traits = traitsOf(citizen)
-            val chance = Life.DISEASE_EVENT_BASE_CHANCE * (1.0 - traits.diseaseResist).coerceAtLeast(0.0)
+            val resist = traits.diseaseResist + effects[citizen.civId].diseaseResistBonus
+            val chance = Life.DISEASE_EVENT_BASE_CHANCE * (1.0 - resist).coerceAtLeast(0.0)
             if (rng.chance(chance)) {
                 citizen.hp = max(0f, citizen.hp - Life.DISEASE_HP_DAMAGE.toFloat())
             }
@@ -481,8 +944,17 @@ class Simulation(
     private fun conceptionChance(citizen: Citizen): Double =
         Life.CONCEIVE_BASE * (citizen.survival / SurvivalConfig.MAX) * housingSlack(citizen.civId)
 
-    /** 1.0 until housing exists (M4); then the share of housing capacity still free. */
-    private fun housingSlack(civId: Int): Double = 1.0
+    /**
+     * The share of housing capacity still free. A town with nowhere to put a child has fewer of
+     * them; before any housing is built this sits at a floor rather than zero, or a colony could
+     * never grow far enough to build its first house.
+     */
+    private fun housingSlack(civId: Int): Double {
+        val capacity = effects[civId].housingCapacity
+        if (capacity <= 0) return Life.HOUSING_SLACK_WITHOUT_HOUSING
+        val free = (capacity - housedByCiv[civId]).toDouble() / capacity
+        return free.coerceIn(Life.HOUSING_SLACK_WITHOUT_HOUSING, 1.0)
+    }
 
     private fun giveBirth(mother: Citizen): Citizen? {
         val cell = findFreeCell(world.index(mother.x, mother.y), 3) ?: return null
@@ -556,8 +1028,18 @@ class Simulation(
     }
 
     private fun driftMoraleAndInfluence() {
+        // The player's influence points accrue from plazas, temples and the town's mood.
+        for (civ in civs) {
+            val members = membersOf(civ.id)
+            if (members.isEmpty()) continue
+            val meanMorale = members.sumOf { it.morale.toDouble() } / members.size
+            civ.influencePoints += Politics.INFLUENCE_POINTS_PER_DAY_BASE +
+                effects[civ.id].influencePerDay +
+                Politics.INFLUENCE_POINTS_MORALE_SCALE * meanMorale * Politics.INFLUENCE_POINTS_PER_DAY_BASE
+        }
+
         for (citizen in living) {
-            val target = Life.MORALE_BASELINE
+            val target = Life.MORALE_BASELINE + effects[citizen.civId].moraleBonus
             val drift = Life.MORALE_DRIFT_PER_DAY.toFloat()
             citizen.morale = when {
                 citizen.morale < target -> min(target.toFloat(), citizen.morale + drift)
@@ -592,6 +1074,10 @@ class Simulation(
     // ------------------------------------------------------------------ helpers
 
     private fun traitsOf(citizen: Citizen): TraitAllocation = civ(citizen.civId).traits
+
+    /** Global output multiplier from a civ's unlocked tech tiers. */
+    private fun techMultiplier(civ: Civilization): Double =
+        1.0 + GameConfig.Tech.MULTIPLIER_PER_TIER * civ.techTier
 
     private fun chebyshev(a: Citizen, b: Citizen): Int = max(abs(a.x - b.x), abs(a.y - b.y))
 
@@ -652,6 +1138,12 @@ class Simulation(
             for (civ in civs) simulation.found(civ, settlers)
             return simulation
         }
+
+        /** Housing is reassigned this often; doing it daily is wasted work. */
+        private const val HOUSING_REVIEW_INTERVAL_DAYS = 30L
+
+        /** Unrest is judged this often, for the same reason. */
+        private const val UNREST_REVIEW_INTERVAL_DAYS = 7L
 
         /** Placeholder names until the naming system arrives with the Premier (M4). */
         val CIV_NAMES = listOf("Aurelia", "Kressen", "Tolmar", "Veyra", "Sildan")

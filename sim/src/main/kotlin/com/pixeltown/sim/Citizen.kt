@@ -28,6 +28,17 @@ class Citizen(
     /** The cell this citizen works, or [World.NONE] for indoor work and the unemployed. */
     var workCell: Int = World.NONE
 
+    /**
+     * The cause this person leans toward regardless of circumstance, and how strongly.
+     *
+     * Without it the electorate is a hive mind: citizens in the same town are in near-identical
+     * condition, so they compute near-identical needs and every election came back 95-0. A small
+     * personal bias makes elections contested in calm years while genuine hardship — a famine, a
+     * raid — still swamps it and swings the town as a bloc.
+     */
+    var politicalBias: BuildingCategory = BuildingCategory.FARMS
+    var politicalBiasStrength: Float = 0f
+
     /** Consecutive days at zero nutrition. Starvation kills at [GameConfig.Life.STARVATION_DAYS]. */
     var starvingDays: Int = 0
 
@@ -52,4 +63,12 @@ class Citizen(
 }
 
 /** Why a citizen died. Every death is logged with one of these. */
-enum class DeathCause { STARVATION, ILLNESS, EXPOSURE, OLD_AGE, COMBAT, DISASTER, CHILDBIRTH }
+enum class DeathCause {
+    STARVATION, ILLNESS, EXPOSURE, OLD_AGE, COMBAT, DISASTER, CHILDBIRTH,
+
+    /**
+     * Left the town for good. Not a death, but a loss to the civ in exactly the same way, and it
+     * belongs in the Ledger's breakdown under its own name rather than polluting another cause.
+     */
+    EMIGRATION,
+}

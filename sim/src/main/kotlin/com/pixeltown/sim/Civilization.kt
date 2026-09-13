@@ -28,6 +28,15 @@ class Civilization(
     /** Influence points the player spends on the council. Accrues for rivals too, unused for now. */
     var influencePoints: Double = 0.0
 
+    /** Consecutive days this civ has failed to pay its building upkeep. */
+    var unpaidUpkeepDays: Int = 0
+
+    /** Vetoes the player has spent this year, reset at each election. */
+    var vetoesUsedThisYear: Int = 0
+
+    /** How many terms this civ has elected. */
+    var termCount: Int = 0
+
     // Run statistics, kept here so the end-of-run scoring never has to re-walk history.
     var peakPopulation: Int = 0
     var totalBirths: Int = 0
