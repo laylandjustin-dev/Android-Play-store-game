@@ -25,6 +25,9 @@ class Citizen(
     var pregnantUntilDay: Int? = null,
     var homeBuildingId: Int? = null,
 ) {
+    /** The cell this citizen works, or [World.NONE] for indoor work and the unemployed. */
+    var workCell: Int = World.NONE
+
     /** Consecutive days at zero nutrition. Starvation kills at [GameConfig.Life.STARVATION_DAYS]. */
     var starvingDays: Int = 0
 

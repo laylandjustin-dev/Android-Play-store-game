@@ -23,7 +23,8 @@ pixeltown/
 │       ├── Citizen.kt         One person, one pixel. Mutable by design.
 │       ├── Civilization.kt    A civ's shared state: stores, tech, unrest, statistics.
 │       ├── Chronicle.kt       The rolling event record behind the feed and the return report.
-│       ├── Simulation.kt      The tick: founding, feeding, ageing, death, pairing, birth.
+│       ├── Simulation.kt      The tick: founding, work, feeding, ageing, death, pairing, birth.
+│       ├── EconomySystem.kt   Job assignment, work cells, production, soil and game recovery.
 │       ├── Palette.kt         Terrain/civ/building colours as plain ints.
 │       └── Viewport.kt        The visible rectangle of the world, in cells.
 └── app/          Android application — Compose UI, bitmap upload, billing, persistence.
@@ -138,6 +139,57 @@ several times slower than this machine, so a large late-run colony will not sust
 the per-frame tick cap will silently throttle it. That is a real balance-and-UX issue to confront
 at the polish milestone, not a bug in the clock.
 
+**AD-21 — Work is spatial, and workers look for cells near themselves.** A farmer walks to a
+fertile cell and works *that* cell, draining its fertility; this is what makes over-farming a real
+failure mode and pushes a growing town outward. The first implementation searched from the town
+centre with a weak distance penalty, which sent workers on 20-cell marches to marginally better
+soil — at ~1 cell/day only 5 of 48 ever arrived and the colony starved surrounded by good land.
+Workers now search within `WORK_SEARCH_RADIUS` of where they stand, with a steep distance penalty.
+
+**AD-22 — A worker counts as "at work" when standing on their cell *or beside it*.** Requiring the
+exact cell deadlocked workers whose plot was occupied by a passer-by, since one occupant per cell
+is a hard invariant.
+
+**AD-23 — Two constants the design formulas need but do not state.** Both are deviations, recorded
+here rather than buried:
+  - `SKILL_OUTPUT_FLOOR` (0.45). Output is written as `... x skill`, but skill starts at 0 and
+    takes six years to mature, so a literal reading has a new colony produce nothing and starve
+    before anyone learns their trade. A beginner now works at 45% of a master's rate.
+  - `FARM_OUTPUT_SCALE` / `HUNT_OUTPUT_SCALE` (3.0). The formula's natural scale is ~1.0 food per
+    farmer-day — exactly one person's ration — so a colony could never staff anything but farms.
+    A competent farmer now feeds about three people, which is what leaves room for hunters,
+    gatherers, builders and scholars.
+
+**AD-24 — The design's conception rate was wrong against its own childhood length, and is now
+0.0012.** At the documented 0.0028 an eligible woman conceives roughly once a year; against a
+14-year childhood that drove the child share of a colony past 65% within a decade, and a
+workforce that small cannot feed its dependants. An even-spread colony died in 5-11 years while a
+farming colony ran away to 1,700 people. Measured sweep:
+
+| `CONCEIVE_BASE` | even spread | farming build | child share at year 50 |
+|---|---|---|---|
+| 0.0028 (design) | dies 5-11y | 1,536-1,764 | 0.50-0.58 |
+| **0.0012 (now)** | **120y+, ~90 people** | **233-309** | **0.29-0.40** |
+| 0.0006 | 120y+, ~68 people | 68-72 | 0.22-0.33 |
+
+0.0012 also puts the 400-population Ascension condition back in reach as a stretch rather than a
+formality.
+
+**AD-25 — Job weights stay a fixed, farm-heavy split until the Premier exists.** Deriving the
+food share from the civ's own `farmYield`/`huntYield` ratio was tried and made every allocation
+worse: the two coefficients are similar, but a farm cell (fertility ~0.85) out-produces a game
+cell (~0.5 and falling as it is hunted), so splitting by coefficient sent half the workforce to
+the weaker job — an even-spread colony fell from ~100 years to under 10. Choosing a food strategy
+is the Premier's job, informed by what the town actually needs (M4), not something to infer from
+the trait sheet.
+
+**AD-26 — Hunting was self-defeating and is now sustainable.** Regrowth at 0.4% of capacity per
+day against 2% depletion meant a hunter stripped a cell in weeks and moved on; the values are now
+1.0% and 0.8%, so a hunted cell reaches equilibrium instead of collapsing. **Still open:** a
+Hunting-8 civ dies in 1-2 years, because the fixed weights put 46% of its workforce into farming
+it has no talent for. The allocation screen offers Hunting as a path, so this must be resolved
+when Premier agendas land (M4) — it is a known gap, not a finished balance.
+
 ### Decisions recorded ahead of implementation
 
 **AD-8 — Entitlements are read only at run start.** The simulation snapshots its starting
@@ -173,11 +225,36 @@ then commit with a message naming the milestone. Do not move on with a red build
   starting sites, the pixel renderer and the viewport. The Compose gesture layer
   (`WorldGestures.kt`) and the HUD are written but **unbuilt and unrun** — see below. "Zoom and
   pan smoothly at 60fps" is therefore not yet verified on a device.
+- **M3 — Economy & jobs.** Done and tested. Resources, weekly job assignment with hunger
+  overriding politics, spatial work cells, farming/hunting/gathering/scholarship/craft, skill
+  growth and reassignment cost, soil drain and recovery, game depletion and regrowth, territory
+  claims. Gate met: a Farming allocation stabilises and grows for 200+ years, a Farming-1 one
+  collapses inside 30. See the balance table below. `sim/build/preview/colony-year-60.png` shows
+  five mature towns.
 - **M2 — Citizens & the life cycle.** Done and tested: 50 settlers per civ, the survival score,
   hunger, ageing, disease, death with causes, pairing, pregnancy, birth, wandering, and the
   Chronicle. No jobs yet, so a colony lives on its founding stores and starves: extinction lands
   between days 49 and 55 depending on seed, identical every replay. `sim/build/preview/colony-day-10.png`
   shows five colonies on the map.
+
+### M3 balance measurements
+
+300-year cap, seeds 1/42/555, population peak in brackets. Reproduce with `BalanceTest`:
+
+| Allocation | seed 1 | seed 42 | seed 555 |
+|---|---|---|---|
+| even 5/5/5/5/5 | 300y [102] | 195y [92] | 300y [1237] |
+| farmer 3/4/3/4/8 | 300y [860] | 300y [678] | 277y [83] |
+| farm+elem 3/4/3/6/6 | 300y [2666] | 300y [1097] | 300y [708] |
+| hunter 5/4/8/3/3 | 2y [50] | 1y [51] | 1y [55] |
+| bad 8/3/3/3/1 | 0y [50] | 0y [50] | 0y [50] |
+
+Against the §12 targets: runs are currently **too survivable** — a naive spread should fail in
+80-140 years and a good one should reach 300 only about one run in three. Both are expected to
+tighten once buildings carry upkeep (M4) and rivals raid, extort and invade (M5); the real tuning
+pass is the headless harness at M7, over 200+ sims. Seed-to-seed variance is large (even spread
+peaks at 102 on one seed and 1,237 on another), which is worth watching: some of it is map luck,
+but some is famine cascades near a knife edge.
 
 ## Known environment limitation
 

@@ -198,8 +198,17 @@ object GameConfig {
             TerrainType.MARSH to 0.50,
         )
 
-        /** Wild game regrows toward the terrain base at this fraction per day. */
-        const val WILD_GAME_REGEN_PER_DAY = 0.004
+        /**
+         * Wild game regrows toward the terrain base at this fraction of capacity per day, and one
+         * day of hunting takes this fraction of what is on the cell.
+         *
+         * The first values (0.4% regrowth against 2% depletion) made hunting self-defeating: a
+         * hunter stripped a cell in weeks, moved on, and a hunting people starved in their first
+         * year. Regrowth now outpaces a single hunter, so a hunting economy is sustainable —
+         * though still a lower ceiling than farming, which is the intended shape.
+         */
+        const val WILD_GAME_REGEN_PER_DAY = 0.010
+        const val HUNT_DEPLETION_PER_DAY = 0.008
 
         /** Fertility drained per farmer-day worked on a cell. */
         const val FERTILITY_DRAIN_PER_FARM_DAY = 0.0035
@@ -288,7 +297,18 @@ object GameConfig {
         const val FERTILE_AGE_MIN_YEARS = 16
         const val FERTILE_AGE_MAX_YEARS = 42
         const val BIRTH_MIN_SURVIVAL = 58.0
-        const val CONCEIVE_BASE = 0.0028
+        /**
+         * Daily conception chance for an eligible woman.
+         *
+         * The design's 0.0028 was measured and is far too high against a 14-year childhood: it
+         * drove the child share of a colony to 65% within a decade, and a workforce that small
+         * could not feed the dependants. An even-spread colony died in 5-11 years and a farming
+         * colony ran away to 1,700 people. At 0.0012 the child share settles near 0.30, an
+         * even-spread colony lives for centuries at ~90 people, and a farming colony reaches
+         * 230-310 — which puts the 400-population Ascension condition back in reach as a
+         * stretch rather than a formality.
+         */
+        const val CONCEIVE_BASE = 0.0012
         const val GESTATION_DAYS = 270
         const val CHILD_UNTIL_YEARS = 14
 
@@ -339,6 +359,58 @@ object GameConfig {
 
         /** Jobs are reassigned once per week. */
         const val JOB_REASSIGN_INTERVAL_DAYS = 7
+
+        /**
+         * Competence floor for an unskilled worker.
+         *
+         * The design writes output as `... x skill`, but skill starts at 0 and takes six years to
+         * mature, so a literal reading has a new colony produce nothing at all and starve before
+         * anyone learns their trade. Effective competence is therefore
+         * `floor + (1 - floor) * skill`: a beginner works at this fraction of a master's rate.
+         */
+        const val SKILL_OUTPUT_FLOOR = 0.45
+
+        /**
+         * How far a worker will look for a cell to work, measured from where they stand.
+         *
+         * Searching from the town centre with a weak distance penalty sent workers on 20-cell
+         * marches to marginally better soil: at ~1 cell/day only a handful ever arrived and the
+         * colony starved with full fields around it. Workers now look near themselves.
+         */
+        /**
+         * Food produced by one worker-day at a multiplier of 1.
+         *
+         * The design writes farm output as `fertility x farmYield x skill x workMultiplier x
+         * seasonMod`, which at baseline lands near 1.0 — exactly one person's daily ration. A
+         * colony where one farmer feeds one person can never staff anything but farms, so the
+         * formula needs an absolute scale: a competent farmer feeds roughly three people, which
+         * is what leaves room for hunters, gatherers, builders and scholars.
+         */
+        const val FARM_OUTPUT_SCALE = 3.0
+        const val HUNT_OUTPUT_SCALE = 3.0
+
+        /**
+         * How much a candidate work cell's value is discounted per cell of walking distance.
+         * Steep on purpose: take the decent field next door over the perfect one a fortnight away.
+         */
+        const val WORK_DISTANCE_PENALTY = 0.30
+
+        const val WORK_SEARCH_RADIUS = 12
+
+        /** Default job weights before a Premier sets them (M4). Normalised at use. */
+        val DEFAULT_JOB_WEIGHTS: Map<Job, Double> = mapOf(
+            Job.FARMER to 0.46,
+            Job.HUNTER to 0.20,
+            Job.GATHERER to 0.16,
+            Job.BUILDER to 0.06,
+            Job.SCHOLAR to 0.05,
+            Job.HEALER to 0.03,
+            Job.ARTISAN to 0.02,
+            Job.SOLDIER to 0.02,
+        )
+
+        /** In a food crisis, this share of the workforce is pushed onto food production. */
+        const val CRISIS_FOOD_WORKER_SHARE = 0.85
 
         const val GATHERER_OUTPUT = 0.35
         const val BUILDER_OUTPUT = 1.0

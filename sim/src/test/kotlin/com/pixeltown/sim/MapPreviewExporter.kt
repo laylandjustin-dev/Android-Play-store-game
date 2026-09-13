@@ -40,8 +40,17 @@ class MapPreviewExporter {
         val sim = Simulation.newRun(20260913L, TraitAllocation.EVEN_SPREAD)
         sim.run(10)
         val frame = IntArray(sim.world.cellCount)
-        FrameRenderer(sim.world).render(sim, frame)
+        val renderer = FrameRenderer(sim.world)
+        renderer.render(sim, frame)
         writePng(File(outputDir, "colony-day-10.png"), sim.world, frame, scale)
+
+        // A working economy, sixty years on: towns have spread out across their farmland and the
+        // territory tint shows which civ works which cells.
+        val mature = Simulation.newRun(1L, TraitAllocation.of(3, 4, 3, 4, 8))
+        mature.run(60 * GameConfig.Time.DAYS_PER_YEAR)
+        val matureFrame = IntArray(mature.world.cellCount)
+        FrameRenderer(mature.world).render(mature, matureFrame, ownershipTint = 0.18f)
+        writePng(File(outputDir, "colony-year-60.png"), mature.world, matureFrame, scale)
     }
 
     private fun writePng(file: File, world: World, pixels: IntArray, scale: Int) {

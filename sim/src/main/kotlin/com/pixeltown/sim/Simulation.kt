@@ -35,6 +35,9 @@ class Simulation(
 
     private var nextCitizenId = 0
 
+    /** Work cell -> citizen id, so two workers never claim the same field. */
+    private val workClaims = HashMap<Int, Int>()
+
     /** Set when the run reaches a terminal state; null while it is still running. */
     var endState: EndState? = null
         private set
@@ -146,6 +149,8 @@ class Simulation(
         clock.runTicks(1) { /* the clock only counts days; the systems below are the tick */ }
 
         ageEveryone()
+        assignJobsIfDue()
+        produceGoods()
         feedEveryone()
         updateBodies()
         recomputeSurvival()
@@ -154,6 +159,7 @@ class Simulation(
         formPairs()
         conceiveAndBirth()
         moveEveryone()
+        EconomySystem.regenerateLand(world, civs)
         driftMoraleAndInfluence()
         updateCivStatistics()
         checkEndState()
@@ -178,6 +184,52 @@ class Simulation(
     }
 
     // ------------------------------------------------------------------ systems
+
+    /**
+     * Jobs are reassigned weekly, not daily: reassignment costs skill, and a workforce that
+     * reshuffles every tick would never learn its trades.
+     */
+    private fun assignJobsIfDue() {
+        if (day % Economy.JOB_REASSIGN_INTERVAL_DAYS != 0L) return
+        for (civ in civs) {
+            val members = membersOf(civ.id)
+            if (members.isEmpty()) continue
+            EconomySystem.assignJobs(world, civ, members, workClaims, jobWeightsFor(civ))
+            claimTerritory(civ, members)
+        }
+    }
+
+    /**
+     * The job weights a civ works to. A Premier's agenda replaces this at M4.
+     *
+     * Deliberately a fixed, farm-heavy split rather than one derived from the civ's traits. Tying
+     * the food share to the farmYield/huntYield ratio was tried and made every civ worse: those
+     * coefficients are similar, but a farm cell (fertility ~0.85) out-produces a game cell
+     * (~0.5, and falling as it is hunted), so splitting by coefficient sent half the workforce to
+     * the weaker job and cut an even-spread colony from ~100 years to under 10. Choosing a food
+     * strategy is the Premier's job, informed by what the town actually needs (M4) — not
+     * something to infer from the trait sheet.
+     */
+    private fun jobWeightsFor(civ: Civilization): Map<Job, Double> = Economy.DEFAULT_JOB_WEIGHTS
+
+    /** Worked land belongs to the civ that works it, which is what the map shows as territory. */
+    private fun claimTerritory(civ: Civilization, members: List<Citizen>) {
+        for (citizen in members) {
+            val cell = citizen.workCell
+            if (cell != World.NONE) world.ownerCivId[cell] = civ.id.toByte()
+        }
+    }
+
+    private fun produceGoods() {
+        val severity = normalisedSeasonSeverity()
+        for (civ in civs) {
+            val members = membersOf(civ.id)
+            if (members.isEmpty()) continue
+            EconomySystem.produce(world, civ, members, severity)
+        }
+    }
+
+    private fun membersOf(civId: Int): List<Citizen> = living.filter { it.civId == civId }
 
     private fun ageEveryone() {
         for (citizen in living) {
@@ -272,8 +324,14 @@ class Simulation(
         return SurvivalConfig.AGE_FRAILTY_MAX * progress
     }
 
-    /** 0 in the kindest season, 1 in the harshest — the input to seasonal yield damping. */
+    /** Raw seasonal penalty in survival points, subtracted from the survival score. */
     private fun seasonSeverity(): Double = SurvivalConfig.SEASON_SEVERITY[season.ordinal]
+
+    /** The same severity scaled to 0..1, which is what the yield multiplier expects. */
+    private fun normalisedSeasonSeverity(): Double {
+        val worst = SurvivalConfig.SEASON_SEVERITY.max()
+        return if (worst <= 0.0) 0.0 else seasonSeverity() / worst
+    }
 
     private fun applyDisease() {
         for (citizen in living) {
@@ -334,6 +392,7 @@ class Simulation(
     private fun kill(citizen: Citizen, cause: DeathCause) {
         citizen.alive = false
         world.occupantId[world.index(citizen.x, citizen.y)] = World.NONE
+        EconomySystem.releaseClaim(citizen, workClaims)
 
         citizen.partnerId?.let { partnerId ->
             byId[partnerId]?.let { partner ->
@@ -446,19 +505,54 @@ class Simulation(
      */
     private fun moveEveryone() {
         for (citizen in living) {
-            if (!rng.chance(Life.WANDER_CHANCE_PER_DAY)) continue
-            val from = world.index(citizen.x, citizen.y)
-            val direction = rng.nextInt(World.NEIGHBOUR_DX.size)
-            val nx = citizen.x + World.NEIGHBOUR_DX[direction]
-            val ny = citizen.y + World.NEIGHBOUR_DY[direction]
-            if (!world.inBounds(nx, ny)) continue
-            val to = world.index(nx, ny)
-            if (!world.isWalkable(to) || world.isOccupied(to)) continue
-            world.occupantId[from] = World.NONE
-            world.occupantId[to] = citizen.id
-            citizen.x = nx
-            citizen.y = ny
+            val steps = stepsToday(citizen)
+            repeat(steps) {
+                val target = citizen.workCell
+                if (target != World.NONE) {
+                    stepToward(citizen, target % world.width, target / world.width)
+                } else if (rng.chance(Life.WANDER_CHANCE_PER_DAY)) {
+                    wander(citizen)
+                }
+            }
         }
+    }
+
+    /** Whole cells moved today; the fractional part of move speed is a daily coin flip. */
+    private fun stepsToday(citizen: Citizen): Int {
+        val speed = traitsOf(citizen).moveSpeed
+        val whole = speed.toInt()
+        return whole + if (rng.chance(speed - whole)) 1 else 0
+    }
+
+    /**
+     * One greedy step toward a target, with a sidestep when the direct route is blocked. No A*:
+     * the map is open enough, and thousands of agents make a proper path search too expensive.
+     */
+    private fun stepToward(citizen: Citizen, targetX: Int, targetY: Int) {
+        if (citizen.x == targetX && citizen.y == targetY) return
+        val dx = Integer.signum(targetX - citizen.x)
+        val dy = Integer.signum(targetY - citizen.y)
+        if (tryMove(citizen, citizen.x + dx, citizen.y + dy)) return
+        // Blocked diagonally: try the two axis-aligned steps, then give up for today.
+        if (dx != 0 && tryMove(citizen, citizen.x + dx, citizen.y)) return
+        if (dy != 0) tryMove(citizen, citizen.x, citizen.y + dy)
+    }
+
+    private fun wander(citizen: Citizen) {
+        val direction = rng.nextInt(World.NEIGHBOUR_DX.size)
+        tryMove(citizen, citizen.x + World.NEIGHBOUR_DX[direction], citizen.y + World.NEIGHBOUR_DY[direction])
+    }
+
+    /** Moves the citizen if the destination is walkable and free. One occupant per cell, always. */
+    private fun tryMove(citizen: Citizen, nx: Int, ny: Int): Boolean {
+        if (!world.inBounds(nx, ny)) return false
+        val to = world.index(nx, ny)
+        if (!world.isWalkable(to) || world.isOccupied(to)) return false
+        world.occupantId[world.index(citizen.x, citizen.y)] = World.NONE
+        world.occupantId[to] = citizen.id
+        citizen.x = nx
+        citizen.y = ny
+        return true
     }
 
     private fun driftMoraleAndInfluence() {

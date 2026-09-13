@@ -14,6 +14,34 @@ class ColonyLifeCycleTest {
 
     private fun newRun(seed: Long) = Simulation.newRun(seed, TraitAllocation.EVEN_SPREAD)
 
+    /**
+     * A colony on barren ground: land they can walk on but nothing they can farm, hunt or gather.
+     *
+     * The life-cycle tests below are about hunger, ageing and death, and they need a colony that
+     * cannot feed itself. Before M3 that was simply the default (there were no jobs); now that
+     * work produces food, the scenario has to be stated explicitly rather than assumed. Beach has
+     * fertility below the workable threshold, and the game is stripped, so no field job yields
+     * anything and the colony lives on its founding stores alone.
+     */
+    private fun barrenColony(seed: Long, traits: TraitAllocation = TraitAllocation.EVEN_SPREAD): Simulation {
+        val world = World(64, 64)
+        for (i in 0 until world.cellCount) {
+            world.setTerrain(i, TerrainType.BEACH)
+            world.fertility[i] = 0f
+            world.wildGame[i] = 0f
+        }
+        val civ = Civilization(
+            id = GameConfig.World.PLAYER_CIV_ID,
+            name = "Barrens",
+            traits = traits,
+            personality = Personality.ISOLATIONIST,
+            homeSite = world.index(32, 32),
+        )
+        val sim = Simulation(world, listOf(civ), SimRandom(seed))
+        sim.found(civ)
+        return sim
+    }
+
     // ------------------------------------------------------------------ founding
 
     @Test
@@ -56,11 +84,11 @@ class ColonyLifeCycleTest {
 
     @Test
     fun `a colony that produces no food starves to death in a predictable window`() {
-        // M2 has no jobs, so a colony lives on its founding stores and then dies. 50 settlers are
-        // founded with 1,000 food and eat 50/day: ~20 days of full rations, ~8 days draining
-        // nutrition to zero, then the starvation window. Extinction lands in the 40s and 50s.
+        // 50 settlers are founded with 1,000 food and eat 50/day: ~20 days of full rations (less,
+        // once the surplus above granary capacity has rotted), ~8 days draining nutrition to
+        // zero, then the starvation window. Extinction lands in the 40s and 50s.
         for (seed in seeds) {
-            val sim = newRun(seed)
+            val sim = barrenColony(seed)
             val days = sim.runUntilEnd(maxDays = 2_000)
             assertEquals(0, sim.populationOf(0), "seed $seed still had people after $days days")
             assertTrue(days in 40..70, "seed $seed wiped out on day $days, expected 40..70")
@@ -70,15 +98,15 @@ class ColonyLifeCycleTest {
     @Test
     fun `the same seed always collapses on exactly the same day`() {
         for (seed in seeds) {
-            val first = newRun(seed).runUntilEnd(2_000)
-            val second = newRun(seed).runUntilEnd(2_000)
+            val first = barrenColony(seed).runUntilEnd(2_000)
+            val second = barrenColony(seed).runUntilEnd(2_000)
             assertEquals(first, second, "seed $seed collapsed on different days across runs")
         }
     }
 
     @Test
     fun `collapse ends the run and is recorded`() {
-        val sim = newRun(42L)
+        val sim = barrenColony(42L)
         sim.runUntilEnd(2_000)
         assertEquals(EndState.COLLAPSE, sim.endState)
         assertTrue(sim.chronicle.totalOf(ChronicleEventKind.RUN_ENDED) == 1)
@@ -86,7 +114,7 @@ class ColonyLifeCycleTest {
 
     @Test
     fun `nobody starves before the design allows, and starvation dominates the famine`() {
-        val sim = newRun(42L)
+        val sim = barrenColony(42L)
         var firstStarvationDay = -1L
         var firstEmptyBellyDay = -1L
         while (sim.endState == null && sim.day < 2_000) {
@@ -118,7 +146,7 @@ class ColonyLifeCycleTest {
     fun `the famine kills over days, not all at once`() {
         // Rationing is proportional, so every citizen is in an identical state — without a daily
         // roll past the starvation threshold, a whole colony died on one tick.
-        val sim = newRun(42L)
+        val sim = barrenColony(42L)
         val deathsPerDay = HashMap<Long, Int>()
         while (sim.endState == null && sim.day < 2_000) {
             val before = sim.chronicle.totalOf(ChronicleEventKind.DEATH)
@@ -205,19 +233,24 @@ class ColonyLifeCycleTest {
         while (mother == null && sim.day < 3 * Time.DAYS_PER_YEAR) {
             civ[Resource.FOOD] = 5_000.0
             sim.step()
-            mother = sim.citizens.firstOrNull { it.isPregnant }
+            // Only the player's civ is being hand-fed, so only look for a mother there: a
+            // pregnant woman in a starving rival civ may not live to term.
+            mother = sim.citizens.firstOrNull { it.isPregnant && it.civId == 0 }
             if (mother != null) conceivedOn = sim.day
         }
         assertNotNull(mother, "nobody conceived in three well-fed years")
         assertEquals(conceivedOn.toInt() + Life.GESTATION_DAYS, mother.pregnantUntilDay)
 
-        val populationBefore = sim.populationOf(0)
+        // Count births rather than population: over 270 days people also die, so net population
+        // is not a reliable signal that this pregnancy produced a child.
+        val birthsBefore = civ.totalBirths
         while (sim.day < conceivedOn + Life.GESTATION_DAYS) {
             civ[Resource.FOOD] = 5_000.0
             sim.step()
         }
+        assertNotNull(sim.citizenOrNull(mother.id), "the mother did not live to term")
         assertNull(sim.citizenOrNull(mother.id)?.pregnantUntilDay, "the pregnancy did not resolve")
-        assertTrue(sim.populationOf(0) > populationBefore, "the birth produced no child")
+        assertTrue(civ.totalBirths > birthsBefore, "the birth produced no child")
     }
 
     @Test
@@ -233,7 +266,7 @@ class ColonyLifeCycleTest {
 
     @Test
     fun `the occupancy grid stays in step with the citizen list`() {
-        val sim = newRun(42L)
+        val sim = barrenColony(42L)
         sim.run(45) // through the famine, so deaths have to clear their cells
         val occupied = (0 until sim.world.cellCount).count { sim.world.occupantId[it] != World.NONE }
         assertEquals(sim.population, occupied, "the grid and the population disagree")
@@ -243,7 +276,7 @@ class ColonyLifeCycleTest {
 
     @Test
     fun `survival falls as a colony runs out of food`() {
-        val sim = newRun(42L)
+        val sim = barrenColony(42L)
         sim.step()
         val wellFed = sim.citizens.filter { it.civId == 0 }.map { it.survival }.average()
         sim.run(30)
@@ -253,7 +286,7 @@ class ColonyLifeCycleTest {
 
     @Test
     fun `survival stays inside its documented range`() {
-        val sim = newRun(42L)
+        val sim = barrenColony(42L)
         repeat(200) {
             sim.step()
             for (citizen in sim.citizens) {
@@ -269,8 +302,8 @@ class ColonyLifeCycleTest {
     fun `a hardier people survive the same famine longer`() {
         // Health raises max HP and Elements blunts the season penalty; both should show up as a
         // later collapse under identical conditions.
-        val frail = Simulation.newRun(42L, TraitAllocation.of(6, 1, 6, 1, 6)).runUntilEnd(2_000)
-        val hardy = Simulation.newRun(42L, TraitAllocation.of(1, 8, 1, 5, 5)).runUntilEnd(2_000)
+        val frail = barrenColony(42L, TraitAllocation.of(6, 1, 6, 1, 6)).runUntilEnd(2_000)
+        val hardy = barrenColony(42L, TraitAllocation.of(1, 8, 1, 5, 5)).runUntilEnd(2_000)
         assertTrue(hardy > frail, "the hardy colony ($hardy days) did not outlast the frail one ($frail days)")
     }
 
