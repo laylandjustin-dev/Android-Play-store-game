@@ -11,14 +11,21 @@ records decisions, not requirements.
 pixeltown/
 ├── sim/          Pure Kotlin JVM library — the entire simulation. No Android imports, ever.
 │   └── src/main/kotlin/com/pixeltown/sim/
-│       ├── GameConfig.kt   Every tunable number in the game. One file, by design.
-│       ├── Types.kt        Domain enums (terrain, jobs, traits, temperaments, end states).
-│       ├── SimRandom.kt    The single seeded RNG threaded through everything.
-│       └── SimClock.kt     Fixed-step accumulator: sim rate decoupled from frame rate.
-└── app/          Android application — Compose UI, the pixel renderer, billing, persistence.
+│       ├── GameConfig.kt      Every tunable number in the game. One file, by design.
+│       ├── Types.kt           Domain enums (terrain, jobs, traits, temperaments, end states).
+│       ├── SimRandom.kt       The single seeded RNG threaded through everything.
+│       ├── SimClock.kt        Fixed-step accumulator: sim rate decoupled from frame rate.
+│       ├── ValueNoise.kt      Seeded value noise + fBm, used by map generation.
+│       ├── World.kt           The 128x128 grid, as parallel primitive arrays.
+│       ├── WorldGenerator.kt  Island generation: fields, terrain, rivers, starting sites.
+│       ├── WorldRenderer.kt   Paints the world into a flat ARGB IntArray.
+│       ├── Palette.kt         Terrain/civ/building colours as plain ints.
+│       └── Viewport.kt        The visible rectangle of the world, in cells.
+└── app/          Android application — Compose UI, bitmap upload, billing, persistence.
     └── src/main/kotlin/com/pixeltown/app/
-        ├── MainActivity.kt  Compose root and the frame-driven tick loop.
-        └── PixelCanvas.kt   IntArray → Bitmap.setPixels → drawImage(FilterQuality.None).
+        ├── MainActivity.kt    Compose root, frame-driven tick loop, HUD.
+        ├── PixelCanvas.kt     IntArray → Bitmap.setPixels → drawImage(FilterQuality.None).
+        └── WorldGestures.kt   Pinch-zoom and pan, converted from screen px to world cells.
 ```
 
 `:app` depends on `:sim`. `:sim` depends on nothing but the Kotlin stdlib and
@@ -61,6 +68,48 @@ buildable and testable anywhere. Plugins are therefore declared per-module; the 
 **AD-7 — Java 17 bytecode from any JDK 17+.** Neither module pins a toolchain (no JDK
 provisioning in a sandboxed build); both set `jvmTarget`/`targetCompatibility` to 17 instead.
 
+**AD-10 — Terrain is classified by quantile, not by absolute elevation.** Value-noise fields vary
+a lot between seeds: at a fixed sea level the land fraction ranged from 0.27 to 0.45, so some
+seeds were archipelagos and others near-continents. `WorldGenerator` slices the *sorted*
+elevation field at `TARGET_LAND_FRACTION` (and the land thresholds at shares of the land), so
+every map has a comparable amount of usable land while the island's shape still varies freely.
+Balance can then assume a roughly constant amount of farmland per run.
+
+**AD-11 — The island mask is square (Chebyshev), not radial.** A radial falloff only reaches zero
+at the four corners, so land ran off the middle of each edge. A square mask reaches zero along
+every border, which makes "the coastline is always drawn by the noise, never by the map bounds"
+an invariant the tests can assert.
+
+**AD-12 — Rivers are routed on a blurred copy of the elevation field, from the most inland
+sources.** Steepest descent on raw value noise stalls in the first pit it meets (rivers came out
+5–8 cells long), and ranking sources by elevation put them on coastal peaks. Flow now descends a
+box-blurred field with a small uphill breach tolerance, and sources are ranked by breadth-first
+distance from the ocean with moisture as the tiebreak. Rivers now run 11–13 cells against a
+maximum possible inland distance of 16–23, i.e. close to what the island geometry allows.
+
+**AD-13 — Starting sites are restricted to the largest landmass.** A test caught the generator
+stranding a civ on an offshore islet. Since armies walk across the map as pixel columns (M5),
+every civ must be reachable on foot; `WorldGenerator` now flood-fills for the mainland and scores
+sites only there. A separate test asserts ≥85% of land is one connected component.
+
+**AD-14 — `Viewport` lives in `:sim`, not the UI layer.** It is pure world-space arithmetic that
+deserves tests, and the simulation needs it regardless: rivals are simulated in full detail
+within `Rivals.DETAIL_RADIUS_CELLS` of the player-visible area and approximated beyond it, so
+"what can the player see" is a simulation input. The app converts gesture deltas from screen
+pixels to world cells and hands them to it.
+
+**AD-15 — The renderer lives in `:sim` too; the app only uploads bitmaps.** `WorldRenderer`
+writes ARGB ints into a flat `IntArray` with no Android types, so the code that runs every frame
+is unit-tested and benchmarked on the JVM (terrain repaint is ~0.3ms against a 16ms budget).
+`PixelFramebuffer` in the app is the only class that knows what a `Bitmap` is. Zoom and pan move
+the *source* rectangle of a single `drawImage` call rather than resampling the buffer, so there is
+no per-zoom pixel work and no filtering artefacts.
+
+**AD-16 — Map previews are exported as PNGs from the test source set.** `MapPreviewExporter`
+writes `sim/build/preview/map-seed-*.png` on every test run using `javax.imageio`, which lets the
+renderer be inspected without a device. It is test-only on purpose: `java.awt` does not exist on
+Android and must never be dexed into the app.
+
 ### Decisions recorded ahead of implementation
 
 **AD-8 — Entitlements are read only at run start.** The simulation snapshots its starting
@@ -88,6 +137,14 @@ Developer API can be added later without touching call sites.
 
 Per the brief: after every milestone, run the debug assemble and the tests, fix all failures,
 then commit with a message naming the milestone. Do not move on with a red build.
+
+## Milestone status
+
+- **M0 — Skeleton.** Done. Modules, config, clock, RNG, canvas.
+- **M1 — World & renderer.** Simulation side done and tested: generation, terrain, rivers,
+  starting sites, the pixel renderer and the viewport. The Compose gesture layer
+  (`WorldGestures.kt`) and the HUD are written but **unbuilt and unrun** — see below. "Zoom and
+  pan smoothly at 60fps" is therefore not yet verified on a device.
 
 ## Known environment limitation
 

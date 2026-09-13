@@ -111,20 +111,44 @@ object GameConfig {
         const val NOISE_LACUNARITY = 2.0
         const val NOISE_PERSISTENCE = 0.5
 
-        /** Elevation thresholds, low to high, after normalisation to 0..1. */
-        const val SEA_LEVEL = 0.42
-        const val BEACH_LEVEL = 0.46
-        const val HILL_LEVEL = 0.70
-        const val MOUNTAIN_LEVEL = 0.84
+        /**
+         * Terrain is classified by *quantile*, not by absolute elevation. Noise fields vary a lot
+         * between seeds: a fixed sea level gave land fractions from 0.27 to 0.45 at the same
+         * threshold, so some seeds were archipelagos and others were continents. Slicing the
+         * sorted elevation field instead means every map has a comparable amount of usable land
+         * while the *shape* of the island still varies freely with the seed.
+         */
+        const val TARGET_LAND_FRACTION = 0.46
 
-        /** Moisture thresholds for classifying land below [HILL_LEVEL]. */
-        const val MARSH_MOISTURE = 0.72
-        const val FOREST_MOISTURE = 0.52
+        /** Shares of the land, taken from the elevation extremes inward. */
+        const val BEACH_SHARE_OF_LAND = 0.14
+        const val MOUNTAIN_SHARE_OF_LAND = 0.07
+        const val HILL_SHARE_OF_LAND = 0.16
+
+        /** Shares of the land, taken from the wettest end of the moisture field. */
+        const val MARSH_SHARE_OF_LAND = 0.10
+        const val FOREST_SHARE_OF_LAND = 0.34
 
         /** Rivers are carved from the N wettest peaks by steepest descent to ocean. */
         const val RIVER_SOURCE_COUNT = 6
-        const val RIVER_MIN_SOURCE_ELEVATION = 0.72
+        /**
+         * River sources are ranked by how far inland they are, because that is what decides river
+         * length — ranking by elevation alone put sources on coastal peaks and produced 8-cell
+         * streams. Moisture is the tiebreak, so the wettest of the deep-inland candidates wins.
+         */
+        const val RIVER_SOURCE_MIN_DISTANCE_FROM_OCEAN = 8
+        const val RIVER_SOURCE_MOISTURE_WEIGHT = 6.0
         const val RIVER_MAX_LENGTH = 400
+
+        /**
+         * Flow is routed on a blurred copy of the elevation field. Steepest descent on raw value
+         * noise stalls in the first pit it meets — rivers came out 5-8 cells long — while a
+         * smoothed field carries the same descent all the way to the coast.
+         */
+        const val RIVER_FLOW_SMOOTHING_PASSES = 4
+
+        /** How far uphill a river may breach to escape a pit, in smoothed elevation units. */
+        const val RIVER_BREACH_TOLERANCE = 0.004
 
         /** Radial island falloff: elevation is multiplied down toward the map edge. */
         const val ISLAND_FALLOFF_START = 0.55
@@ -132,6 +156,12 @@ object GameConfig {
 
         /** Minimum distance in cells between civ starting sites. */
         const val MIN_CIV_START_SEPARATION = 34
+
+        /** Radius of the fertility/game window used to score candidate starting sites. */
+        const val CIV_START_SCORE_RADIUS = 6
+
+        /** Random jitter added to a site's score so the best spot is not always the same one. */
+        const val CIV_START_SCORE_JITTER = 0.25
     }
 
     /** Per-terrain base fertility and wild game, and whether the cell is walkable/buildable. */
@@ -166,6 +196,10 @@ object GameConfig {
 
         /** Fertility below this makes a farm cell not worth working. */
         const val FERTILITY_ABANDON_THRESHOLD = 0.12
+
+        /** Per-cell random variation applied to the terrain base values at generation time. */
+        const val FERTILITY_JITTER = 0.12
+        const val WILD_GAME_JITTER = 0.15
     }
 
     // ---------------------------------------------------------------- survival
