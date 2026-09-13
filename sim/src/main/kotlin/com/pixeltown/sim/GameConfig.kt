@@ -101,6 +101,16 @@ object GameConfig {
         const val HEIGHT = 128
 
         const val STARTING_SETTLERS = 50
+
+        /** Settlers are founded as adults of working age, spread across this range. */
+        const val SETTLER_MIN_AGE_YEARS = 17
+        const val SETTLER_MAX_AGE_YEARS = 38
+
+        /** Share of founding settlers who arrive already partnered. */
+        const val SETTLER_PARTNERED_SHARE = 0.55
+
+        /** How far from the home site settlers are scattered when a civ is founded. */
+        const val SETTLEMENT_SPAWN_RADIUS = 7
         const val RIVAL_CIV_COUNT = 4
         const val TOTAL_CIV_COUNT = RIVAL_CIV_COUNT + 1
         const val PLAYER_CIV_ID = 0
@@ -225,6 +235,15 @@ object GameConfig {
         /** Shelter quality for a citizen with no home. */
         const val SHELTER_QUALITY_HOMELESS = 0.0
         const val HOUSING_RANGE_CELLS = 16
+
+        /**
+         * Safety with no known threat and no walls. Not 1.0: an unwalled settlement on an open map
+         * is never entirely safe, and rivals should be able to push this down (M5).
+         */
+        const val SAFETY_BASELINE = 0.5
+
+        /** Care access with no healers and no clinics. */
+        const val CARE_BASELINE = 0.0
     }
 
     // ---------------------------------------------------------------- life cycle
@@ -242,8 +261,26 @@ object GameConfig {
         const val INFANT_MORTALITY_MULTIPLIER = 2.2
         const val INFANT_AGE_DAYS = 3 * Time.DAYS_PER_YEAR
 
-        /** Consecutive days at zero nutrition before starvation kills. */
+        /** Nutrition recovers this fast on a full ration and drains this fast on nothing. */
+        const val NUTRITION_GAIN_PER_FED_DAY = 0.25
+        const val NUTRITION_LOSS_PER_HUNGRY_DAY = 0.12
+
+        /** Chance per day that an idle citizen wanders to a neighbouring cell. */
+        const val WANDER_CHANCE_PER_DAY = 0.35
+
+        /** Consecutive days at zero nutrition before starvation can kill. */
         const val STARVATION_DAYS = 12
+
+        /**
+         * Once past [STARVATION_DAYS], chance per day of dying of it. A hard threshold killed an
+         * entire famine-struck colony on the same day, because uniform rationing leaves every
+         * citizen in an identical state; a daily roll spreads the collapse over about a week
+         * without letting anyone die of starvation sooner than the design allows.
+         */
+        const val STARVATION_DAILY_DEATH_CHANCE = 0.30
+
+        /** Nobody survives starvation past this many days at zero nutrition. */
+        const val STARVATION_CERTAIN_DEATH_DAYS = 26
         const val HP_LOSS_PER_STARVING_DAY = 4.0
         const val HP_REGEN_PER_FED_DAY = 0.8
 
@@ -287,6 +324,9 @@ object GameConfig {
     // ---------------------------------------------------------------- economy
 
     object Economy {
+        /** Food a civ is founded with, per settler. At 1 food/adult/day this is the grace period. */
+        const val STARTING_FOOD_PER_SETTLER = 20.0
+
         const val FOOD_PER_ADULT_PER_DAY = 1.0
         const val FOOD_PER_CHILD_PER_DAY = 0.45
 

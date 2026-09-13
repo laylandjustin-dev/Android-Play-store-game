@@ -81,3 +81,41 @@ object WorldRenderer {
         return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
     }
 }
+
+/**
+ * Composites a whole frame: terrain (cached), then ownership tint, then citizens on top.
+ *
+ * Terrain changes only when the world does, so it is painted once into a cache and copied per
+ * frame — an array copy of 16,384 ints is far cheaper than re-shading every cell. Only the
+ * dynamic layers are drawn per tick.
+ */
+class FrameRenderer(private val world: World) {
+
+    private val terrainCache = IntArray(world.cellCount)
+    private var terrainPainted = false
+
+    /** Repaint the terrain cache — after world generation, or when terrain changes. */
+    fun invalidateTerrain() {
+        terrainPainted = false
+    }
+
+    /**
+     * Draws the current state of [simulation] into [out], which must hold one pixel per world
+     * cell. [ownershipTint] fades claimed territory toward its civ colour under the citizens.
+     */
+    fun render(simulation: Simulation, out: IntArray, ownershipTint: Float = 0.12f) {
+        require(out.size >= world.cellCount) {
+            "pixel buffer holds ${out.size} pixels, world needs ${world.cellCount}"
+        }
+        if (!terrainPainted) {
+            WorldRenderer.renderTerrain(world, terrainCache)
+            terrainPainted = true
+        }
+        terrainCache.copyInto(out, 0, 0, world.cellCount)
+        WorldRenderer.tintOwnership(world, out, ownershipTint)
+
+        for (citizen in simulation.citizens) {
+            WorldRenderer.drawCitizen(out, world.index(citizen.x, citizen.y), citizen.civId, citizen.survival)
+        }
+    }
+}

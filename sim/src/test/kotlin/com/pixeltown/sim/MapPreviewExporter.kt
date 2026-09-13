@@ -32,13 +32,26 @@ class MapPreviewExporter {
                 WorldRenderer.drawCitizen(pixels, site, civId, survival = 100f)
             }
 
+            writePng(File(outputDir, "map-seed-$seed.png"), world, pixels, scale)
+        }
+
+        // A founded world, ten days in: five colonies of fifty, each a cluster of civ-coloured
+        // pixels. This is what the app draws every frame.
+        val sim = Simulation.newRun(20260913L, TraitAllocation.EVEN_SPREAD)
+        sim.run(10)
+        val frame = IntArray(sim.world.cellCount)
+        FrameRenderer(sim.world).render(sim, frame)
+        writePng(File(outputDir, "colony-day-10.png"), sim.world, frame, scale)
+    }
+
+    private fun writePng(file: File, world: World, pixels: IntArray, scale: Int) {
+        run {
             val image = BufferedImage(world.width * scale, world.height * scale, BufferedImage.TYPE_INT_RGB)
             for (y in 0 until world.height * scale) {
                 for (x in 0 until world.width * scale) {
                     image.setRGB(x, y, pixels[(y / scale) * world.width + (x / scale)])
                 }
             }
-            val file = File(outputDir, "map-seed-$seed.png")
             ImageIO.write(image, "png", file)
             assertTrue(file.length() > 0, "failed to write $file")
         }

@@ -29,19 +29,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.pixeltown.sim.FrameRenderer
 import com.pixeltown.sim.GameConfig
-import com.pixeltown.sim.SimClock
-import com.pixeltown.sim.SimRandom
+import com.pixeltown.sim.Simulation
+import com.pixeltown.sim.TraitAllocation
 import com.pixeltown.sim.Viewport
-import com.pixeltown.sim.WorldGenerator
-import com.pixeltown.sim.WorldRenderer
 
 /**
- * M1: a generated island, rendered as pixels, with pinch zoom (1x-8x) and pan.
+ * M2: a generated island populated by five colonies of fifty, living and dying.
  *
- * There are no citizens yet, so terrain is painted once into the framebuffer and the tick loop
- * only advances the calendar. From M2 the dynamic layers are repainted on top of a cached copy of
- * the terrain buffer each frame.
+ * The frame loop drains whole simulation ticks through [Simulation.step] and repaints once per
+ * frame, after the batch — so at 10x the renderer does the same work per frame as at 1x, and
+ * simulation logic is never skipped or approximated to keep up.
  */
 class MainActivity : ComponentActivity() {
 
@@ -53,35 +52,41 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun PixelTownRoot() {
-    val clock = remember { SimClock(speedMultiplier = 1) }
     val framebuffer = remember { PixelFramebuffer() }
 
-    // A fixed seed until the allocation screen (M3) hands one over with the player's traits.
-    val generated = remember { WorldGenerator.generate(SimRandom(PLACEHOLDER_SEED)) }
+    // A fixed seed and an even allocation until the allocation screen (M3) provides both.
+    val simulation = remember { Simulation.newRun(PLACEHOLDER_SEED, TraitAllocation.EVEN_SPREAD) }
+    val clock = simulation.clock
+    val frameRenderer = remember(simulation) { FrameRenderer(simulation.world) }
 
     var viewport by remember { mutableStateOf(Viewport.whole()) }
     var canvasSize by remember { mutableStateOf(Size.Zero) }
     var frameKey by remember { mutableLongStateOf(0L) }
 
-    LaunchedEffect(generated) {
-        WorldRenderer.renderTerrain(generated.world, framebuffer.pixels)
+    LaunchedEffect(simulation) {
+        frameRenderer.render(simulation, framebuffer.pixels)
         frameKey = -1L // force a first draw before any tick runs
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(simulation) {
         var lastNanos = withFrameNanos { it }
-        var lastLoggedTick = 0L
+        var lastLoggedYear = -1
         while (true) {
             val nowNanos = withFrameNanos { it }
             val deltaSeconds = (nowNanos - lastNanos) / 1_000_000_000.0
             lastNanos = nowNanos
 
-            val ticksRun = clock.advance(deltaSeconds) { /* systems arrive in M2 */ }
+            // The clock decides how many days to run; the simulation runs every one of them.
+            val ticksRun = clock.pendingTicks(deltaSeconds)
+            repeat(ticksRun) { if (simulation.endState == null) simulation.step() }
+
             if (ticksRun > 0) {
+                // Repaint once per frame, after the whole batch — never per tick.
+                frameRenderer.render(simulation, framebuffer.pixels)
                 frameKey = clock.tick
-                if (clock.tick - lastLoggedTick >= GameConfig.Time.DAYS_PER_YEAR) {
-                    lastLoggedTick = clock.tick
-                    Log.d(TAG, "year=${clock.year} season=${clock.season} tick=${clock.tick}")
+                if (clock.year != lastLoggedYear) {
+                    lastLoggedYear = clock.year
+                    Log.d(TAG, "year=${clock.year} pop=${simulation.populationOf(0)} end=${simulation.endState}")
                 }
             }
         }
@@ -111,14 +116,14 @@ private fun PixelTownRoot() {
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        WorldHud(clock = clock, viewport = viewport, tick = frameKey)
+        WorldHud(simulation = simulation, viewport = viewport, tick = frameKey)
     }
 }
 
-/** The bottom strip: date, zoom, speed. Grows into the real HUD at M3. */
+/** The bottom strip: date, population, zoom, speed. Grows into the real HUD at M4. */
 @Composable
-private fun WorldHud(clock: SimClock, viewport: Viewport, tick: Long) {
-    val year = (if (tick < 0) 0 else tick) / GameConfig.Time.DAYS_PER_YEAR
+private fun WorldHud(simulation: Simulation, viewport: Viewport, tick: Long) {
+    val clock = simulation.clock
     val day = (if (tick < 0) 0 else tick) % GameConfig.Time.DAYS_PER_YEAR
     Row(
         modifier = Modifier
@@ -126,7 +131,8 @@ private fun WorldHud(clock: SimClock, viewport: Viewport, tick: Long) {
             .padding(horizontal = 12.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        HudText("Year $year · day $day · ${clock.season.name.lowercase()}")
+        HudText("Year ${clock.year} · day $day · ${clock.season.name.lowercase()}")
+        HudText("pop ${simulation.populationOf(GameConfig.World.PLAYER_CIV_ID)}")
         HudText("${clock.speedMultiplier}x · zoom ${"%.1f".format(viewport.zoom)}x")
     }
 }

@@ -18,7 +18,12 @@ pixeltown/
 │       ├── ValueNoise.kt      Seeded value noise + fBm, used by map generation.
 │       ├── World.kt           The 128x128 grid, as parallel primitive arrays.
 │       ├── WorldGenerator.kt  Island generation: fields, terrain, rivers, starting sites.
-│       ├── WorldRenderer.kt   Paints the world into a flat ARGB IntArray.
+│       ├── WorldRenderer.kt   Paints the world into a flat ARGB IntArray; FrameRenderer composites.
+│       ├── TraitAllocation.kt The five traits and every stat derived from them.
+│       ├── Citizen.kt         One person, one pixel. Mutable by design.
+│       ├── Civilization.kt    A civ's shared state: stores, tech, unrest, statistics.
+│       ├── Chronicle.kt       The rolling event record behind the feed and the return report.
+│       ├── Simulation.kt      The tick: founding, feeding, ageing, death, pairing, birth.
 │       ├── Palette.kt         Terrain/civ/building colours as plain ints.
 │       └── Viewport.kt        The visible rectangle of the world, in cells.
 └── app/          Android application — Compose UI, bitmap upload, billing, persistence.
@@ -110,6 +115,29 @@ writes `sim/build/preview/map-seed-*.png` on every test run using `javax.imageio
 renderer be inspected without a device. It is test-only on purpose: `java.awt` does not exist on
 Android and must never be dexed into the app.
 
+**AD-17 — Short rations are shared proportionally, not first-come-first-served.** Feeding citizens
+in id order until the store ran dry would have starved high-id citizens first, making who dies an
+artefact of spawn order. Every citizen now receives the same fraction of their ration.
+
+**AD-18 — Starvation past the 12-day threshold is a daily roll, not a hard cut.** Because
+rationing is uniform, every citizen in a famine is in an identical state, and a hard threshold
+killed an entire 50-person colony on a single tick. A daily chance past
+`STARVATION_DAYS` spreads collapse over about a week without letting anyone die sooner than the
+design allows; `STARVATION_CERTAIN_DEATH_DAYS` still guarantees an end.
+
+**AD-19 — The tick iterates the population by index, not with an iterator.** Births append to the
+living list mid-tick, which threw `ConcurrentModificationException`. Iterating `0 until sizeAtTickStart`
+also means newborns are not processed by systems that already ran this tick, and since newborn ids
+are always the largest, appending keeps the list in ascending id order for free.
+
+**AD-20 — Citizens stay an array of objects for now; measured, not assumed.** Tick cost is linear
+in population: ~0.06ms at 500 citizens, 0.35ms at 3,000, 0.64ms at 6,000 on a desktop JVM, and an
+unbounded fed colony plateaus around 6,500 on a 128x128 map. Struct-of-arrays is not yet
+warranted. **But note for M7:** 100x needs 1,000 ticks/sec, i.e. a 1ms tick budget. A phone is
+several times slower than this machine, so a large late-run colony will not sustain true 100x —
+the per-frame tick cap will silently throttle it. That is a real balance-and-UX issue to confront
+at the polish milestone, not a bug in the clock.
+
 ### Decisions recorded ahead of implementation
 
 **AD-8 — Entitlements are read only at run start.** The simulation snapshots its starting
@@ -145,6 +173,11 @@ then commit with a message naming the milestone. Do not move on with a red build
   starting sites, the pixel renderer and the viewport. The Compose gesture layer
   (`WorldGestures.kt`) and the HUD are written but **unbuilt and unrun** — see below. "Zoom and
   pan smoothly at 60fps" is therefore not yet verified on a device.
+- **M2 — Citizens & the life cycle.** Done and tested: 50 settlers per civ, the survival score,
+  hunger, ageing, disease, death with causes, pairing, pregnancy, birth, wandering, and the
+  Chronicle. No jobs yet, so a colony lives on its founding stores and starves: extinction lands
+  between days 49 and 55 depending on seed, identical every replay. `sim/build/preview/colony-day-10.png`
+  shows five colonies on the map.
 
 ## Known environment limitation
 
