@@ -43,6 +43,26 @@ data class Viewport(
 
     fun contains(x: Int, y: Int): Boolean = x >= left && x < right && y >= top && y < bottom
 
+    /**
+     * On-screen size of one world cell, given the canvas size in device pixels.
+     *
+     * The renderer letterboxes rather than stretches, so both axes share one scale. This lives
+     * here rather than in the UI layer because it is the conversion every gesture depends on —
+     * a drag in screen pixels is only meaningful once it is expressed in world cells — and
+     * because `:sim` is the part of the codebase that can actually be tested.
+     */
+    fun cellSizePx(canvasWidthPx: Float, canvasHeightPx: Float): Float {
+        if (canvasWidthPx <= 0f || canvasHeightPx <= 0f) return 0f
+        return minOf(canvasWidthPx / srcWidth, canvasHeightPx / srcHeight)
+    }
+
+    /** Converts a point on the canvas into fractional world cell coordinates. */
+    fun screenToWorldX(screenX: Float, cellSize: Float): Float =
+        if (cellSize <= 0f) centerX else left + screenX / cellSize
+
+    fun screenToWorldY(screenY: Float, cellSize: Float): Float =
+        if (cellSize <= 0f) centerY else top + screenY / cellSize
+
     /** Pans by a delta in world cells. */
     fun panBy(dxCells: Float, dyCells: Float): Viewport =
         copy(centerX = centerX + dxCells, centerY = centerY + dyCells).clamped()

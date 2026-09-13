@@ -246,12 +246,14 @@ Developer API can be added later without touching call sites.
 
 ```bash
 # Simulation only — works on any JDK 17+ machine, no Android SDK needed.
-./gradlew -Ppixeltown.simOnly=true :sim:test     # JUnit 5 tests
+./gradlew -Ppixeltown.simOnly=true :sim:test     # JUnit 5 tests (~3 minutes)
 ./gradlew -Ppixeltown.simOnly=true :sim:build    # compile + tests + no-Android-imports check
+
+# Can this machine build the Android app? Says exactly what is missing if not.
+./scripts/check-android-env.sh
 
 # Full build — requires the Android SDK and network access to dl.google.com.
 ./gradlew :app:assembleDebug
-./gradlew test
 ```
 
 Per the brief: after every milestone, run the debug assemble and the tests, fix all failures,
@@ -317,13 +319,44 @@ pass is the headless harness at M7, over 200+ sims. Seed-to-seed variance is lar
 peaks at 102 on one seed and 1,237 on another), which is worth watching: some of it is map luck,
 but some is famine cascades near a knife edge.
 
-## Known environment limitation
+## Building `:app`
 
-The sandbox this repository is currently developed in cannot reach `dl.google.com`, so the
-Android Gradle Plugin cannot be resolved and **`:app` has never been compiled here**. `:sim` is
-fully built and tested. Anything under `app/` is unverified code until it is built on a machine
-with the Android SDK and unrestricted network access — treat the first such build as a step in
-its own right, not a formality.
+`:app` is compiled by CI (`.github/workflows/ci.yml`), or locally on a machine with the Android
+SDK. Run `scripts/check-android-env.sh` first — it reports exactly what is missing and exits
+non-zero if this machine cannot build the app.
+
+```bash
+./gradlew :app:assembleDebug     # needs the Android SDK + dl.google.com
+./gradlew :app:assembleRelease   # R8 + resource shrinking; verify save/load on this artifact
+```
+
+CI has two jobs. **Simulation (JVM)** runs `-Ppixeltown.simOnly=true :sim:build` with no SDK at
+all, and publishes the test report and the generated map PNGs as artifacts, so a change to world
+generation is visible in the build rather than only in the numbers. **Android app** installs
+platform 36 and build-tools 36, then assembles debug *and* release and runs lint. The release
+assemble is deliberately on every push, not saved for release day: R8 has a habit of breaking
+reflection-based serialization, and the save format is kotlinx.serialization.
+
+### Known environment limitation
+
+The sandbox this repository is developed in cannot reach `dl.google.com`, so **`:app` has never
+been compiled here**. Routes that were checked and do not work:
+
+- `maven.google.com` is reachable but 301-redirects to `dl.google.com`, which the network policy
+  denies at CONNECT with a 403.
+- Maven Central carries `com.android.tools.build:gradle` only up to 2.3.0 (2017) — useless for
+  compileSdk 36.
+- The Android SDK itself is only distributed from `dl.google.com`.
+
+So the first CI run is the first real compile of `app/`. Treat its output as new information, not
+as flakiness. Everything in `app/` that could be moved somewhere testable has been: the renderer,
+the viewport, and the screen-pixel-to-world-cell conversion all live in `:sim` with tests, and
+`app/` is left holding Compose plumbing, the bitmap upload, and the Activity.
+
+Non-Android dependency versions in `gradle/libs.versions.toml` have been verified to exist on
+Maven Central. **The Android ones (AGP 8.10.1, Compose BOM 2025.05.01, activity-compose 1.10.1,
+core-ktx 1.16.0, lifecycle 2.9.0) could not be checked from here** and are the most likely cause
+if the first CI run fails to resolve.
 
 ## Stack
 

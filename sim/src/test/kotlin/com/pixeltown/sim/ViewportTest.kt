@@ -65,6 +65,34 @@ class ViewportTest {
     }
 
     @Test
+    fun `cell size letterboxes rather than stretches`() {
+        val v = Viewport.whole()
+        // A wide canvas: the scale is set by the limiting axis, so cells stay square.
+        val cell = v.cellSizePx(1200f, 600f)
+        assertEquals(600f / GameConfig.World.HEIGHT, cell)
+        assertEquals(0f, v.cellSizePx(0f, 600f), "a zero-width canvas must not divide by zero")
+        assertEquals(0f, v.cellSizePx(1200f, -1f))
+    }
+
+    @Test
+    fun `cells grow on screen as the view zooms in`() {
+        val out = Viewport.whole()
+        val inn = Viewport.whole().zoomBy(4f)
+        assertTrue(inn.cellSizePx(1000f, 1000f) > out.cellSizePx(1000f, 1000f))
+    }
+
+    @Test
+    fun `screen coordinates map back to the world`() {
+        val v = Viewport.whole().zoomBy(4f).panBy(10f, 10f)
+        val cell = v.cellSizePx(800f, 800f)
+        // The top-left of the canvas is the top-left of the visible rectangle.
+        assertEquals(v.left, v.screenToWorldX(0f, cell), absoluteTolerance = 1e-3f)
+        assertEquals(v.top, v.screenToWorldY(0f, cell), absoluteTolerance = 1e-3f)
+        // One cell across on screen is one cell across in the world.
+        assertEquals(v.left + 1f, v.screenToWorldX(cell, cell), absoluteTolerance = 1e-3f)
+    }
+
+    @Test
     fun `the visible rectangle shrinks as zoom rises`() {
         var previous = Int.MAX_VALUE
         for (zoom in listOf(1f, 2f, 4f, 8f)) {
