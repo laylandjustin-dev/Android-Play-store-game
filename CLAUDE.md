@@ -252,6 +252,9 @@ Developer API can be added later without touching call sites.
 # Can this machine build the Android app? Says exactly what is missing if not.
 ./scripts/check-android-env.sh
 
+# Type-check app/ against the simulation API without the Android SDK.
+./scripts/check-app-sources.sh
+
 # Full build — requires the Android SDK and network access to dl.google.com.
 ./gradlew :app:assembleDebug
 ```
@@ -348,7 +351,13 @@ been compiled here**. Routes that were checked and do not work:
   compileSdk 36.
 - The Android SDK itself is only distributed from `dl.google.com`.
 
-So the first CI run is the first real compile of `app/`. Treat its output as new information, not
+`scripts/check-app-sources.sh` narrows the gap: it runs the Kotlin compiler over `app/` against
+`sim.jar` with no Android classpath, and fails on any error the missing SDK does not explain. It
+proves the app sources parse and that every symbol they use from `:sim` resolves with compatible
+signatures; it proves nothing about whether a Compose API is used correctly. It runs in the JVM
+CI job and has been verified to fail on a deliberately wrong call into `:sim`.
+
+So the first CI run is still the first real compile of `app/`. Treat its output as new information, not
 as flakiness. Everything in `app/` that could be moved somewhere testable has been: the renderer,
 the viewport, and the screen-pixel-to-world-cell conversion all live in `:sim` with tests, and
 `app/` is left holding Compose plumbing, the bitmap upload, and the Activity.

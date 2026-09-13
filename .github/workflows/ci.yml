@@ -29,6 +29,11 @@ jobs:
       - name: Build and test the simulation
         run: ./gradlew -Ppixeltown.simOnly=true :sim:build --stacktrace
 
+      # Catches typos in app/ and drift against the simulation's API without needing the SDK,
+      # so a broken app source fails here in seconds rather than in the slower Android job.
+      - name: Check app sources against the simulation API
+        run: ./scripts/check-app-sources.sh
+
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4
