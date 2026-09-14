@@ -39,6 +39,26 @@ class Chronicle(private val capacity: Int = GameConfig.Meta.CHRONICLE_BUFFER_SIZ
     /** Cause-of-death breakdown for the Ledger screen. */
     fun deathBreakdown(): Map<DeathCause, Int> = deathsByCause.toMap()
 
+    /** Everything the save file needs, including the totals that outlive the ring. */
+    fun snapshot(): ChronicleSave = ChronicleSave(
+        events = buffer.map {
+            ChronicleEventSave(it.tick, it.kind, it.civId, it.citizenId, it.deathCause, it.detail, it.value)
+        },
+        totals = totals.toMap(),
+        deathsByCause = deathsByCause.toMap(),
+    )
+
+    fun restoreFrom(save: ChronicleSave) {
+        clear()
+        for (event in save.events) {
+            buffer.addLast(
+                ChronicleEvent(event.tick, event.kind, event.civId, event.citizenId, event.deathCause, event.detail, event.value),
+            )
+        }
+        totals.putAll(save.totals)
+        deathsByCause.putAll(save.deathsByCause)
+    }
+
     fun clear() {
         buffer.clear()
         totals.clear()

@@ -22,9 +22,24 @@ class Relations(private val civCount: Int) {
 
     fun tensionBetween(a: Int, b: Int): Double = if (a == b) 0.0 else tension[a][b]
 
-    /** No war has ever ended between this pair. */
-    private companion object {
+    companion object {
+        /** No war has ever ended between this pair. */
         const val NEVER = Long.MIN_VALUE
+
+        fun restore(save: RelationsSave): Relations {
+            val relations = Relations(save.civCount)
+            for (a in 0 until save.civCount) {
+                for (b in 0 until save.civCount) {
+                    val i = a * save.civCount + b
+                    relations.tension[a][b] = save.tension[i]
+                    relations.war[a][b] = save.war[i]
+                    relations.tradedWith[a][b] = save.trades[i]
+                    relations.warStartedOn[a][b] = save.warStartedOn[i]
+                    relations.peaceMadeOn[a][b] = save.peaceMadeOn[i]
+                }
+            }
+            return relations
+        }
     }
 
     fun atWar(a: Int, b: Int): Boolean = a != b && war[a][b]
@@ -84,6 +99,16 @@ class Relations(private val civCount: Int) {
         if (madePeace == NEVER) return false
         return day - madePeace < GameConfig.Rivals.PEACE_COOLDOWN_DAYS
     }
+
+    /** Flat views of the matrices, for the save file. Row-major, civCount x civCount. */
+    fun snapshot(): RelationsSave = RelationsSave(
+        civCount = civCount,
+        tension = tension.flatMap { it.toList() },
+        war = war.flatMap { it.toList() },
+        trades = tradedWith.flatMap { it.toList() },
+        warStartedOn = warStartedOn.flatMap { it.toList() },
+        peaceMadeOn = peaceMadeOn.flatMap { it.toList() },
+    )
 
     /** Tension cools slowly on its own; wars additionally wear both sides down. */
     fun decay(perSeason: Double) {

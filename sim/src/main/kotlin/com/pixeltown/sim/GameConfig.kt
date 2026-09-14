@@ -857,11 +857,41 @@ object GameConfig {
         /** Cost of the 1st..4th `+1 starting allocation point` upgrade. */
         val ALLOCATION_POINT_UPGRADE_COSTS = intArrayOf(400, 900, 2_000, 4_500)
 
+        /** Every other permanent upgrade costs this, growing per level already owned. */
+        const val UPGRADE_BASE_COST = 150.0
+        const val UPGRADE_COST_GROWTH = 2.2
+
+        // What each permanent upgrade is worth per level.
+        const val SETTLERS_PER_UPGRADE = 5
+        const val SKILL_GROWTH_PER_UPGRADE = 0.25
+        const val INFLUENCE_PER_UPGRADE = 0.06
+        const val FERTILITY_FLOOR_PER_UPGRADE = 0.08
+        const val TENSION_RELIEF_PER_UPGRADE = 0.10
+
         // Offline catch-up
+        /**
+         * Game ticks per real second spent away, which is **not** the live 1x rate.
+         *
+         * Taken literally, "convert elapsed real seconds to ticks" at 1x (10 ticks/sec) means one
+         * hour away is 100 game years and the free eight-hour cap is 800 — more than twice the
+         * longest possible run. Measured: a three-hour absence ran 240 years, ended the run in
+         * Endurance, and took 48 seconds of computation. Every check-in would finish the player's
+         * civilisation, and the Founders Pass 48-hour cap would sell nothing at all, since 8 hours
+         * already exceeds any run.
+         *
+         * At 0.5 ticks/sec an absence is a chapter rather than the whole book: 8 hours is 40
+         * years, so a 300-year run spans seven or eight visits, and the Pass's 48 hours (240
+         * years) is a real upgrade. This is the single number that sets the game's return cadence.
+         */
+        const val OFFLINE_TICKS_PER_REAL_SECOND = 0.5
+
         const val OFFLINE_CAP_HOURS_FREE = 8
         const val OFFLINE_CAP_HOURS_FOUNDERS_PASS = 48
 
         const val CHRONICLE_BUFFER_SIZE = 4_000
+
+        /** How many notable moments the "while you were away" report carries. */
+        const val RETURN_REPORT_HIGHLIGHTS = 12
     }
 
     // ---------------------------------------------------------------- render

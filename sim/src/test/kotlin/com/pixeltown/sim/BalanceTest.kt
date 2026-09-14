@@ -44,15 +44,19 @@ class BalanceTest {
             if (sim.day == 50L * Time.DAYS_PER_YEAR) populationAtFifty = sim.populationOf(0)
         }
 
-        assertTrue(sim.endState == null, "the colony collapsed in year ${sim.year}")
-        val finalPopulation = sim.populationOf(0)
+        // Since M6 a thriving run *ends* — by ascending, or by outlasting three centuries. Only
+        // being wiped out is a failure of the economy.
         assertTrue(
-            finalPopulation > GameConfig.World.STARTING_SETTLERS * 3,
-            "after 200 years the colony was only $finalPopulation strong",
+            sim.endState == null || sim.endState == EndState.ASCENSION || sim.endState == EndState.ENDURANCE,
+            "the colony ended in ${sim.endState} in year ${sim.year}",
         )
         assertTrue(
             populationAtFifty > GameConfig.World.STARTING_SETTLERS,
             "the colony had not grown at all by year 50 ($populationAtFifty)",
+        )
+        assertTrue(
+            sim.civ(0).peakPopulation > GameConfig.World.STARTING_SETTLERS * 3,
+            "the colony never grew beyond ${sim.civ(0).peakPopulation}",
         )
     }
 

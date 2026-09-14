@@ -50,6 +50,15 @@ class Civilization(
 
     val isExtinct: Boolean get() = population == 0
 
+    /**
+     * Restores the historical peak from a save. Assigning [population] on load would otherwise
+     * reset the peak to whatever the town happens to be now, losing the run's high-water mark —
+     * which the end-of-run score is calculated from.
+     */
+    fun restorePeakPopulation(peak: Int) {
+        peakPopulation = peak
+    }
+
     operator fun get(resource: Resource): Double = stores[resource.ordinal]
 
     operator fun set(resource: Resource, value: Double) {

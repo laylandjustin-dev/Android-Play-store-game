@@ -2,6 +2,7 @@ package com.pixeltown.sim
 
 import com.pixeltown.sim.GameConfig.Economy
 import com.pixeltown.sim.GameConfig.Life
+import com.pixeltown.sim.GameConfig.Meta
 import com.pixeltown.sim.GameConfig.Politics
 import com.pixeltown.sim.GameConfig.Rivals as RivalConfig
 import com.pixeltown.sim.GameConfig.Survival as SurvivalConfig
@@ -31,20 +32,20 @@ class Simulation(
     val chronicle: Chronicle = Chronicle(),
 ) {
     /** Everyone alive, always in ascending id order. */
-    private val living = ArrayList<Citizen>()
+    internal val living = ArrayList<Citizen>()
 
-    private val byId = HashMap<Int, Citizen>()
+    internal val byId = HashMap<Int, Citizen>()
 
-    private var nextCitizenId = 0
+    internal var nextCitizenId = 0
 
     /** Work cell -> citizen id, so two workers never claim the same field. */
-    private val workClaims = HashMap<Int, Int>()
+    internal val workClaims = HashMap<Int, Int>()
 
     /** Every structure on the map, finished or not. */
-    private val allBuildings = ArrayList<Building>()
+    internal val allBuildings = ArrayList<Building>()
 
     /** The same buildings, indexed by civ. */
-    private val buildingsByCiv = Array(civs.size) { ArrayList<Building>() }
+    internal val buildingsByCiv = Array(civs.size) { ArrayList<Building>() }
 
     /**
      * Per-civ population index, rebuilt once per tick.
@@ -58,7 +59,7 @@ class Simulation(
     private val healersByCiv = IntArray(civs.size)
     private val housedByCiv = IntArray(civs.size)
 
-    private fun refreshPopulationIndex() {
+    internal fun refreshPopulationIndex() {
         for (list in membersByCiv) list.clear()
         healersByCiv.fill(0)
         housedByCiv.fill(0)
@@ -69,36 +70,41 @@ class Simulation(
         }
     }
 
-    private var nextBuildingId = 0
+    internal var nextBuildingId = 0
 
     /** Per-civ building effects, recomputed whenever the building list changes. */
     private val effects = Array(civs.size) { CivEffects.NONE }
 
     /** The sitting Premier of each civ, null before the first election. */
-    private val premiers = arrayOfNulls<Premier>(civs.size)
+    internal val premiers = arrayOfNulls<Premier>(civs.size)
 
     /** The agenda a Premier was elected on, so a petition can be reverted when it expires. */
-    private val electedAgendas = arrayOfNulls<Agenda>(civs.size)
+    internal val electedAgendas = arrayOfNulls<Agenda>(civs.size)
 
     /** Candidates during the campaign window, per civ. */
-    private val campaigns = arrayOfNulls<List<Candidate>>(civs.size)
+    internal val campaigns = arrayOfNulls<List<Candidate>>(civs.size)
 
     /** The candidate the player has endorsed this campaign. */
-    private val endorsements = arrayOfNulls<Int>(civs.size)
+    internal val endorsements = arrayOfNulls<Int>(civs.size)
 
     /** True when the player has vetoed the Premier's next build order. */
-    private val vetoPending = BooleanArray(civs.size)
+    internal val vetoPending = BooleanArray(civs.size)
 
     /** Every election held, newest last. The Ledger's record of who governed and why. */
     val elections = ArrayList<ElectionResult>()
 
     /** How every civ feels about every other one. */
-    val relations = Relations(civs.size)
+    var relations = Relations(civs.size)
+        private set
+
+    internal fun relationsRestoredFrom(save: RelationsSave) {
+        relations = Relations.restore(save)
+    }
 
     /** Armies and raiding parties currently in the field. */
-    private val armies = ArrayList<Army>()
+    internal val armies = ArrayList<Army>()
 
-    private var nextArmyId = 0
+    internal var nextArmyId = 0
 
     /** Military strength per civ, recomputed once per tick. */
     private val strength = DoubleArray(civs.size)
@@ -124,6 +130,17 @@ class Simulation(
     /** Set when the run reaches a terminal state; null while it is still running. */
     var endState: EndState? = null
         private set
+
+    /**
+     * The configuration this run began with, read once at run start and never again — which is
+     * what keeps a purchase from altering a run already in progress (AD-8).
+     */
+    var config: RunConfig = RunConfig(seed = 0L, traits = TraitAllocation.BASE)
+        internal set
+
+    /** The player's meta progression. Saved alongside the run. */
+    var legacy: Legacy = Legacy()
+        internal set
 
     val citizens: List<Citizen> get() = living
 
@@ -198,7 +215,7 @@ class Simulation(
             survival = 0f,
             job = if (ageDays < Life.CHILD_UNTIL_YEARS * Time.DAYS_PER_YEAR) Job.CHILD else Job.IDLE,
             skill = 0f,
-            influence = 0f,
+            influence = config.startingInfluence,
         ).apply {
             politicalBias = BuildingCategory.entries[rng.nextInt(BuildingCategory.entries.size)]
             politicalBiasStrength = rng.nextDouble(0.0, Politics.VOTE_BIAS_MAX).toFloat()
@@ -510,7 +527,7 @@ class Simulation(
         }
     }
 
-    private fun refreshEffects(civId: Int) {
+    internal fun refreshEffects(civId: Int) {
         effects[civId] = BuildingSystem.aggregate(buildingsOf(civId))
         civs[civId].foodStorageCapacity =
             Economy.BASE_FOOD_STORAGE_CAPACITY + effects[civId].foodStorageBonus
@@ -1024,7 +1041,9 @@ class Simulation(
         for (civ in civs) {
             val members = membersOf(civ.id)
             if (members.isEmpty()) continue
-            EconomySystem.produce(world, civ, members, severity, effects[civ.id])
+            EconomySystem.produce(
+                world, civ, members, severity, effects[civ.id], config.skillGrowthMultiplier,
+            )
         }
     }
 
@@ -1431,7 +1450,7 @@ class Simulation(
         }
     }
 
-    private fun updateCivStatistics() {
+    internal fun updateCivStatistics() {
         val counts = IntArray(civs.size)
         for (citizen in living) counts[citizen.civId]++
         for (civ in civs) {
@@ -1448,14 +1467,46 @@ class Simulation(
     /** A civ's military strength, as the Rivals screen reports it. */
     fun strengthOf(civId: Int): Double = strength[civId]
 
+    /**
+     * The four ways a run ends. Checked in order of finality: being wiped out settles the question
+     * whatever else was true that day.
+     */
     private fun checkEndState() {
+        if (endState != null) return
         val player = civs.firstOrNull { it.isPlayer } ?: return
-        if (player.isExtinct) {
-            endState = EndState.COLLAPSE
-            chronicle.record(
-                ChronicleEvent(day, ChronicleEventKind.RUN_ENDED, player.id, detail = EndState.COLLAPSE.name),
-            )
+
+        val ending = when {
+            // Conquest is a collapse with a culprit: the player is gone and a rival holds the
+            // ground they were founded on.
+            player.isExtinct && homeSiteTakenFrom(player) -> EndState.CONQUEST
+            player.isExtinct -> EndState.COLLAPSE
+            player.techTier >= Meta.ASCENSION_TECH_TIER && player.population >= Meta.ASCENSION_POPULATION ->
+                EndState.ASCENSION
+            year >= Meta.ENDURANCE_YEARS -> EndState.ENDURANCE
+            else -> return
         }
+
+        endState = ending
+        chronicle.record(ChronicleEvent(day, ChronicleEventKind.RUN_ENDED, player.id, detail = ending.name))
+    }
+
+    /** True if another civ now owns the cell the player was founded on. */
+    private fun homeSiteTakenFrom(player: Civilization): Boolean {
+        val owner = world.ownerCivId[player.homeSite].toInt()
+        return owner >= 0 && owner != player.id
+    }
+
+    /** How the run scored, once it has ended. Null while it is still running. */
+    fun summary(): RunSummary? {
+        val ending = endState ?: return null
+        val player = civs.first { it.isPlayer }
+        return RunSummary(
+            endState = ending,
+            yearsSurvived = year,
+            peakPopulation = player.peakPopulation,
+            techTier = player.techTier,
+            chroniclePointsEarned = Legacy.scoreRun(player.peakPopulation, year, player.techTier, ending),
+        )
     }
 
     // ------------------------------------------------------------------ helpers
@@ -1467,6 +1518,120 @@ class Simulation(
         1.0 + GameConfig.Tech.MULTIPLIER_PER_TIER * civ.techTier
 
     private fun chebyshev(a: Citizen, b: Citizen): Int = max(abs(a.x - b.x), abs(a.y - b.y))
+
+    // ------------------------------------------------------------------ saving and loading
+
+    /**
+     * Captures the whole run. Terrain is deliberately not captured — it regenerates exactly from
+     * the seed, and [SaveGame.terrainHash] guards against a future change to generation silently
+     * moving a player's town to a different island.
+     */
+    fun snapshot(savedAtEpochMillis: Long = 0L): SaveGame = SaveGame(
+        seed = config.seed,
+        terrainHash = world.terrain.contentHashCode(),
+        tick = clock.tick,
+        speedMultiplier = clock.speedMultiplier,
+        rng = rng.snapshot().let { RngState(it.s0, it.s1, it.s2, it.s3) },
+        config = RunConfigSave(
+            traits = config.traits.values.toList(),
+            settlers = config.settlers,
+            civCount = config.civCount,
+            skillGrowthMultiplier = config.skillGrowthMultiplier,
+            startingInfluence = config.startingInfluence,
+            fertilityFloor = config.fertilityFloor,
+            startingTensionRelief = config.startingTensionRelief,
+            startingBuildings = config.startingBuildings,
+            offlineCapHours = config.offlineCapHours,
+        ),
+        endState = endState,
+        nextCitizenId = nextCitizenId,
+        nextBuildingId = nextBuildingId,
+        nextArmyId = nextArmyId,
+        world = WorldSave(
+            width = world.width,
+            height = world.height,
+            fertility = world.fertility.copyOf(),
+            wildGame = world.wildGame.copyOf(),
+            ownerCivId = world.ownerCivId.copyOf(),
+        ),
+        civs = civs.map { civ ->
+            CivSave(
+                id = civ.id,
+                name = civ.name,
+                traits = civ.traits.values.toList(),
+                personality = civ.personality,
+                homeSite = civ.homeSite,
+                stores = civ.stores.copyOf(),
+                foodStorageCapacity = civ.foodStorageCapacity,
+                techTier = civ.techTier,
+                unrest = civ.unrest,
+                influencePoints = civ.influencePoints,
+                unpaidUpkeepDays = civ.unpaidUpkeepDays,
+                vetoesUsedThisYear = civ.vetoesUsedThisYear,
+                termCount = civ.termCount,
+                peakPopulation = civ.peakPopulation,
+                totalBirths = civ.totalBirths,
+                totalDeaths = civ.totalDeaths,
+            )
+        },
+        citizens = living.map { c ->
+            CitizenSave(
+                id = c.id, x = c.x, y = c.y, civId = c.civId, sex = c.sex, ageDays = c.ageDays,
+                hp = c.hp, nutrition = c.nutrition, morale = c.morale, survival = c.survival,
+                job = c.job, skill = c.skill, influence = c.influence, partnerId = c.partnerId,
+                pregnantUntilDay = c.pregnantUntilDay, homeBuildingId = c.homeBuildingId,
+                workCell = c.workCell, enlisted = c.enlisted, starvingDays = c.starvingDays,
+                widowedOnDay = c.widowedOnDay, politicalBias = c.politicalBias,
+                politicalBiasStrength = c.politicalBiasStrength,
+            )
+        },
+        buildings = allBuildings.map { b ->
+            BuildingSave(b.id, b.type, b.civId, b.x, b.y, b.buildProgress, b.isComplete, b.residents)
+        },
+        premiers = civs.map { civ ->
+            premiers[civ.id]?.let { premier ->
+                PremierSave(
+                    citizenId = premier.citizenId,
+                    name = premier.name,
+                    agenda = premier.agenda.toList(),
+                    electedAgenda = (electedAgendas[civ.id] ?: premier.agenda).toList(),
+                    temperament = premier.temperament,
+                    electedOnDay = premier.electedOnDay,
+                    termNumber = premier.termNumber,
+                    byCoup = premier.byCoup,
+                    built = premier.built.toList(),
+                    petitionActive = premier.petitionActive,
+                )
+            }
+        },
+        campaigns = civs.map { civ ->
+            campaigns[civ.id]?.map { c ->
+                CandidateSave(c.citizenId, c.name, c.ageYears, c.job, c.agenda.toList(), c.temperament, c.votes)
+            }
+        },
+        endorsements = civs.map { endorsements[it.id] },
+        vetoPending = civs.map { vetoPending[it.id] },
+        elections = elections.map { e ->
+            ElectionSave(
+                day = e.day, termNumber = e.termNumber, civId = e.civId, winnerName = e.winnerName,
+                winnerCitizenId = e.winnerCitizenId, agenda = e.agenda.toList(),
+                temperament = e.temperament, voteNames = e.voteCounts.map { it.first },
+                voteCounts = e.voteCounts.map { it.second }, turnout = e.turnout,
+            )
+        },
+        relations = relations.snapshot(),
+        armies = armies.map { a ->
+            ArmySave(a.id, a.civId, a.targetCivId, a.targetCell, a.kind, a.startedOnDay, a.members.toList(), a.startingSize, a.returning)
+        },
+        chronicle = chronicle.snapshot(),
+        legacy = LegacySave(
+            chroniclePoints = legacy.chroniclePoints,
+            runsPlayed = legacy.runsPlayed,
+            bestYears = legacy.bestYears,
+            upgrades = legacy.snapshotLevels(),
+        ),
+        savedAtEpochMillis = savedAtEpochMillis,
+    )
 
     /**
      * A cheap, order-independent fingerprint of the whole simulation state, used by the
@@ -1510,18 +1675,45 @@ class Simulation(
              * collapse to the right cause.
              */
             civCount: Int = WorldConfig.TOTAL_CIV_COUNT,
-        ): Simulation {
-            require(civCount in 1..WorldConfig.TOTAL_CIV_COUNT) { "unsupported civ count $civCount" }
-            val rng = SimRandom(seed)
+        ): Simulation = newRun(
+            RunConfig(seed = seed, traits = playerTraits, settlers = settlers, civCount = civCount),
+        )
+
+        /**
+         * Starts a run from a complete configuration — the seed, the player's allocation, and
+         * whatever their legacy has earned them. This is the only moment any of it is read.
+         */
+        fun newRun(config: RunConfig): Simulation {
+            require(config.civCount in 1..WorldConfig.TOTAL_CIV_COUNT) {
+                "unsupported civ count ${config.civCount}"
+            }
+            val rng = SimRandom(config.seed)
             val generated = WorldGenerator.generate(rng)
-            val civs = ArrayList<Civilization>(civCount)
-            for (id in 0 until civCount) {
+
+            // A fertility floor from the Legacy is applied to the land itself, before anyone
+            // works it, so it holds for the whole run rather than being re-applied per tick.
+            if (config.fertilityFloor > 0f) {
+                val world = generated.world
+                for (i in 0 until world.cellCount) {
+                    // Farmable ground is decided by terrain, not by the cell's current value:
+                    // generation jitters some beach and marsh cells all the way down to zero, and
+                    // a floor that skipped those would leave gaps in exactly the poor land it is
+                    // meant to protect.
+                    val farmable = GameConfig.Terrain.FERTILITY.getValue(world.terrainAt(i)) > 0.0
+                    if (farmable && world.fertility[i] < config.fertilityFloor) {
+                        world.fertility[i] = config.fertilityFloor
+                    }
+                }
+            }
+
+            val civs = ArrayList<Civilization>(config.civCount)
+            for (id in 0 until config.civCount) {
                 val isPlayer = id == WorldConfig.PLAYER_CIV_ID
                 civs.add(
                     Civilization(
                         id = id,
                         name = CIV_NAMES[id],
-                        traits = if (isPlayer) playerTraits else TraitAllocation.random(rng),
+                        traits = if (isPlayer) config.traits else TraitAllocation.random(rng),
                         personality = if (isPlayer) Personality.ISOLATIONIST else {
                             Personality.entries[rng.nextInt(Personality.entries.size)]
                         },
@@ -1530,7 +1722,194 @@ class Simulation(
                 )
             }
             val simulation = Simulation(generated.world, civs, rng)
-            for (civ in civs) simulation.found(civ, settlers)
+            simulation.config = config
+            for (civ in civs) simulation.found(civ, config.settlers)
+
+            // Rivals start better disposed toward a player whose legacy has earned it.
+            if (config.startingTensionRelief > 0.0) {
+                for (rival in civs) {
+                    if (rival.isPlayer) continue
+                    simulation.relations.ease(WorldConfig.PLAYER_CIV_ID, rival.id, config.startingTensionRelief)
+                }
+            }
+            return simulation
+        }
+
+        /**
+         * Rebuilds a run from a save.
+         *
+         * Terrain is regenerated from the seed rather than stored, and the hash is checked before
+         * anything else: a change to world generation must fail loudly here rather than drop a
+         * player's town onto a different island. Everything mutable is then written over the
+         * generated world, and the derived grids — which cell holds which building, who is
+         * standing where — are rebuilt from the buildings and citizens themselves rather than
+         * saved, since storing them would only create a second source of truth.
+         */
+        fun restore(save: SaveGame): Simulation {
+            val generated = WorldGenerator.generate(SimRandom(save.seed))
+            val world = generated.world
+            if (world.terrain.contentHashCode() != save.terrainHash) {
+                throw IncompatibleSaveException(
+                    "world generation has changed since this save was written; the island would not be the same one",
+                )
+            }
+
+            save.world.fertility.copyInto(world.fertility)
+            save.world.wildGame.copyInto(world.wildGame)
+            // Ownership is restored *after* buildings are placed, further down: placing a
+            // building stamps its civ onto the cells it covers, which is right when it is built
+            // but wrong on load — a cell a rival later worked would revert to whoever built on it.
+
+            val civs = save.civs.map { c ->
+                Civilization(
+                    id = c.id,
+                    name = c.name,
+                    traits = TraitAllocation.of(*c.traits.toIntArray()),
+                    personality = c.personality,
+                    homeSite = c.homeSite,
+                ).also { civ ->
+                    c.stores.copyInto(civ.stores)
+                    civ.foodStorageCapacity = c.foodStorageCapacity
+                    civ.techTier = c.techTier
+                    civ.unrest = c.unrest
+                    civ.influencePoints = c.influencePoints
+                    civ.unpaidUpkeepDays = c.unpaidUpkeepDays
+                    civ.vetoesUsedThisYear = c.vetoesUsedThisYear
+                    civ.termCount = c.termCount
+                    civ.population = c.peakPopulation // seeds peakPopulation...
+                    civ.population = 0 // ...then the real count is set below
+                    civ.totalBirths = c.totalBirths
+                    civ.totalDeaths = c.totalDeaths
+                }
+            }
+
+            val rng = SimRandom.restore(
+                SimRandom.State(save.rng.s0, save.rng.s1, save.rng.s2, save.rng.s3),
+            )
+            val clock = SimClock.restore(SimClock.State(save.tick, save.speedMultiplier))
+            val simulation = Simulation(world, civs, rng, clock)
+
+            simulation.config = RunConfig(
+                seed = save.seed,
+                traits = TraitAllocation.of(*save.config.traits.toIntArray()),
+                settlers = save.config.settlers,
+                civCount = save.config.civCount,
+                skillGrowthMultiplier = save.config.skillGrowthMultiplier,
+                startingInfluence = save.config.startingInfluence,
+                fertilityFloor = save.config.fertilityFloor,
+                startingTensionRelief = save.config.startingTensionRelief,
+                startingBuildings = save.config.startingBuildings,
+                offlineCapHours = save.config.offlineCapHours,
+            )
+            simulation.legacy = Legacy.restore(
+                save.legacy.chroniclePoints, save.legacy.runsPlayed, save.legacy.bestYears, save.legacy.upgrades,
+            )
+            simulation.endState = save.endState
+            simulation.nextCitizenId = save.nextCitizenId
+            simulation.nextBuildingId = save.nextBuildingId
+            simulation.nextArmyId = save.nextArmyId
+
+            for (c in save.citizens) {
+                val citizen = Citizen(
+                    id = c.id, x = c.x, y = c.y, civId = c.civId, sex = c.sex, ageDays = c.ageDays,
+                    hp = c.hp, nutrition = c.nutrition, morale = c.morale, survival = c.survival,
+                    job = c.job, skill = c.skill, influence = c.influence, partnerId = c.partnerId,
+                    pregnantUntilDay = c.pregnantUntilDay, homeBuildingId = c.homeBuildingId,
+                ).apply {
+                    workCell = c.workCell
+                    enlisted = c.enlisted
+                    starvingDays = c.starvingDays
+                    widowedOnDay = c.widowedOnDay
+                    politicalBias = c.politicalBias
+                    politicalBiasStrength = c.politicalBiasStrength
+                }
+                simulation.living.add(citizen)
+                simulation.byId[citizen.id] = citizen
+                world.occupantId[world.index(citizen.x, citizen.y)] = citizen.id
+                if (citizen.workCell != World.NONE && citizen.job in FIELD_CLAIM_JOBS) {
+                    simulation.workClaims[citizen.workCell] = citizen.id
+                }
+            }
+
+            for (b in save.buildings) {
+                val building = Building(b.id, b.type, b.civId, b.x, b.y)
+                building.restoreProgress(b.buildProgress, b.complete)
+                building.residents = b.residents
+                simulation.allBuildings.add(building)
+                simulation.buildingsByCiv[b.civId].add(building)
+                BuildingSystem.place(world, building)
+            }
+
+            // Now that the building grid is populated, the saved ownership is the truth.
+            save.world.ownerCivId.copyInto(world.ownerCivId)
+
+            for ((civId, p) in save.premiers.withIndex()) {
+                if (p == null) continue
+                val premier = Premier(
+                    citizenId = p.citizenId,
+                    name = p.name,
+                    agenda = Agenda.fromList(p.agenda),
+                    temperament = p.temperament,
+                    electedOnDay = p.electedOnDay,
+                    termNumber = p.termNumber,
+                    byCoup = p.byCoup,
+                )
+                premier.restoreState(p.built, p.petitionActive)
+                simulation.premiers[civId] = premier
+                simulation.electedAgendas[civId] = Agenda.fromList(p.electedAgenda)
+            }
+
+            for (e in save.elections) {
+                simulation.elections.add(
+                    ElectionResult(
+                        day = e.day, termNumber = e.termNumber, civId = e.civId,
+                        winnerName = e.winnerName, winnerCitizenId = e.winnerCitizenId,
+                        agenda = Agenda.fromList(e.agenda), temperament = e.temperament,
+                        voteCounts = e.voteNames.zip(e.voteCounts), turnout = e.turnout,
+                    ),
+                )
+            }
+
+            for ((civId, candidates) in save.campaigns.withIndex()) {
+                if (candidates == null) continue
+                simulation.campaigns[civId] = candidates.map { c ->
+                    Candidate(
+                        citizenId = c.citizenId,
+                        name = c.name,
+                        ageYears = c.ageYears,
+                        job = c.job,
+                        agenda = Agenda.fromList(c.agenda),
+                        temperament = c.temperament,
+                    ).also { it.votes = c.votes }
+                }
+            }
+            for ((civId, endorsed) in save.endorsements.withIndex()) {
+                simulation.endorsements[civId] = endorsed
+            }
+            for ((civId, pending) in save.vetoPending.withIndex()) {
+                simulation.vetoPending[civId] = pending
+            }
+
+            simulation.relationsRestoredFrom(save.relations)
+
+            for (a in save.armies) {
+                val army = Army(a.id, a.civId, a.targetCivId, a.targetCell, a.kind, a.startedOnDay)
+                army.members.addAll(a.members)
+                army.startingSize = a.startingSize
+                army.returning = a.returning
+                simulation.armies.add(army)
+            }
+
+            simulation.chronicle.restoreFrom(save.chronicle)
+
+            // Derived state that is never saved, only rebuilt.
+            simulation.refreshPopulationIndex()
+            for (civ in civs) simulation.refreshEffects(civ.id)
+            simulation.updateCivStatistics()
+            for ((index, c) in save.civs.withIndex()) {
+                // Restore the historical peak, which the live count would otherwise have clobbered.
+                civs[index].restorePeakPopulation(c.peakPopulation)
+            }
             return simulation
         }
 
@@ -1539,6 +1918,9 @@ class Simulation(
 
         /** Unrest is judged this often, for the same reason. */
         private const val UNREST_REVIEW_INTERVAL_DAYS = 7L
+
+        /** Jobs whose work cell is an exclusive claim, and so must be re-registered on load. */
+        private val FIELD_CLAIM_JOBS = setOf(Job.FARMER, Job.HUNTER, Job.GATHERER)
 
         /** Placeholder names until the naming system arrives with the Premier (M4). */
         val CIV_NAMES = listOf("Aurelia", "Kressen", "Tolmar", "Veyra", "Sildan")

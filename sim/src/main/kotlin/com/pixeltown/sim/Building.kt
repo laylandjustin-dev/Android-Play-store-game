@@ -91,6 +91,12 @@ class Building(
     /** Occupants, for housing. */
     var residents: Int = 0
 
+    /** Restores a saved building's progress without re-running construction. */
+    fun restoreProgress(progress: Double, complete: Boolean) {
+        buildProgress = progress
+        isComplete = complete
+    }
+
     /** Adds builder output; returns true on the tick the building is finished. */
     fun addProgress(points: Double): Boolean {
         if (isComplete) return false

@@ -32,6 +32,9 @@ data class Agenda(private val weights: DoubleArray) {
         return of(copy)
     }
 
+    /** The raw weights, for the save file. */
+    fun toList(): List<Double> = weights.toList()
+
     fun toMap(): Map<BuildingCategory, Double> =
         BuildingCategory.entries.associateWith { weights[it.ordinal] }
 
@@ -50,6 +53,9 @@ data class Agenda(private val weights: DoubleArray) {
             if (total <= 0.0) return balanced()
             return Agenda(DoubleArray(raw.size) { raw[it] / total })
         }
+
+        /** Rebuilds an agenda from saved weights, which are already normalised. */
+        fun fromList(values: List<Double>): Agenda = Agenda(values.toDoubleArray())
 
         fun of(map: Map<BuildingCategory, Double>): Agenda =
             of(DoubleArray(BuildingCategory.entries.size) { map[BuildingCategory.entries[it]] ?: 0.0 })
@@ -174,6 +180,13 @@ class Premier(
     fun clearPetition(original: Agenda) {
         agenda = original
         petitionActive = false
+    }
+
+    /** Restores a saved Premier's mid-term state. */
+    fun restoreState(built: List<BuildingType>, petitionActive: Boolean) {
+        this.built.clear()
+        this.built.addAll(built)
+        this.petitionActive = petitionActive
     }
 }
 

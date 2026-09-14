@@ -30,6 +30,9 @@ pixeltown/
 │       ├── Politics.kt        Agendas, candidates, premiers, elections, names, pitch lines.
 │       ├── CouncilSystem.kt   The vote, the Premier's decisions, and unrest.
 │       ├── Diplomacy.kt      Relations, armies, and the arithmetic of posture and battle.
+│       ├── SaveGame.kt       The versioned save format and its codec.
+│       ├── Legacy.kt         Chronicle points, permanent upgrades, RunConfig, RunSummary.
+│       ├── OfflineCatchUp.kt Time away -> ticks, and the "while you were away" report.
 │       ├── Palette.kt         Terrain/civ/building colours as plain ints.
 │       └── Viewport.kt        The visible rectangle of the world, in cells.
 └── app/          Android application — Compose UI, bitmap upload, billing, persistence.
@@ -262,6 +265,52 @@ any run**, silently. The "never" case is now checked explicitly, and a test cove
 remembering: a sentinel that participates in arithmetic is a bug waiting for the right question to
 be asked of it.
 
+**AD-37 — The save is explicit DTOs, not the live objects.** A save file is a compatibility
+contract, and a format that mirrors whatever the runtime classes happen to look like breaks the
+moment a field is renamed. Only `SaveGame.kt` carries `@Serializable`, which also gives R8 one
+small, obvious surface to keep rather than the whole domain (§16's warning about reflection-based
+serialization and minification).
+
+**AD-38 — Terrain is regenerated from the seed, and the save carries a hash of it.** Storing the
+grid would double the file for data that is a pure function of the seed. The hash means a future
+change to world generation fails the load loudly instead of quietly dropping a player's town onto
+a different island.
+
+**AD-39 — Restore order matters: buildings are placed before ownership is restored.**
+`BuildingSystem.place` stamps its civ onto the cells a building covers — correct when it is built,
+wrong on load, because a cell a rival later *worked* had changed hands since. Loading ownership
+first and placing buildings after silently reverted 75 cells and diverged the run within 500
+ticks. Derived grids (`buildingId`, `occupantId`) are rebuilt rather than saved, so there is only
+ever one source of truth; ownership is not derived, so it is saved and applied last.
+
+**AD-40 — The in-progress election is part of the save.** Saving inside the thirty-day campaign
+window lost the candidate slate, so a reloaded run generated a different one from a different
+point in the RNG stream and elected a different Premier. Invisible unless a test saves at an
+awkward moment, which `every phase of the year round-trips` now does.
+
+**AD-41 — Offline time does not run at 1x, and this is the number that sets the return cadence.**
+Read literally, "convert elapsed real seconds to ticks" at the live rate means one hour away is
+100 game years and the free 8-hour cap is 800 — more than twice the longest possible run.
+Measured: three hours away ran 240 years, ended the run in Endurance, and took 48 seconds to
+compute. Every check-in would finish the player's civilisation, and the Founders Pass 48-hour cap
+would sell nothing, since 8 hours already exceeds any run.
+
+| Away | At 1x (as written) | At `OFFLINE_TICKS_PER_REAL_SECOND` = 0.5 |
+|---|---|---|
+| 1 hour | 100 years | 5 years |
+| 3 hours | 300 years | 15 years |
+| 8 hours (free cap) | 800 years | 40 years |
+| 48 hours (Founders) | 4,800 years | 240 years |
+
+At 0.5 an absence is a chapter rather than the whole book: a 300-year run spans seven or eight
+visits and the Pass is a real upgrade. Catch-up compute also falls from 48s to 1.2s for a
+three-hour absence. **Worth a second opinion** — it is a design decision, not just a constant.
+
+**AD-42 — Saves are gzipped on disk.** A 60-year run is 981KB of JSON and 141KB gzipped. The file
+is dominated by two 16,384-element float arrays (soil fertility, wild game) that cannot be rounded
+without breaking determinism, so compression is the only lever. `java.util.zip` exists on both the
+JVM and Android, so this costs nothing in portability.
+
 ### Decisions recorded ahead of implementation
 
 **AD-8 — Entitlements are read only at run start.** The simulation snapshots its starting
@@ -302,6 +351,12 @@ then commit with a message naming the milestone. Do not move on with a red build
   starting sites, the pixel renderer and the viewport. The Compose gesture layer
   (`WorldGestures.kt`) and the HUD are written but **unbuilt and unrun** — see below. "Zoom and
   pan smoothly at 60fps" is therefore not yet verified on a device.
+- **M6 — Meta layer & persistence.** Done and tested. A versioned save that round-trips exactly
+  (including mid-campaign and mid-war), gzipped on disk; offline catch-up through the same
+  `step()` as live play; all four end states with Ascension outranking Endurance; Chronicle point
+  scoring; seven permanent upgrades with the allocation cap enforced at +4 however much is spent;
+  `RunConfig`, fixed at run start, which is what makes AD-8 testable. Gate met: a saved run
+  resumed after an absence is byte-identical to one that was watched.
 - **M5 — Rivals.** Done and tested. Relations with symmetric tension, derived posture, trade,
   tribute demands, border friction, raids and sustained war; armies that are real citizens
   marching across the map; battle as multi-day attrition with walls favouring the defender;

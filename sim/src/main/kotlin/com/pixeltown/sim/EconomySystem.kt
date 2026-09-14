@@ -258,6 +258,7 @@ internal object EconomySystem {
         members: List<Citizen>,
         severity: Double,
         effects: CivEffects,
+        skillGrowthMultiplier: Double = 1.0,
     ) {
         val traits = civ.traits
         // Irrigation puts a floor under the seasonal swing: winter still bites, but less.
@@ -310,7 +311,7 @@ internal object EconomySystem {
                 Job.BUILDER, Job.HEALER, Job.SOLDIER, Job.CHILD, Job.IDLE -> Unit
             }
 
-            growSkill(citizen)
+            growSkill(citizen, skillGrowthMultiplier)
         }
 
         // Mills turn surplus grain into money.
@@ -335,8 +336,8 @@ internal object EconomySystem {
     private fun competence(citizen: Citizen): Double =
         Economy.SKILL_OUTPUT_FLOOR + (1.0 - Economy.SKILL_OUTPUT_FLOOR) * citizen.skill
 
-    private fun growSkill(citizen: Citizen) {
-        val perDay = 1.0 / (Life.SKILL_YEARS_TO_MASTERY * GameConfig.Time.DAYS_PER_YEAR)
+    private fun growSkill(citizen: Citizen, growthMultiplier: Double) {
+        val perDay = growthMultiplier / (Life.SKILL_YEARS_TO_MASTERY * GameConfig.Time.DAYS_PER_YEAR)
         citizen.skill = min(1f, citizen.skill + perDay.toFloat())
     }
 
