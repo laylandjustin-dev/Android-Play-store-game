@@ -3,6 +3,7 @@ package com.pixeltown.sim
 import com.pixeltown.sim.GameConfig.Meta
 import com.pixeltown.sim.GameConfig.Traits as TraitConfig
 import kotlin.math.floor
+import kotlin.math.pow
 import kotlin.math.min
 
 /** A permanent upgrade bought with Chronicle points, carried across runs. */
@@ -70,7 +71,7 @@ class Legacy {
         return if (upgrade == LegacyUpgrade.ALLOCATION_POINT) {
             Meta.ALLOCATION_POINT_UPGRADE_COSTS[next]
         } else {
-            (Meta.UPGRADE_BASE_COST * Math.pow(Meta.UPGRADE_COST_GROWTH, next.toDouble())).toInt()
+            (Meta.UPGRADE_BASE_COST * Meta.UPGRADE_COST_GROWTH.pow(next)).toInt()
         }
     }
 

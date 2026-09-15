@@ -5,6 +5,7 @@ import com.pixeltown.sim.GameConfig.World as WorldConfig
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
 
 /** A generated world plus the starting sites chosen for the five civilisations. */
 class GeneratedWorld(
@@ -70,7 +71,7 @@ object WorldGenerator {
         val distance = max(abs(x - cx) / cx, abs(y - cy) / cy)
         if (distance <= WorldConfig.ISLAND_FALLOFF_START) return 1.0
         val t = (distance - WorldConfig.ISLAND_FALLOFF_START) / (1.0 - WorldConfig.ISLAND_FALLOFF_START)
-        return max(0.0, 1.0 - Math.pow(t, WorldConfig.ISLAND_FALLOFF_POWER))
+        return max(0.0, 1.0 - t.pow(WorldConfig.ISLAND_FALLOFF_POWER))
     }
 
     /** Rescales a field to exactly `[0, 1]` so the thresholds in [GameConfig] are meaningful. */

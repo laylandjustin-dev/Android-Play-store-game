@@ -28,16 +28,19 @@ class SimRandom private constructor(
         s0 = next(); s1 = next(); s2 = next(); s3 = next()
     }
 
+    /** Left rotation, written out rather than taken from `java.lang.Long`, which JS does not have. */
+    private fun rotl(value: Long, bits: Int): Long = (value shl bits) or (value ushr (64 - bits))
+
     /** Uniform 64-bit value. */
     fun nextLong(): Long {
-        val result = java.lang.Long.rotateLeft(s1 * 5, 7) * 9
+        val result = rotl(s1 * 5, 7) * 9
         val t = s1 shl 17
         s2 = s2 xor s0
         s3 = s3 xor s1
         s1 = s1 xor s2
         s0 = s0 xor s3
         s2 = s2 xor t
-        s3 = java.lang.Long.rotateLeft(s3, 45)
+        s3 = rotl(s3, 45)
         return result
     }
 

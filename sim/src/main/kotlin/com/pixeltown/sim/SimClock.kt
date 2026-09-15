@@ -1,6 +1,7 @@
 package com.pixeltown.sim
 
 import com.pixeltown.sim.GameConfig.Time
+import kotlin.math.roundToLong
 
 /**
  * Fixed-step accumulator that decouples simulation rate from frame rate.
@@ -78,7 +79,7 @@ class SimClock(
      */
     fun pendingTicks(deltaSeconds: Double): Int {
         if (isPaused || deltaSeconds <= 0.0) return 0
-        accumulatorMicro += Math.round(deltaSeconds * ticksPerSecond * MICRO)
+        accumulatorMicro += (deltaSeconds * ticksPerSecond * MICRO).roundToLong()
         if (accumulatorMicro < MICRO) return 0
         val whole = accumulatorMicro / MICRO
         val capped = if (whole > Time.MAX_TICKS_PER_FRAME) Time.MAX_TICKS_PER_FRAME.toLong() else whole

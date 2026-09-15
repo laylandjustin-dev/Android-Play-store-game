@@ -352,22 +352,27 @@ internal object EconomySystem {
         val recoveryByCiv = DoubleArray(civs.size) { civs[it].traits.fertilityRecoveryPerDay }
         val defaultRecovery = GameConfig.Traits.FERTILITY_RECOVERY_BASE
 
-        for (cell in 0 until world.cellCount) {
-            val terrain = world.terrainAt(cell)
+        // Indexed lookups, not map lookups: this loop runs over every cell in the world on every
+        // tick, and two hash lookups per cell dominated the whole simulation in the web build.
+        val fertilityCaps = TerrainConfig.FERTILITY_BY_TERRAIN
+        val gameCaps = TerrainConfig.WILD_GAME_BY_TERRAIN
+        val regen = TerrainConfig.WILD_GAME_REGEN_PER_DAY.toFloat()
 
-            val fertilityCap = TerrainConfig.FERTILITY.getValue(terrain).toFloat()
-            if (fertilityCap > 0f && world.fertility[cell] < fertilityCap) {
+        for (cell in 0 until world.cellCount) {
+            val terrain = world.terrain[cell].toInt()
+
+            val fertilityCap = fertilityCaps[terrain]
+            val fertility = world.fertility[cell]
+            if (fertilityCap > 0f && fertility < fertilityCap) {
                 val owner = world.ownerCivId[cell].toInt()
                 val rate = if (owner >= 0) recoveryByCiv[owner] else defaultRecovery
-                world.fertility[cell] = min(fertilityCap, world.fertility[cell] + rate.toFloat())
+                world.fertility[cell] = min(fertilityCap, fertility + rate.toFloat())
             }
 
-            val gameCap = TerrainConfig.WILD_GAME.getValue(terrain).toFloat()
-            if (gameCap > 0f && world.wildGame[cell] < gameCap) {
-                world.wildGame[cell] = min(
-                    gameCap,
-                    world.wildGame[cell] + (gameCap * TerrainConfig.WILD_GAME_REGEN_PER_DAY).toFloat(),
-                )
+            val gameCap = gameCaps[terrain]
+            val game = world.wildGame[cell]
+            if (gameCap > 0f && game < gameCap) {
+                world.wildGame[cell] = min(gameCap, game + gameCap * regen)
             }
         }
     }

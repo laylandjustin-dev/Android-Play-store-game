@@ -248,28 +248,6 @@ object SaveFormat {
 
     fun encode(save: SaveGame): String = json.encodeToString(SaveGame.serializer(), save)
 
-    /**
-     * The save as gzipped bytes, which is what should actually be written to disk.
-     *
-     * A 60-year run encodes to 981KB of JSON and 141KB gzipped — the file is dominated by two
-     * 16,384-element float arrays (soil fertility and wild game) that cannot be rounded without
-     * breaking determinism. `java.util.zip` is present on both the JVM and Android, so this costs
-     * nothing in portability.
-     */
-    fun encodeCompressed(save: SaveGame): ByteArray {
-        val bytes = encode(save).toByteArray(Charsets.UTF_8)
-        val out = java.io.ByteArrayOutputStream(bytes.size / 4)
-        java.util.zip.GZIPOutputStream(out).use { it.write(bytes) }
-        return out.toByteArray()
-    }
-
-    fun decodeCompressed(bytes: ByteArray): SaveGame {
-        val text = java.util.zip.GZIPInputStream(java.io.ByteArrayInputStream(bytes))
-            .use { it.readBytes() }
-            .toString(Charsets.UTF_8)
-        return decode(text)
-    }
-
     fun decode(text: String): SaveGame {
         val save = json.decodeFromString(SaveGame.serializer(), text)
         if (save.version > VERSION) {

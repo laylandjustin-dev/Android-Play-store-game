@@ -128,6 +128,41 @@ of a parallel JavaScript simulation drifting from the real one. It is skipped un
 suite run. If a genuinely playable web build is ever wanted, the right answer is Kotlin/JS
 compiling `:sim` itself, not a port.
 
+**AD-44 — There is a real web build: `:sim` compiled to JavaScript.** Not a port and not a
+recording — `web/src/WebGame.kt` is a thin façade over the same module the Android app uses, so
+there is exactly one implementation of the game. Three things made it possible:
+
+- **`:sim` is now portable Kotlin.** `java.lang.Long.rotateLeft`, `Math.pow`, `Math.round` and
+  `Integer.signum` are gone, replaced with stdlib equivalents; determinism is unchanged (all 171
+  tests still pass). Gzip is the single exception and lives alone in `SaveCompression.kt`, which
+  the web build leaves out.
+- **The Kotlin JS compiler is invoked directly**, not through the Kotlin/JS Gradle plugin, which
+  pulls a Node and Yarn toolchain this environment cannot download. `web/build-web.sh` fetches the
+  JS stdlib klibs from Maven Central and runs `K2JSCompiler` from the Gradle cache. K2 needs two
+  passes: sources to klib, then klib to JavaScript via `-Xinclude`.
+- **The JS output directory is cleared by the compiler**, so the klibs must live outside it.
+
+**AD-45 — The web build found a real performance bug that also affects Android.** Land
+regeneration sweeps all 16,384 cells every tick and looked up two `Map<TerrainType, Double>`
+entries per cell — 32,768 hash lookups a tick. On the JVM that is invisible; in JavaScript it cost
+more than every citizen in the game put together. Replaced with flat arrays indexed by terrain
+ordinal:
+
+| | before | after |
+|---|---|---|
+| JS tick (pop ~90) | 4.7ms | **1.4ms** |
+| JVM test suite | 5m13 | **4m17** |
+
+A 3.4x speedup in the browser and a real one on the JVM too. This is the same lesson as AD-31 from
+the other direction: a per-cell or per-citizen hash lookup is a per-tick sweep in disguise.
+
+**AD-46 — In the browser, ticks run on a timer and painting on an animation frame.** The first
+version drove the simulation from `requestAnimationFrame`, which ties the world's clock to the
+display — against AD-3, the project's own rule that sim rate is decoupled from frame rate. It also
+made the loop untestable: this environment's headless Chrome delivers exactly one animation frame,
+so the world sat at year zero. Ticks now run from `setInterval` under a 12ms budget checked
+*after* each tick (checking before meant a frame could run none at all), and rAF only repaints.
+
 **AD-16 — Map previews are exported as PNGs from the test source set.** `MapPreviewExporter`
 writes `sim/build/preview/map-seed-*.png` on every test run using `javax.imageio`, which lets the
 renderer be inspected without a device. It is test-only on purpose: `java.awt` does not exist on
@@ -345,6 +380,9 @@ Developer API can be added later without touching call sites.
 
 # Type-check app/ against the simulation API without the Android SDK.
 ./scripts/check-app-sources.sh
+
+# Build the playable web version: :sim compiled to JavaScript.
+./web/build-web.sh build/web-game        # then serve build/web-game/js + web/shell/index.html
 
 # Export a run as frames + timeline for the web playback viewer (opt-in; ~90s).
 PIXELTOWN_WEB_OUT=/tmp/web ./gradlew -Ppixeltown.simOnly=true \

@@ -2,6 +2,7 @@ package com.pixeltown.sim
 
 import com.pixeltown.sim.GameConfig.Politics as PoliticsConfig
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * A normalised weight vector over the five building categories: what a Premier believes the town
@@ -43,8 +44,11 @@ data class Agenda(private val weights: DoubleArray) {
 
     override fun hashCode(): Int = weights.contentHashCode()
 
-    override fun toString(): String =
-        BuildingCategory.entries.joinToString(" ") { "${it.name.take(4)}=%.2f".format(weights[it.ordinal]) }
+    override fun toString(): String = BuildingCategory.entries.joinToString(" ") {
+        // Not String.format: that is a JVM API, and :sim compiles for the browser too.
+        val hundredths = (weights[it.ordinal] * 100).roundToInt()
+        "${it.name.take(4)}=0.${hundredths.toString().padStart(2, '0')}"
+    }
 
     companion object {
         /** Normalises any set of non-negative weights into an agenda. */

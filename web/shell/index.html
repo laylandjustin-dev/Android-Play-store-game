@@ -1,0 +1,496 @@
+<title>Pixel Town</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+  :root {
+    /* From the game's own Palette.kt and MainActivity chrome. */
+    --ground: #0B0B0D; --panel: #121317; --panel-2: #16171C; --line: #24252C;
+    --ink: #BFAE7A; --ink-bright: #E8DCB8; --ink-dim: #6C685C;
+    --player: #F2C14E; --war: #D4443C; --calm: #3FA8A0;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 13px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding-inline: 16px; padding-block: 18px 36px; display: flex; flex-direction: column; gap: 14px; }
+  h1 { font-family: Silkscreen, monospace; font-size: clamp(19px, 5.4vw, 28px); color: var(--ink-bright); margin: 0; letter-spacing: 0.02em; text-wrap: balance; }
+  .eyebrow { font-family: Silkscreen, monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); margin: 0; }
+  .sub { color: var(--ink-dim); font-size: 12px; max-width: 64ch; margin: 0; }
+  .sub b { color: var(--ink); font-weight: 500; }
+
+  button {
+    font: inherit; font-size: 12px; background: var(--panel); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 0; padding: 8px 12px; cursor: pointer; letter-spacing: 0.04em;
+  }
+  button:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink-bright); }
+  button[aria-pressed="true"] { background: var(--ink); color: #0B0B0D; border-color: var(--ink); }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+  button:focus-visible { outline: 2px solid var(--player); outline-offset: 2px; }
+  button.primary { background: var(--player); color: #0B0B0D; border-color: var(--player); font-weight: 700; }
+
+  /* allocation */
+  .alloc { border: 1px solid var(--line); background: var(--panel); }
+  .alloc .rows { display: flex; flex-direction: column; }
+  .trait { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 11px 12px; border-bottom: 1px solid var(--line); align-items: center; }
+  .trait .what { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .trait .nm { color: var(--ink-bright); font-weight: 500; }
+  .trait .desc { font-size: 11px; color: var(--ink-dim); }
+  .stepper { display: flex; align-items: center; gap: 6px; }
+  .stepper .val { width: 22px; text-align: center; font-weight: 700; color: var(--ink-bright); font-variant-numeric: tabular-nums; }
+  .stepper button { padding: 4px 10px; }
+  .budget { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 11px 12px; border-bottom: 1px solid var(--line); }
+  .budget .pts { color: var(--player); font-weight: 700; }
+  .preview { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 1px; background: var(--line); }
+  .preview div { background: var(--panel-2); padding: 9px 11px; display: flex; flex-direction: column; gap: 1px; }
+  .preview .k { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-dim); }
+  .preview .v { font-size: 15px; font-weight: 700; color: var(--ink-bright); font-variant-numeric: tabular-nums; }
+  .archetype { padding: 11px 12px; border-top: 1px solid var(--line); color: var(--ink); }
+  .archetype b { color: var(--player); }
+
+  /* world */
+  .stage { position: relative; background: #05060A; border: 1px solid var(--line); }
+  canvas { display: block; width: 100%; aspect-ratio: 1; touch-action: none; image-rendering: pixelated; }
+  .hud { position: absolute; inset: 0; pointer-events: none; padding: 9px; display: flex; justify-content: space-between; align-items: flex-start; font-size: 11px; }
+  .hud span { background: rgba(5,6,10,0.74); padding: 3px 7px; }
+  .hud .r { color: var(--ink-dim); }
+  .rate { position: absolute; left: 9px; bottom: 9px; background: rgba(5,6,10,0.74); padding: 3px 7px; font-size: 10px; color: var(--ink-dim); pointer-events: none; }
+
+  .bar { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+  .stat { background: var(--panel); padding: 8px 10px; display: flex; flex-direction: column; gap: 1px; }
+  .stat .k { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-dim); }
+  .stat .v { font-size: 16px; font-weight: 700; color: var(--ink-bright); font-variant-numeric: tabular-nums; }
+
+  .cols { display: grid; gap: 14px; }
+  @media (min-width: 880px) { .cols { grid-template-columns: 1fr 1fr; } }
+  section.panel { border: 1px solid var(--line); background: var(--panel); }
+  .panel h2 { margin: 0; padding: 9px 12px; font-family: Silkscreen, monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); border-bottom: 1px solid var(--line); font-weight: 400; }
+  .panel .body { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+
+  .premier .nm { color: var(--ink-bright); font-weight: 500; }
+  .premier .meta { font-size: 11px; color: var(--ink-dim); }
+  .cand { border: 1px solid var(--line); padding: 9px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .cand .who { color: var(--ink-bright); }
+  .cand .pitch { font-size: 11px; color: var(--ink-dim); }
+  .levers { display: flex; flex-wrap: wrap; gap: 6px; }
+  .levers button { padding: 6px 9px; font-size: 11px; }
+
+  .feed { display: flex; flex-direction: column; gap: 6px; min-height: 120px; max-height: 210px; overflow-y: auto; }
+  .ev { display: grid; grid-template-columns: 8px 1fr; gap: 8px; align-items: start; font-size: 12px; }
+  .ev i { width: 8px; height: 8px; margin-top: 5px; background: var(--ink-dim); }
+  .ev em { font-style: normal; color: var(--ink-dim); }
+  .quiet { color: var(--ink-dim); font-size: 12px; }
+
+  .rival { display: flex; flex-direction: column; gap: 5px; padding-bottom: 9px; border-bottom: 1px solid var(--line); }
+  .rival:last-child { border-bottom: 0; padding-bottom: 0; }
+  .rival .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .rival .who { display: flex; align-items: center; gap: 7px; }
+  .rival .dot { width: 9px; height: 9px; flex: none; }
+  .rival .trait2 { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-dim); }
+  .rival.at-war .trait2 { color: var(--war); }
+  .tension { height: 5px; background: var(--panel-2); position: relative; }
+  .tension i { position: absolute; inset: 0 auto 0 0; background: var(--calm); }
+  .rival.at-war .tension i { background: var(--war); }
+
+  .ended { border: 1px solid var(--player); background: var(--panel); padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .ended h2 { font-family: Silkscreen, monospace; color: var(--player); margin: 0; font-size: 15px; letter-spacing: 0.06em; }
+
+  footer { color: var(--ink-dim); font-size: 11px; border-top: 1px solid var(--line); padding-top: 11px; }
+  footer b { color: var(--ink); font-weight: 500; }
+  [hidden] { display: none !important; }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Kotlin/JS build · the simulation itself</p>
+    <h1>Pixel Town</h1>
+  </header>
+
+  <!-- ---------- allocation ---------- -->
+  <div id="screen-alloc">
+    <p class="sub">
+      Spend <b>10 points</b> across five inherited traits. They are genetic to your people and
+      apply for the whole run. Then fifty settlers drop onto a procedurally generated island and
+      start living — working, eating, pairing, ageing and dying — alongside four rival
+      civilisations running the same simulation.
+    </p>
+    <div class="alloc" style="margin-top:14px">
+      <div class="budget">
+        <span>Points remaining</span>
+        <span class="pts" id="points">10</span>
+      </div>
+      <div class="rows" id="traits"></div>
+      <div class="preview" id="preview"></div>
+      <div class="archetype" id="archetype"></div>
+    </div>
+    <div class="bar" style="margin-top:12px">
+      <button class="primary" id="begin">Found the colony</button>
+      <button id="reroll">New island</button>
+      <span class="quiet" id="seedlabel"></span>
+    </div>
+  </div>
+
+  <!-- ---------- the game ---------- -->
+  <div id="screen-game" hidden>
+    <div class="stage">
+      <canvas id="map" width="512" height="512"></canvas>
+      <div class="hud">
+        <span id="hud-date">Year 0</span>
+        <span class="r" id="hud-pop">50 people</span>
+      </div>
+      <div class="rate" id="rate">paused</div>
+    </div>
+
+    <div class="bar" style="margin-top:12px">
+      <button class="sp" data-speed="0" aria-pressed="true">Pause</button>
+      <button class="sp" data-speed="1" aria-pressed="false">1x</button>
+      <button class="sp" data-speed="10" aria-pressed="false">10x</button>
+      <button class="sp" data-speed="100" aria-pressed="false">100x</button>
+      <button id="recentre">Recentre</button>
+    </div>
+
+    <div class="stats" id="stats" style="margin-top:12px"></div>
+
+    <div id="ended-box" hidden style="margin-top:12px"></div>
+
+    <div class="cols" style="margin-top:14px">
+      <section class="panel">
+        <h2>Council</h2>
+        <div class="body" id="council"></div>
+      </section>
+      <section class="panel">
+        <h2>Chronicle</h2>
+        <div class="body"><div class="feed" id="feed"></div></div>
+      </section>
+    </div>
+
+    <section class="panel" style="margin-top:14px">
+      <h2>Rivals</h2>
+      <div class="body" id="rivals"></div>
+    </section>
+  </div>
+
+  <footer>
+    <b>This is the game, not a mock-up.</b> Every tick, election and war comes from the same
+    <b>:sim</b> Kotlin module the Android app is built on, compiled to JavaScript — there is no
+    second implementation. The Android build itself has never been compiled, because this
+    environment cannot reach Google's Maven.
+  </footer>
+</div>
+
+<script src="pixeltown.js"></script>
+<script>
+(function () {
+  const api = (window.pixeltown || globalThis.pixeltown).com.pixeltown.web;
+
+  const TRAITS = [
+    ['speed', 'Speed', 'Work rate, movement, building, research'],
+    ['health', 'Health', 'Max HP, disease resistance, lifespan'],
+    ['hunting', 'Hunting', 'Yield from wild land — and military strength'],
+    ['elements', 'Elements', 'Resistance to weather, seasons and disaster'],
+    ['farming', 'Farming', 'Yield from farmland, soil recovery, livestock']
+  ];
+  const BASE = 3, BUDGET = 10, MAX = 8, MIN = 1;
+  const alloc = { speed: BASE, health: BASE, hunting: BASE, elements: BASE, farming: BASE };
+  let seed = Math.floor(Math.random() * 1e6) + 1;
+
+  const traitsEl = document.getElementById('traits');
+  traitsEl.innerHTML = TRAITS.map(([key, name, desc]) => `
+    <div class="trait">
+      <span class="what"><span class="nm">${name}</span><span class="desc">${desc}</span></span>
+      <span class="stepper">
+        <button data-key="${key}" data-d="-1" aria-label="Less ${name}">−</button>
+        <span class="val" id="v-${key}">${BASE}</span>
+        <button data-key="${key}" data-d="1" aria-label="More ${name}">+</button>
+      </span>
+    </div>`).join('');
+
+  function spent() { return TRAITS.reduce((n, [k]) => n + alloc[k] - BASE, 0); }
+
+  function archetypeOf() {
+    const { hunting, speed, farming, health, elements } = alloc;
+    if (hunting >= 6 && speed >= 5) return ['Raiders', 'fast, dangerous, and hungry'];
+    if (farming >= 6 && health >= 5) return ['Settlers', 'slow to start, hard to kill'];
+    if (farming >= 6 && elements >= 5) return ['Husbandmen', 'steady through every winter'];
+    if (elements >= 6) return ['Weatherborn', 'the seasons barely touch them'];
+    if (health >= 6) return ['Long-lived', 'they bury fewer of their own'];
+    if (hunting >= 6) return ['Hunters', 'they live off the wild'];
+    if (farming >= 6) return ['Ploughmen', 'boom and bust with the harvest'];
+    return ['Generalists', 'good at everything, best at nothing'];
+  }
+
+  function renderAlloc() {
+    TRAITS.forEach(([k]) => { document.getElementById('v-' + k).textContent = alloc[k]; });
+    const left = BUDGET - spent();
+    document.getElementById('points').textContent = left;
+    document.querySelectorAll('.stepper button').forEach(b => {
+      const k = b.dataset.key, d = Number(b.dataset.d);
+      b.disabled = d > 0 ? (left <= 0 || alloc[k] >= MAX) : (alloc[k] <= MIN || alloc[k] <= BASE - (BUDGET - 0));
+      if (d < 0) b.disabled = alloc[k] <= MIN;
+    });
+    const p = JSON.parse(api.previewTraits(alloc.speed, alloc.health, alloc.hunting, alloc.elements, alloc.farming));
+    document.getElementById('preview').innerHTML = [
+      ['Work rate', p.work + 'x'], ['Lifespan', p.lifespan + ' yrs'], ['Farm yield', p.farm],
+      ['Hunt yield', p.hunt], ['Weathered', p.shelter], ['Winter yield', p.winter + 'x']
+    ].map(([k, v]) => `<div><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
+    const [name, line] = archetypeOf();
+    document.getElementById('archetype').innerHTML = `<b>${name}</b> — ${line}`;
+    // Founding with points unspent is a weaker start than any real allocation, and it starves:
+    // a colony at 3/3/3/3/3 was dead inside its first year.
+    const begin = document.getElementById('begin');
+    begin.disabled = left > 0;
+    begin.textContent = left > 0
+      ? `Spend ${left} more point${left === 1 ? '' : 's'}`
+      : 'Found the colony';
+    document.getElementById('seedlabel').textContent = 'island #' + seed;
+  }
+
+  traitsEl.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    const k = b.dataset.key, d = Number(b.dataset.d);
+    if (d > 0 && (spent() >= BUDGET || alloc[k] >= MAX)) return;
+    if (d < 0 && alloc[k] <= MIN) return;
+    alloc[k] += d; renderAlloc();
+  });
+  document.getElementById('reroll').addEventListener('click', () => {
+    seed = Math.floor(Math.random() * 1e6) + 1; renderAlloc();
+  });
+  renderAlloc();
+
+  // ---------------- the run ----------------
+  let game = null, speed = 0, zoom = 1, panX = 0, panY = 0, state = null;
+  let acc = 0, lastFrame = 0, ticksThisSecond = 0, rateWindow = 0, shownRate = 0;
+  const events = [];
+
+  const canvas = document.getElementById('map');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  // The world is painted at its true 128x128 size on an offscreen canvas and then scaled up in
+  // one draw, rather than reading and writing the visible canvas in the same pass.
+  const off = document.createElement('canvas');
+  const offCtx = off.getContext('2d', { alpha: false });
+  let image = null, view32 = null;
+
+  document.getElementById('begin').addEventListener('click', () => {
+    game = new api.WebGame(seed, alloc.speed, alloc.health, alloc.hunting, alloc.elements, alloc.farming);
+    off.width = game.width; off.height = game.height;
+    image = offCtx.createImageData(game.width, game.height);
+    view32 = new Uint32Array(image.data.buffer);
+    document.getElementById('screen-alloc').hidden = true;
+    document.getElementById('screen-game').hidden = false;
+    setSpeed(1);
+    pull();
+    setInterval(stepChunk, 40);
+    requestAnimationFrame(paintLoop);
+  });
+
+  function setSpeed(v) {
+    speed = v;
+    document.querySelectorAll('.sp').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.speed) === v)));
+  }
+  document.querySelectorAll('.sp').forEach(b => b.addEventListener('click', () => setSpeed(Number(b.dataset.speed))));
+  document.getElementById('recentre').addEventListener('click', () => { zoom = 1; panX = 0; panY = 0; paint(); });
+
+  function paint() {
+    if (!game) return;
+    const px = game.pixels();
+    // The renderer produces ARGB; an ImageData buffer read as Uint32 on a little-endian machine
+    // wants ABGR, so red and blue swap here.
+    for (let i = 0; i < px.length; i++) {
+      const c = px[i];
+      view32[i] = 0xFF000000 | ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);
+    }
+    offCtx.putImageData(image, 0, 0);
+
+    const size = canvas.width, span = game.width / zoom;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(off, panX, panY, span, span, 0, 0, size, size);
+  }
+
+  const EV = {
+    ELECTION: 'Election', WAR_DECLARED: 'War', PEACE: 'Peace', RAID: 'Raid', COUP: 'Coup',
+    TECH_TIER: 'Tech', BUILDING_COMPLETED: 'Built', RUN_ENDED: 'Ended', FOUNDING: 'Founded'
+  };
+  const EV_COLOUR = { WAR_DECLARED: 'var(--war)', RAID: 'var(--war)', PEACE: 'var(--calm)', TECH_TIER: 'var(--calm)' };
+
+  function pull() {
+    state = JSON.parse(game.state());
+    for (const e of state.events) events.push(e);
+    while (events.length > 40) events.shift();
+    paint();
+    renderGame();
+  }
+
+  function renderGame() {
+    const s = state;
+    document.getElementById('hud-date').textContent = `Year ${s.year} · ${s.season}`;
+    document.getElementById('hud-pop').textContent = `${s.pop} people`;
+    document.getElementById('rate').textContent =
+      speed === 0 ? 'paused' : `${speed}x · ${shownRate} ticks/s`;
+
+    document.getElementById('stats').innerHTML = [
+      ['People', s.pop], ['Food', s.food], ['Wood', s.wood], ['Stone', s.stone],
+      ['Tech', s.tier + '/6'], ['Buildings', s.buildings], ['Unrest', s.unrest], ['Influence', s.influence]
+    ].map(([k, v]) => `<div class="stat"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
+
+    // Council
+    const c = document.getElementById('council');
+    let html = '';
+    if (s.premier) {
+      html += `<div class="premier"><div class="nm">${s.premier.name}</div>
+        <div class="meta">${s.premier.temperament} · building ${s.premier.agenda}</div></div>`;
+    } else {
+      html += '<p class="quiet">No Premier yet — the first election is at the end of year one.</p>';
+    }
+    if (s.campaign) {
+      html += '<p class="quiet">Campaign under way. Endorsing costs influence and adds weight with every voter.</p>';
+      html += s.campaign.map(k => `
+        <div class="cand">
+          <span class="who">${k.name}, ${k.age} — ${k.agenda} · ${k.temperament}</span>
+          <span class="pitch">${k.pitch}</span>
+          <span><button data-endorse="${k.id}">Endorse (20)</button></span>
+        </div>`).join('');
+    }
+    html += `<div class="levers">
+      <button data-petition="FARMS">Petition: farms (35)</button>
+      <button data-petition="MILITARY">Petition: military (35)</button>
+      <button data-veto="1">Veto next build (45)</button>
+    </div>`;
+    c.innerHTML = html;
+
+    // Chronicle
+    const feed = document.getElementById('feed');
+    feed.innerHTML = events.length ? events.slice(-14).reverse().map(e => {
+      const colour = EV_COLOUR[e.kind] || (e.civ === 0 ? 'var(--player)' : (s.rivals[e.civ - 1] || {}).colour || 'var(--ink-dim)');
+      const rival = (s.rivals[e.civ - 1] || {}).name || '';
+      const who = (e.civ === 0 || !rival || (e.detail || '').indexOf(rival) === 0) ? '' : `${rival} · `;
+      return `<div class="ev"><i style="background:${colour}"></i>
+        <span><em>Y${e.year} ${EV[e.kind] || e.kind}</em> · ${who}${e.detail || ''}</span></div>`;
+    }).join('') : '<p class="quiet">Nothing has happened yet.</p>';
+
+    // Rivals
+    document.getElementById('rivals').innerHTML = s.rivals.map(r => `
+      <div class="rival ${r.war ? 'at-war' : ''}">
+        <div class="top">
+          <span class="who"><i class="dot" style="background:${r.colour}"></i>${r.name} · ${r.pop}</span>
+          <span class="trait2">${r.war ? 'at war' : (r.pop === 0 ? 'destroyed' : r.personality)}</span>
+        </div>
+        <div class="tension"><i style="width:${Math.round(r.tension * 100)}%"></i></div>
+      </div>`).join('');
+
+    const box = document.getElementById('ended-box');
+    if (s.end && s.summary) {
+      box.hidden = false;
+      box.className = 'ended';
+      box.innerHTML = `<h2>${s.end}</h2>
+        <div>Survived <b>${s.summary.years}</b> years · peak population <b>${s.summary.peak}</b> ·
+        tech tier <b>${s.summary.tier}</b></div>
+        <div>Chronicle points earned: <b>${s.summary.points}</b></div>
+        <div><button class="primary" onclick="location.reload()">Start a new run</button></div>`;
+      setSpeed(0);
+    }
+  }
+
+  document.getElementById('council').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || !game) return;
+    if (b.dataset.endorse) game.endorse(Number(b.dataset.endorse));
+    else if (b.dataset.petition) game.petition(b.dataset.petition, 0.35);
+    else if (b.dataset.veto) game.veto();
+    pull();
+  });
+
+  /**
+   * The simulation runs on a timer and the map paints on an animation frame.
+   *
+   * AD-3 in the project's notes: sim rate is decoupled from frame rate. Driving ticks from
+   * requestAnimationFrame ties the world's clock to the display's refresh — and to whether the
+   * browser feels like delivering frames at all.
+   */
+  let simDirty = false;
+
+  function stepChunk() {
+    if (!game || speed === 0) { lastFrame = 0; return; }
+    const now = performance.now();
+    if (!lastFrame) lastFrame = now;
+    const dt = Math.min(0.25, (now - lastFrame) / 1000);
+    lastFrame = now;
+
+    acc += dt * 10 * speed;
+    // The budget is checked after a tick, never before, so a frame always makes progress.
+    const budgetEnd = performance.now() + 12;
+    let ran = 0;
+    while (acc >= 1) {
+      const did = game.step(1);
+      if (did === 0) { acc = 0; break; }
+      acc -= 1; ran += did;
+      if (performance.now() >= budgetEnd) break;
+    }
+    if (acc > 400) acc = 400; // never let a stalled tab bank hours of catch-up
+
+    if (ran > 0) {
+      ticksThisSecond += ran;
+      state = JSON.parse(game.state());
+      for (const e of state.events) events.push(e);
+      while (events.length > 40) events.shift();
+      simDirty = true;
+    }
+
+    rateWindow += dt;
+    if (rateWindow >= 1) {
+      shownRate = Math.round(ticksThisSecond / rateWindow);
+      ticksThisSecond = 0; rateWindow = 0;
+      simDirty = true;
+    }
+  }
+
+  function paintLoop() {
+    if (simDirty) { simDirty = false; paint(); renderGame(); }
+    requestAnimationFrame(paintLoop);
+  }
+
+  // ---- pan & zoom ----
+  const pointers = new Map();
+  let pinchStart = 0, zoomStart = 1;
+  function clampPan() {
+    if (!game) return;
+    const span = game.width / zoom;
+    panX = Math.max(0, Math.min(game.width - span, panX));
+    panY = Math.max(0, Math.min(game.height - span, panY));
+  }
+  function zoomAt(factor, cx, cy) {
+    if (!game) return;
+    const rect = canvas.getBoundingClientRect();
+    const fx = (cx - rect.left) / rect.width, fy = (cy - rect.top) / rect.height;
+    const before = game.width / zoom;
+    const wx = panX + fx * before, wy = panY + fy * before;
+    zoom = Math.max(1, Math.min(8, zoom * factor));
+    const after = game.width / zoom;
+    panX = wx - fx * after; panY = wy - fy * after;
+    clampPan(); paint();
+  }
+  canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); pointers.set(e.pointerId, e);
+    if (pointers.size === 2) { const [a, b] = [...pointers.values()];
+      pinchStart = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); zoomStart = zoom; } });
+  canvas.addEventListener('pointermove', e => {
+    if (!pointers.has(e.pointerId)) return;
+    const prev = pointers.get(e.pointerId); pointers.set(e.pointerId, e);
+    if (pointers.size === 2 && pinchStart > 0) {
+      const [a, b] = [...pointers.values()];
+      const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      const target = Math.max(1, Math.min(8, zoomStart * (dist / pinchStart)));
+      zoomAt(target / zoom, (a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2);
+    } else if (pointers.size === 1 && game) {
+      const rect = canvas.getBoundingClientRect();
+      const per = (game.width / zoom) / rect.width;
+      panX -= (e.clientX - prev.clientX) * per; panY -= (e.clientY - prev.clientY) * per;
+      clampPan(); paint();
+    }
+  });
+  const drop = e => { pointers.delete(e.pointerId); if (pointers.size < 2) pinchStart = 0; };
+  canvas.addEventListener('pointerup', drop);
+  canvas.addEventListener('pointercancel', drop);
+  canvas.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY); }, { passive: false });
+})();
+</script>

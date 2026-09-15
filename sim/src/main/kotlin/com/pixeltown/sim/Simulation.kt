@@ -12,6 +12,7 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.sign
 
 /**
  * The simulation: one world, up to five civilisations, and every citizen alive in it.
@@ -539,7 +540,7 @@ class Simulation(
     private fun advanceTech() {
         for (civ in civs) {
             if (civ.techTier >= GameConfig.Tech.MAX_TIER) continue
-            val cost = GameConfig.Tech.COST_BASE * Math.pow(GameConfig.Tech.COST_GROWTH, (civ.techTier + 1).toDouble())
+            val cost = GameConfig.Tech.COST_BASE * GameConfig.Tech.COST_GROWTH.pow(civ.techTier + 1)
             if (civ[Resource.KNOWLEDGE] < cost) continue
             civ.take(Resource.KNOWLEDGE, cost)
             civ.techTier++
@@ -1397,8 +1398,8 @@ class Simulation(
      */
     private fun stepToward(citizen: Citizen, targetX: Int, targetY: Int) {
         if (citizen.x == targetX && citizen.y == targetY) return
-        val dx = Integer.signum(targetX - citizen.x)
-        val dy = Integer.signum(targetY - citizen.y)
+        val dx = (targetX - citizen.x).sign
+        val dy = (targetY - citizen.y).sign
         if (tryMove(citizen, citizen.x + dx, citizen.y + dy)) return
         // Blocked diagonally: try the two axis-aligned steps, then give up for today.
         if (dx != 0 && tryMove(citizen, citizen.x + dx, citizen.y)) return

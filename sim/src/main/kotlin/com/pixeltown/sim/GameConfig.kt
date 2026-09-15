@@ -213,6 +213,19 @@ object GameConfig {
         /** Fertility drained per farmer-day worked on a cell. */
         const val FERTILITY_DRAIN_PER_FARM_DAY = 0.0035
 
+        /**
+         * The same two tables as flat arrays indexed by [TerrainType.ordinal].
+         *
+         * Land regeneration touches all 16,384 cells every tick and read both maps per cell —
+         * 32,768 hash lookups a tick. The JVM hides that; compiled to JavaScript it was the single
+         * most expensive thing in the game, costing more than every citizen put together.
+         */
+        val FERTILITY_BY_TERRAIN: FloatArray =
+            FloatArray(TerrainType.entries.size) { FERTILITY.getValue(TerrainType.entries[it]).toFloat() }
+
+        val WILD_GAME_BY_TERRAIN: FloatArray =
+            FloatArray(TerrainType.entries.size) { WILD_GAME.getValue(TerrainType.entries[it]).toFloat() }
+
         /** Fertility below this makes a farm cell not worth working. */
         const val FERTILITY_ABANDON_THRESHOLD = 0.12
 
