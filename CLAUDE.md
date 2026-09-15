@@ -119,6 +119,15 @@ is unit-tested and benchmarked on the JVM (terrain repaint is ~0.3ms against a 1
 the *source* rectangle of a single `drawImage` call rather than resampling the buffer, so there is
 no per-zoom pixel work and no filtering artefacts.
 
+**AD-43 — A web playback viewer, because the app cannot be built here.** `WebExporter` records a
+real run as a sprite sheet of yearly frames plus a timeline of stats and Chronicle events, which a
+static HTML page plays back with pan, zoom and a scrubber. It is a *recording*, not a second
+implementation — the frames come from the same `FrameRenderer` the app uses, so there is no risk
+of a parallel JavaScript simulation drifting from the real one. It is skipped unless
+`PIXELTOWN_WEB_OUT` is set: exporting two centuries costs 90 seconds and does not belong in every
+suite run. If a genuinely playable web build is ever wanted, the right answer is Kotlin/JS
+compiling `:sim` itself, not a port.
+
 **AD-16 — Map previews are exported as PNGs from the test source set.** `MapPreviewExporter`
 writes `sim/build/preview/map-seed-*.png` on every test run using `javax.imageio`, which lets the
 renderer be inspected without a device. It is test-only on purpose: `java.awt` does not exist on
@@ -336,6 +345,10 @@ Developer API can be added later without touching call sites.
 
 # Type-check app/ against the simulation API without the Android SDK.
 ./scripts/check-app-sources.sh
+
+# Export a run as frames + timeline for the web playback viewer (opt-in; ~90s).
+PIXELTOWN_WEB_OUT=/tmp/web ./gradlew -Ppixeltown.simOnly=true \
+  :sim:test --tests '*WebExporter*' --rerun-tasks
 
 # Full build — requires the Android SDK and network access to dl.google.com.
 ./gradlew :app:assembleDebug
