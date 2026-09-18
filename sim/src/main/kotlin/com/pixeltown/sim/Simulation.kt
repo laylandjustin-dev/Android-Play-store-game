@@ -6,6 +6,7 @@ import com.pixeltown.sim.GameConfig.Meta
 import com.pixeltown.sim.GameConfig.Politics
 import com.pixeltown.sim.GameConfig.Rivals as RivalConfig
 import com.pixeltown.sim.GameConfig.Survival as SurvivalConfig
+import com.pixeltown.sim.GameConfig.Traits as TraitConfig
 import com.pixeltown.sim.GameConfig.Time
 import com.pixeltown.sim.GameConfig.World as WorldConfig
 import kotlin.math.abs
@@ -139,6 +140,12 @@ class Simulation(
     var config: RunConfig = RunConfig(seed = 0L, traits = TraitAllocation.BASE)
         internal set
 
+    /**
+     * Which colour each civ is drawn in. Derived from [config] when the run starts, and held here
+     * because the renderer needs it every frame and a colour is per-run state, not a global.
+     */
+    val colors: CivColors get() = config.colors
+
     /** The player's meta progression. Saved alongside the run. */
     var legacy: Legacy = Legacy()
         internal set
@@ -256,6 +263,8 @@ class Simulation(
         refreshPopulationIndex()
 
         ageEveryone()
+        awardGenerationPoints()
+        autoSpendStaleGrowth()
         runCouncil()
         assignJobsIfDue()
         produceGoods()
@@ -315,6 +324,114 @@ class Simulation(
         if (dayOfYear == Time.DAYS_PER_YEAR - Politics.CAMPAIGN_DAYS) openCampaigns()
         if (dayOfYear == 0 && day > 0) holdElections()
         if (dayOfYear % Politics.DAYS_PER_DECISION == 0 && day > 0) premierDecisions()
+    }
+
+    /**
+     * A people grows. Every [TraitConfig.GENERATION_INTERVAL_YEARS] years each surviving civ earns
+     * a trait point.
+     *
+     * The award is driven by a counter rather than by `day % interval == 0`, so a civ founded late
+     * or restored from a save cannot be skipped or paid twice. Rivals spend on the spot (their
+     * choice is a weighted draw, so it has to happen at a fixed point in the tick to stay
+     * deterministic); the player's accumulate until they decide, which is the whole point of the
+     * mechanic — a decision every ten years, on what the run has taught them so far.
+     */
+    private fun awardGenerationPoints() {
+        val interval = TraitConfig.GENERATION_INTERVAL_YEARS * Time.DAYS_PER_YEAR
+        if (interval <= 0) return
+        val due = (day / interval).toInt()
+
+        for (civ in civs) {
+            if (civ.generationsAwarded >= due) continue
+            val owed = due - civ.generationsAwarded
+            civ.generationsAwarded = due
+            if (civ.population == 0) continue // an extinct people grows no more
+
+            if (civ.unspentTraitPoints == 0) civ.oldestUnspentPointDay = day
+            civ.unspentTraitPoints += owed * TraitConfig.GENERATION_POINTS_PER_AWARD
+            if (civ.isPlayer) {
+                chronicle.record(
+                    ChronicleEvent(
+                        day, ChronicleEventKind.GENERATION, civ.id, civ.id,
+                        detail = "a generation comes of age: ${civ.unspentTraitPoints} trait point" +
+                            (if (civ.unspentTraitPoints == 1) "" else "s") + " to spend",
+                        value = civ.unspentTraitPoints,
+                    ),
+                )
+            } else {
+                while (civ.unspentTraitPoints > 0) {
+                    val trait = RivalStrategist.chooseGrowth(civ.personality, civ.traits, rng) ?: break
+                    if (!raiseTrait(civ, trait)) break
+                }
+            }
+        }
+    }
+
+    /**
+     * Spends a player's point for them once it has waited
+     * [TraitConfig.GENERATION_AUTOSPEND_GRACE_DAYS].
+     *
+     * Runs every tick rather than only on an anniversary, because the grace period is what matters
+     * and a run can be reloaded at any point in it.
+     */
+    private fun autoSpendStaleGrowth() {
+        for (civ in civs) {
+            if (!civ.isPlayer || civ.unspentTraitPoints <= 0) continue
+            if (day - civ.oldestUnspentPointDay < TraitConfig.GENERATION_AUTOSPEND_GRACE_DAYS) continue
+            val trait = needBasedGrowth(civ) ?: continue
+            if (!raiseTrait(civ, trait)) continue
+            civ.oldestUnspentPointDay = day
+        }
+    }
+
+    /**
+     * Where a point goes when nobody chooses: food if the town is hungry or cannot feed itself,
+     * otherwise the weakest trait it still has room in.
+     *
+     * Deliberately the *safe* answer rather than the strong one. Rounding a people out is never a
+     * losing move, which is what makes it fair to apply on a player's behalf — and it leaves the
+     * upside (committing hard to one idea) to a player who is actually watching.
+     */
+    internal fun needBasedGrowth(civ: Civilization): Trait? {
+        val improvable = civ.traits.improvable
+        if (improvable.isEmpty()) return null
+
+        if (Trait.FARMING in improvable) {
+            if (civ.traits[Trait.FARMING] < RivalConfig.MIN_VIABLE_FARMING) return Trait.FARMING
+            val daysOfFood = if (civ.population > 0) {
+                civ[Resource.FOOD] / (civ.population * Economy.FOOD_PER_ADULT_PER_DAY)
+            } else {
+                Double.MAX_VALUE
+            }
+            if (daysOfFood < Economy.HUNGRY_TOWN_FOOD_DAYS) return Trait.FARMING
+        }
+        return improvable.minByOrNull { civ.traits[it] * TraitConfig.COUNT + it.ordinal }
+    }
+
+    /**
+     * Spends one of [civId]'s earned points on [trait]. False if there is nothing to spend or the
+     * trait is already at its ceiling — the caller's request was simply not legal.
+     */
+    fun spendTraitPoint(civId: Int, trait: Trait): Boolean {
+        val civ = civ(civId)
+        if (civ.unspentTraitPoints <= 0) return false
+        return raiseTrait(civ, trait)
+    }
+
+    private fun raiseTrait(civ: Civilization, trait: Trait): Boolean {
+        val grown = civ.traits.withPointIn(trait) ?: return false
+        civ.traits = grown
+        civ.unspentTraitPoints--
+        if (civ.isPlayer) {
+            chronicle.record(
+                ChronicleEvent(
+                    day, ChronicleEventKind.GENERATION, civ.id, civ.id,
+                    detail = "${trait.name.lowercase()} rises to ${grown[trait]}",
+                    value = grown[trait],
+                ),
+            )
+        }
+        return true
     }
 
     private fun openCampaigns() {
@@ -1536,6 +1653,8 @@ class Simulation(
         config = RunConfigSave(
             traits = config.traits.values.toList(),
             colonyName = config.colony,
+            startCell = config.startCell,
+            colorIndex = config.colorIndex,
             settlers = config.settlers,
             civCount = config.civCount,
             skillGrowthMultiplier = config.skillGrowthMultiplier,
@@ -1567,6 +1686,9 @@ class Simulation(
                 foodStorageCapacity = civ.foodStorageCapacity,
                 techTier = civ.techTier,
                 unrest = civ.unrest,
+                unspentTraitPoints = civ.unspentTraitPoints,
+                generationsAwarded = civ.generationsAwarded,
+                oldestUnspentPointDay = civ.oldestUnspentPointDay,
                 influencePoints = civ.influencePoints,
                 unpaidUpkeepDays = civ.unpaidUpkeepDays,
                 vetoesUsedThisYear = civ.vetoesUsedThisYear,
@@ -1690,7 +1812,7 @@ class Simulation(
                 "unsupported civ count ${config.civCount}"
             }
             val rng = SimRandom(config.seed)
-            val generated = WorldGenerator.generate(rng)
+            val generated = WorldGenerator.generate(rng, playerSite = config.startCell)
 
             // A fertility floor from the Legacy is applied to the land itself, before anyone
             // works it, so it holds for the whole run rather than being re-applied per tick.
@@ -1758,7 +1880,7 @@ class Simulation(
          * saved, since storing them would only create a second source of truth.
          */
         fun restore(save: SaveGame): Simulation {
-            val generated = WorldGenerator.generate(SimRandom(save.seed))
+            val generated = WorldGenerator.generate(SimRandom(save.seed), playerSite = save.config.startCell)
             val world = generated.world
             if (world.terrain.contentHashCode() != save.terrainHash) {
                 throw IncompatibleSaveException(
@@ -1784,6 +1906,9 @@ class Simulation(
                     civ.foodStorageCapacity = c.foodStorageCapacity
                     civ.techTier = c.techTier
                     civ.unrest = c.unrest
+                    civ.unspentTraitPoints = c.unspentTraitPoints
+                    civ.generationsAwarded = c.generationsAwarded
+                    civ.oldestUnspentPointDay = c.oldestUnspentPointDay
                     civ.influencePoints = c.influencePoints
                     civ.unpaidUpkeepDays = c.unpaidUpkeepDays
                     civ.vetoesUsedThisYear = c.vetoesUsedThisYear
@@ -1805,6 +1930,8 @@ class Simulation(
                 seed = save.seed,
                 traits = TraitAllocation.of(*save.config.traits.toIntArray()),
                 colonyName = save.config.colonyName,
+                startCell = save.config.startCell,
+                colorIndex = save.config.colorIndex,
                 settlers = save.config.settlers,
                 civCount = save.config.civCount,
                 skillGrowthMultiplier = save.config.skillGrowthMultiplier,

@@ -9,7 +9,11 @@ package com.pixeltown.sim
 class Civilization(
     val id: Int,
     val name: String,
-    val traits: TraitAllocation,
+    /**
+     * The civ's current traits. Replaced, not mutated, when a decade's growth point is spent —
+     * every derived stat is computed in [TraitAllocation]'s constructor, and nothing caches it.
+     */
+    var traits: TraitAllocation,
     val personality: Personality,
     /** Cell index this civ was founded on. */
     val homeSite: Int,
@@ -24,6 +28,19 @@ class Civilization(
     var techTier: Int = 0
 
     var unrest: Double = 0.0
+
+    /**
+     * Trait points earned by living and not yet spent (one per
+     * [GameConfig.Traits.GENERATION_INTERVAL_YEARS] years). The player's accumulate until they
+     * choose; a rival spends its own the day it earns it.
+     */
+    var unspentTraitPoints: Int = 0
+
+    /** Growth awards this civ has received, so an award is never paid twice for the same decade. */
+    var generationsAwarded: Int = 0
+
+    /** The day the oldest unspent point was earned, for the player's auto-spend grace period. */
+    var oldestUnspentPointDay: Long = 0L
 
     /** Influence points the player spends on the council. Accrues for rivals too, unused for now. */
     var influencePoints: Double = 0.0

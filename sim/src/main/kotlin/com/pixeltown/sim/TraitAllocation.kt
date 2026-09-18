@@ -5,9 +5,11 @@ import com.pixeltown.sim.GameConfig.Traits as TraitConfig
 /**
  * A civilisation's five inherited traits and everything derived from them.
  *
- * Genetic to a people and fixed for the whole run: the player allocates once on the opening
- * screen, rivals roll from the same pool. Derived values are computed once at construction, not
- * per citizen per tick — they are read constantly by the economy and survival systems.
+ * Genetic to a people: the player allocates ten points on the opening screen and rivals draw
+ * their own (see `RivalStrategist`). A people also grows — every decade a civ earns a point, so
+ * the allocation is immutable but a civ's *current* allocation is replaced as it improves.
+ * Derived values are computed once at construction, not per citizen per tick — they are read
+ * constantly by the economy and survival systems.
  */
 data class TraitAllocation(
     val speed: Int,
@@ -33,6 +35,24 @@ data class TraitAllocation(
         Trait.ELEMENTS -> elements
         Trait.FARMING -> farming
     }
+
+    /**
+     * This allocation with one more point in [trait], or null if that trait is already at
+     * [TraitConfig.MAX_PER_TRAIT].
+     *
+     * A whole new [TraitAllocation] rather than a mutation: every derived stat is computed at
+     * construction, so replacing the object is what keeps them consistent. Nothing caches a
+     * civ's traits — every system reads `civ.traits` live — so a people really can grow mid-run.
+     */
+    fun withPointIn(trait: Trait): TraitAllocation? {
+        if (this[trait] >= TraitConfig.MAX_PER_TRAIT) return null
+        val next = values
+        next[trait.ordinal]++
+        return of(*next)
+    }
+
+    /** Traits that still have room for another point. */
+    val improvable: List<Trait> get() = Trait.entries.filter { this[it] < TraitConfig.MAX_PER_TRAIT }
 
     /** Points spent above the base allocation. Must equal the run's budget to be legal. */
     val pointsSpent: Int get() = values.sumOf { it - TraitConfig.BASE_VALUE }

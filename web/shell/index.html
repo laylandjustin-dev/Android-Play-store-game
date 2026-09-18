@@ -49,6 +49,11 @@
   }
   .naming input:focus-visible { outline: 2px solid var(--player); outline-offset: 1px; }
   .naming input::placeholder { color: var(--ink-dim); }
+  .swatches { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .swatch { width: 26px; height: 26px; padding: 0; border: 1px solid var(--line); cursor: pointer; }
+  .swatch[aria-pressed="true"] { border-color: var(--ink-bright); box-shadow: inset 0 0 0 2px var(--ground); }
+  #sitemap { display: block; width: 100%; aspect-ratio: 1; image-rendering: pixelated; touch-action: manipulation;
+             background: #05060A; border: 1px solid var(--line); cursor: crosshair; }
   .budget { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 11px 12px; border-bottom: 1px solid var(--line); }
   .budget .pts { color: var(--player); font-weight: 700; }
   .preview { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 1px; background: var(--line); }
@@ -139,7 +144,26 @@
       <div class="rows" id="traits"></div>
       <div class="preview" id="preview"></div>
       <div class="archetype" id="archetype"></div>
+      <div class="naming">
+        <span class="nm">Your colour</span>
+        <span class="swatches" id="swatches"></span>
+      </div>
     </div>
+
+    <section class="panel" style="margin-top:14px">
+      <h2>Where will you land?</h2>
+      <div class="body">
+        <p class="sub" style="margin:0">
+          Tap the island to choose your site. Dark ground is out of reach — open water, mountains,
+          or an offshore islet no army could ever walk to. The rivals settle around you.
+        </p>
+        <canvas id="sitemap" width="384" height="384"></canvas>
+        <div class="bar">
+          <button id="site-auto">Let the scouts choose</button>
+          <span class="quiet" id="sitelabel"></span>
+        </div>
+      </div>
+    </section>
     <div class="bar" style="margin-top:12px">
       <button class="primary" id="begin">Found the colony</button>
       <button id="reroll">New island</button>
@@ -170,6 +194,11 @@
     <div class="stats" id="stats" style="margin-top:12px"></div>
 
     <div id="ended-box" hidden style="margin-top:12px"></div>
+
+    <section class="panel" id="growth-panel" hidden style="margin-top:14px">
+      <h2>A generation comes of age</h2>
+      <div class="body" id="growth"></div>
+    </section>
 
     <div class="cols" style="margin-top:14px">
       <section class="panel">
@@ -271,9 +300,84 @@
     alloc[k] += d; renderAlloc();
   });
   document.getElementById('reroll').addEventListener('click', () => {
-    seed = Math.floor(Math.random() * 1e6) + 1; renderAlloc();
+    seed = Math.floor(Math.random() * 1e6) + 1; renderAlloc(); buildPreview();
   });
+  // On a phone the keyboard's "done" key should found the colony, not submit nothing.
+  document.getElementById('colony').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('begin').click(); }
+  });
+
+  // ---------------- your colour ----------------
+  const COLOURS = JSON.parse(api.playerColours());
+  let colourIndex = 0;
+  const swatchesEl = document.getElementById('swatches');
+  swatchesEl.innerHTML = COLOURS.map((c, i) => `
+    <button class="swatch" data-colour="${i}" style="background:${c}"
+            aria-pressed="${i === 0}" aria-label="Colour ${i + 1}"></button>`).join('');
+  swatchesEl.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    colourIndex = Number(b.dataset.colour);
+    swatchesEl.querySelectorAll('.swatch').forEach(x =>
+      x.setAttribute('aria-pressed', String(Number(x.dataset.colour) === colourIndex)));
+    rebuildPreviewColour();
+  });
+
+  // ---------------- where you land ----------------
+  // The preview generates the same island the run will, from the same seed, so what is tapped
+  // here is exactly the map that gets played.
+  const siteCanvas = document.getElementById('sitemap');
+  const siteCtx = siteCanvas.getContext('2d', { alpha: false });
+  const siteOff = document.createElement('canvas');
+  const siteOffCtx = siteOff.getContext('2d', { alpha: false });
+  let preview = null, siteImage = null, siteView32 = null, chosenCell = -1;
+
+  function buildPreview() {
+    preview = new api.WebPreview(seed, colourIndex);
+    siteOff.width = preview.width; siteOff.height = preview.height;
+    siteImage = siteOffCtx.createImageData(preview.width, preview.height);
+    siteView32 = new Uint32Array(siteImage.data.buffer);
+    chosenCell = -1;
+    drawSite();
+  }
+
+  // The preview bakes the colour into its home marker, so a new colour needs a new preview.
+  // The selected cell is kept across the rebuild.
+  function rebuildPreviewColour() {
+    const keep = chosenCell;
+    buildPreview();
+    chosenCell = keep;
+    drawSite();
+  }
+
+  function drawSite() {
+    if (!preview) return;
+    const px = preview.pixels(chosenCell);
+    for (let i = 0; i < px.length; i++) {
+      const c = px[i];
+      siteView32[i] = 0xFF000000 | ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);
+    }
+    siteOffCtx.putImageData(siteImage, 0, 0);
+    siteCtx.imageSmoothingEnabled = false;
+    siteCtx.drawImage(siteOff, 0, 0, siteCanvas.width, siteCanvas.height);
+    document.getElementById('sitelabel').textContent = chosenCell < 0
+      ? 'no site chosen - the scouts will pick'
+      : `site ${chosenCell % preview.width}, ${Math.floor(chosenCell / preview.width)}`;
+  }
+
+  siteCanvas.addEventListener('click', e => {
+    if (!preview) return;
+    const rect = siteCanvas.getBoundingClientRect();
+    const x = Math.floor((e.clientX - rect.left) / rect.width * preview.width);
+    const y = Math.floor((e.clientY - rect.top) / rect.height * preview.height);
+    const cell = y * preview.width + x;
+    if (!preview.isLegal(cell)) return; // nothing could live there; say nothing, change nothing
+    chosenCell = cell;
+    drawSite();
+  });
+  document.getElementById('site-auto').addEventListener('click', () => { chosenCell = -1; drawSite(); });
+
   renderAlloc();
+  buildPreview();
 
   // ---------------- the run ----------------
   let game = null, speed = 0, zoom = 1, panX = 0, panY = 0, state = null;
@@ -291,7 +395,7 @@
   document.getElementById('begin').addEventListener('click', () => {
     game = new api.WebGame(
       seed, alloc.speed, alloc.health, alloc.hunting, alloc.elements, alloc.farming,
-      document.getElementById('colony').value);
+      document.getElementById('colony').value, chosenCell, colourIndex);
     off.width = game.width; off.height = game.height;
     image = offCtx.createImageData(game.width, game.height);
     view32 = new Uint32Array(image.data.buffer);
@@ -363,6 +467,20 @@
       ['Tech', s.tier + '/6'], ['Buildings', s.buildings], ['Unrest', s.unrest], ['Influence', s.influence]
     ].map(([k, v]) => `<div class="stat"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
 
+    // A generation comes of age: the decade's trait point, and where it goes.
+    const growthPanel = document.getElementById('growth-panel');
+    growthPanel.hidden = !s.growthPoints;
+    if (s.growthPoints) {
+      const plural = s.growthPoints === 1 ? '' : 's';
+      document.getElementById('growth').innerHTML =
+        `<p class="sub" style="margin:0">Your people have ${s.growthPoints} trait point${plural} to
+         spend. Choose, or the town will shore up its weakest side within the year.</p>
+         <div class="levers">` +
+        Object.entries(s.traits).map(([k, v]) => `
+          <button data-grow="${k}" ${v >= 8 ? 'disabled' : ''}>${k} ${v} &rarr; ${v + 1}</button>`).join('') +
+        '</div>';
+    }
+
     // Council
     const c = document.getElementById('council');
     let html = '';
@@ -420,6 +538,11 @@
       setSpeed(0);
     }
   }
+
+  document.getElementById('growth').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || !game) return;
+    if (game.spendTraitPoint(b.dataset.grow)) pull();
+  });
 
   document.getElementById('council').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b || !game) return;

@@ -37,14 +37,20 @@ object WorldRenderer {
      * [strength] 0 leaves the terrain alone, 1 replaces it with the civ colour. The player's own
      * ground is tinted harder, so the shape of what is *yours* is readable at a glance.
      */
-    fun tintOwnership(world: World, out: IntArray, strength: Float, playerCivId: Int = -1) {
+    fun tintOwnership(
+        world: World,
+        out: IntArray,
+        strength: Float,
+        playerCivId: Int = -1,
+        colors: CivColors = CivColors.DEFAULT,
+    ) {
         if (strength <= 0f) return
         val playerStrength = (strength * GameConfig.Render.PLAYER_TERRITORY_TINT_SCALE).coerceAtMost(1f)
         for (i in 0 until world.cellCount) {
             val civ = world.ownerCivId[i].toInt()
             if (civ < 0) continue
             val amount = if (civ == playerCivId) playerStrength else strength
-            out[i] = blend(out[i], Palette.civColor(civ), amount)
+            out[i] = blend(out[i], colors[civ], amount)
         }
     }
 
@@ -61,6 +67,7 @@ object WorldRenderer {
         survival: Float,
         isPlayer: Boolean = false,
         focus: Boolean = false,
+        colors: CivColors = CivColors.DEFAULT,
     ) {
         val render = GameConfig.Render
         val t = (survival / GameConfig.Survival.MAX).toFloat().coerceIn(0f, 1f)
@@ -69,7 +76,7 @@ object WorldRenderer {
         if (!isPlayer) {
             brightness *= if (focus) render.FOCUS_RIVAL_BRIGHTNESS_SCALE else render.RIVAL_BRIGHTNESS_SCALE
         }
-        out[index] = Palette.scaleBrightness(Palette.civColor(civId), brightness)
+        out[index] = Palette.scaleBrightness(colors[civId], brightness)
     }
 
     /**
@@ -84,10 +91,11 @@ object WorldRenderer {
         cell: Int,
         civId: Int,
         radius: Int = GameConfig.Render.HOME_MARKER_RADIUS,
+        colors: CivColors = CivColors.DEFAULT,
     ) {
         val cx = cell % world.width
         val cy = cell / world.width
-        val colour = Palette.scaleBrightness(Palette.civColor(civId), 0.85f)
+        val colour = Palette.scaleBrightness(colors[civId], 0.85f)
 
         // A broken ring — four arcs with gaps at the diagonals — so it reads as a marker rather
         // than as a wall someone built.
@@ -174,10 +182,11 @@ class FrameRenderer(private val world: World) {
         terrainCache.copyInto(out, 0, 0, world.cellCount)
 
         val playerCivId = GameConfig.World.PLAYER_CIV_ID
-        WorldRenderer.tintOwnership(world, out, ownershipTint, playerCivId)
+        val colors = simulation.colors
+        WorldRenderer.tintOwnership(world, out, ownershipTint, playerCivId, colors)
 
         simulation.civs.firstOrNull { it.isPlayer }?.let {
-            WorldRenderer.drawHomeMarker(world, out, it.homeSite, it.id)
+            WorldRenderer.drawHomeMarker(world, out, it.homeSite, it.id, colors = colors)
         }
 
         for (citizen in simulation.citizens) {
@@ -185,6 +194,7 @@ class FrameRenderer(private val world: World) {
                 out, world.index(citizen.x, citizen.y), citizen.civId, citizen.survival,
                 isPlayer = citizen.civId == playerCivId,
                 focus = focusPlayer,
+                colors = colors,
             )
         }
     }

@@ -16,6 +16,26 @@ kotlin {
     }
 }
 
+// The balance harness (§12) is a development tool, not part of the library: its own source set
+// keeps it out of anything the Android app could ever link against, while still compiling against
+// the simulation and being run with `:sim:balance`.
+sourceSets {
+    create("harness") {
+        kotlin.srcDir("harness")
+        compileClasspath += sourceSets["main"].output
+        runtimeClasspath += sourceSets["main"].output
+    }
+}
+
+val balance by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Runs the headless balance sweep and checks the targets in section 12."
+    mainClass.set("com.pixeltown.harness.BalanceRunner")
+    classpath = sourceSets["harness"].runtimeClasspath
+    // Long sweeps are the point; let the caller pass --args="--seeds=40 --csv=out.csv".
+    jvmArgs("-Xmx2g")
+}
+
 dependencies {
     implementation(libs.kotlinx.serialization.json)
 

@@ -62,6 +62,9 @@ data class RunConfigSave(
      * carries the default name, which is what it was displaying anyway.
      */
     val colonyName: String = ColonyName.DEFAULT,
+    /** Where the player landed and what colour they chose. Defaulted, like the name, for old saves. */
+    val startCell: Int? = null,
+    val colorIndex: Int = 0,
     val settlers: Int,
     val civCount: Int,
     val skillGrowthMultiplier: Double,
@@ -100,6 +103,11 @@ data class CivSave(
     val foodStorageCapacity: Double,
     val techTier: Int,
     val unrest: Double,
+    /** Earned-but-unspent growth points, and how many decades have paid out. Defaulted for old saves. */
+    val unspentTraitPoints: Int = 0,
+    val generationsAwarded: Int = 0,
+    /** When the oldest unspent point was earned, so the auto-spend grace survives a reload. */
+    val oldestUnspentPointDay: Long = 0L,
     val influencePoints: Double,
     val unpaidUpkeepDays: Int,
     val vetoesUsedThisYear: Int,

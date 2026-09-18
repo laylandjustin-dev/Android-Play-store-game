@@ -80,6 +80,7 @@ enum class ChronicleEventKind {
     PEACE,
     TRADE,
     COUP,
+    GENERATION,
     RUN_ENDED,
 }
 

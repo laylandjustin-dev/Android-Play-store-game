@@ -5,14 +5,19 @@ package com.pixeltown.web
 import com.pixeltown.sim.Agenda
 import com.pixeltown.sim.BuildingCategory
 import com.pixeltown.sim.ChronicleEventKind
+import com.pixeltown.sim.CivColors
 import com.pixeltown.sim.ColonyName
 import com.pixeltown.sim.FrameRenderer
 import com.pixeltown.sim.GameConfig
 import com.pixeltown.sim.Palette
 import com.pixeltown.sim.Resource
 import com.pixeltown.sim.RunConfig
+import com.pixeltown.sim.SimRandom
 import com.pixeltown.sim.Simulation
+import com.pixeltown.sim.Trait
 import com.pixeltown.sim.TraitAllocation
+import com.pixeltown.sim.WorldGenerator
+import com.pixeltown.sim.WorldRenderer
 import kotlin.js.ExperimentalJsExport
 import kotlin.js.JsExport
 
@@ -36,12 +41,17 @@ class WebGame(
     elements: Int,
     farming: Int,
     colonyName: String = ColonyName.DEFAULT,
+    /** Cell the player picked on the map preview, or -1 to take the generator's choice. */
+    startCell: Int = -1,
+    colorIndex: Int = 0,
 ) {
     private val simulation = Simulation.newRun(
         RunConfig(
             seed = seed.toLong(),
             traits = TraitAllocation(speed, health, hunting, elements, farming),
             colonyName = colonyName,
+            startCell = startCell.takeIf { it >= 0 },
+            colorIndex = colorIndex,
         ),
     )
 
@@ -83,6 +93,15 @@ class WebGame(
         return buffer
     }
 
+    /**
+     * Spends one of the earned decade points. Returns true if it landed; false means the request
+     * was not legal (nothing banked, or that trait is already at its ceiling).
+     */
+    fun spendTraitPoint(trait: String): Boolean {
+        val which = Trait.entries.firstOrNull { it.name.equals(trait, ignoreCase = true) } ?: return false
+        return simulation.spendTraitPoint(GameConfig.World.PLAYER_CIV_ID, which)
+    }
+
     /** Everything the interface needs, as one JSON string. */
     fun state(): String {
         val player = simulation.civ(GameConfig.World.PLAYER_CIV_ID)
@@ -103,6 +122,13 @@ class WebGame(
         sb.append(",\"tier\":").append(player.techTier)
         sb.append(",\"unrest\":").append(round2(player.unrest))
         sb.append(",\"influence\":").append(player.influencePoints.toInt())
+        sb.append(",\"growthPoints\":").append(player.unspentTraitPoints)
+        sb.append(",\"traits\":{")
+        for ((i, trait) in Trait.entries.withIndex()) {
+            if (i > 0) sb.append(',')
+            sb.append('"').append(trait.name.lowercase()).append("\":").append(player.traits[trait])
+        }
+        sb.append('}')
         sb.append(",\"buildings\":").append(simulation.buildingsOf(0).count { it.isComplete })
         sb.append(",\"armies\":").append(simulation.armiesInField.count { it.civId == 0 })
         sb.append(",\"end\":").append(simulation.endState?.let { "\"${it.name}\"" } ?: "null")
@@ -213,6 +239,67 @@ class WebGame(
             ChronicleEventKind.FOUNDING,
         )
     }
+}
+
+/**
+ * The island, before anyone lands on it, so the player can choose where to start.
+ *
+ * Generated from the same seed the run will use, so what the player taps on is exactly the map
+ * they get. It is a second generation pass rather than a held-open [Simulation] — generation is a
+ * pure function of the seed and costs a few milliseconds, and keeping a half-built run alive
+ * across the allocation screen would be a far better way to get the two out of step.
+ */
+@JsExport
+class WebPreview(seed: Double, private val colorIndex: Int = 0) {
+
+    private val generated = WorldGenerator.generate(SimRandom(seed.toLong()))
+    private val legal = WorldGenerator.legalStartSites(generated.world)
+    private val terrain = IntArray(generated.world.cellCount).also {
+        WorldRenderer.renderTerrain(generated.world, it)
+    }
+    private val buffer = IntArray(generated.world.cellCount)
+
+    val width: Int = generated.world.width
+    val height: Int = generated.world.height
+
+    /** Where the generator would put the player if they do not choose. */
+    val suggestedCell: Int = generated.civStartSites[GameConfig.World.PLAYER_CIV_ID]
+
+    /** True if a colony could actually live there: buildable ground on the main landmass. */
+    fun isLegal(cell: Int): Boolean = cell in legal.indices && legal[cell]
+
+    /**
+     * The island, with [selectedCell] ringed in the player's colour (-1 for none). Illegal ground
+     * is darkened, so where the player may land is visible rather than something they discover by
+     * tapping.
+     */
+    fun pixels(selectedCell: Int): IntArray {
+        val colors = CivColors.forPlayerChoice(colorIndex)
+        for (i in terrain.indices) {
+            buffer[i] = if (legal[i]) terrain[i] else Palette.scaleBrightness(terrain[i], ILLEGAL_DIM)
+        }
+        if (isLegal(selectedCell)) {
+            WorldRenderer.drawHomeMarker(
+                generated.world, buffer, selectedCell, GameConfig.World.PLAYER_CIV_ID, colors = colors,
+            )
+            buffer[selectedCell] = colors[GameConfig.World.PLAYER_CIV_ID]
+        }
+        return buffer
+    }
+
+    private companion object {
+        const val ILLEGAL_DIM = 0.72f
+    }
+}
+
+/** The colours a player may choose from, as CSS hex, in the order the picker shows them. */
+@JsExport
+fun playerColours(): String =
+    Palette.PLAYER_CHOICES.joinToString(",", "[", "]") { "\"${hexOf(it)}\"" }
+
+private fun hexOf(argb: Int): String {
+    val hex = (argb and 0xFFFFFF).toString(16).padStart(6, '0')
+    return "#$hex"
 }
 
 /** The derived numbers the allocation screen previews, without starting a run. */

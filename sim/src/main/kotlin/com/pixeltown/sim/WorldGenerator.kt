@@ -23,7 +23,21 @@ class GeneratedWorld(
  */
 object WorldGenerator {
 
-    fun generate(rng: SimRandom, width: Int = WorldConfig.WIDTH, height: Int = WorldConfig.HEIGHT): GeneratedWorld {
+    /**
+     * Generates a world and its starting sites.
+     *
+     * [playerSite], when given and legal, is where the player chose to land: it becomes civ 0's
+     * site and the rivals are placed around it. An illegal choice (ocean, a mountain, an offshore
+     * islet) is ignored rather than rejected — the generator's own pick stands, so a stale cell
+     * from another seed can never produce an unplayable run. The RNG is consumed identically
+     * either way, so a seed plus a site is all a replay needs.
+     */
+    fun generate(
+        rng: SimRandom,
+        width: Int = WorldConfig.WIDTH,
+        height: Int = WorldConfig.HEIGHT,
+        playerSite: Int? = null,
+    ): GeneratedWorld {
         val world = World(width, height)
         val elevationNoise = ValueNoise(rng)
         val moistureNoise = ValueNoise(rng)
@@ -35,7 +49,7 @@ object WorldGenerator {
         carveRivers(world)
         seedCellState(world, rng)
 
-        val sites = chooseStartSites(world, rng)
+        val sites = chooseStartSites(world, rng, playerSite)
         return GeneratedWorld(world, sites)
     }
 
@@ -314,7 +328,7 @@ object WorldGenerator {
      * to hold five well-separated sites, the separation requirement is relaxed in steps rather
      * than failing — a cramped map should still be playable.
      */
-    private fun chooseStartSites(world: World, rng: SimRandom): IntArray {
+    private fun chooseStartSites(world: World, rng: SimRandom, playerSite: Int? = null): IntArray {
         // Rivals must be reachable on foot (armies walk across the map in M5), so every civ is
         // placed on the main landmass — never stranded on an offshore islet.
         val mainland = mainlandMask(world)
@@ -326,9 +340,14 @@ object WorldGenerator {
         }
         scored.sortWith(compareByDescending<Pair<Int, Double>> { it.second }.thenBy { it.first })
 
+        // The player's choice is honoured if it is somewhere a civ could actually live. It is
+        // seeded into the site list first so the separation pass places the rivals around it.
+        val chosen = playerSite?.takeIf { it in 0 until world.cellCount && mainland[it] && world.isBuildable(it) }
+
         var separation = WorldConfig.MIN_CIV_START_SEPARATION
         while (separation >= 4) {
             val sites = ArrayList<Int>(WorldConfig.TOTAL_CIV_COUNT)
+            if (chosen != null) sites.add(chosen)
             for ((index, _) in scored) {
                 if (sites.size >= WorldConfig.TOTAL_CIV_COUNT) break
                 if (sites.none { chebyshev(world, it, index) < separation }) sites.add(index)
@@ -336,8 +355,25 @@ object WorldGenerator {
             if (sites.size == WorldConfig.TOTAL_CIV_COUNT) return sites.toIntArray()
             separation -= 2
         }
-        // Degenerate map: fall back to the best distinct cells available.
-        return scored.take(WorldConfig.TOTAL_CIV_COUNT).map { it.first }.toIntArray()
+        // Degenerate map: fall back to the best distinct cells available, the player's first.
+        val fallback = LinkedHashSet<Int>()
+        if (chosen != null) fallback.add(chosen)
+        for ((index, _) in scored) {
+            if (fallback.size >= WorldConfig.TOTAL_CIV_COUNT) break
+            fallback.add(index)
+        }
+        return fallback.toIntArray()
+    }
+
+    /**
+     * Cells the player may choose to land on: buildable ground on the main landmass.
+     *
+     * The same test [chooseStartSites] applies, exposed so a UI can show the player where they
+     * are allowed to tap rather than silently ignoring half the map.
+     */
+    fun legalStartSites(world: World): BooleanArray {
+        val mainland = mainlandMask(world)
+        return BooleanArray(world.cellCount) { mainland[it] && world.isBuildable(it) }
     }
 
     /** Marks the cells of the largest connected land component. */

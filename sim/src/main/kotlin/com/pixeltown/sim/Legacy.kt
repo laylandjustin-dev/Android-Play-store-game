@@ -158,6 +158,14 @@ data class RunConfig(
      * into a run or a save.
      */
     val colonyName: String = ColonyName.DEFAULT,
+    /**
+     * Where the player chose to land, as a cell index, or null to take the generator's pick. An
+     * illegal cell is ignored by `WorldGenerator` rather than rejected here: what counts as legal
+     * depends on the island, which depends on the seed.
+     */
+    val startCell: Int? = null,
+    /** Index into [Palette.PLAYER_CHOICES]. Out-of-range falls back to the default colour. */
+    val colorIndex: Int = 0,
     val settlers: Int = GameConfig.World.STARTING_SETTLERS,
     val civCount: Int = GameConfig.World.TOTAL_CIV_COUNT,
     val skillGrowthMultiplier: Double = 1.0,
@@ -174,6 +182,9 @@ data class RunConfig(
      */
     val colony: String get() = ColonyName.sanitise(colonyName)
 
+    /** The per-run civ palette this configuration implies. */
+    val colors: CivColors get() = CivColors.forPlayerChoice(colorIndex, civCount)
+
     companion object {
         /** Builds the starting configuration a legacy earns, for the traits the player allocated. */
         fun from(
@@ -182,10 +193,14 @@ data class RunConfig(
             legacy: Legacy,
             offlineCapHours: Int = Meta.OFFLINE_CAP_HOURS_FREE,
             colonyName: String = ColonyName.DEFAULT,
+            startCell: Int? = null,
+            colorIndex: Int = 0,
         ): RunConfig = RunConfig(
             seed = seed,
             traits = traits,
             colonyName = colonyName,
+            startCell = startCell,
+            colorIndex = colorIndex,
             settlers = legacy.startingSettlers,
             skillGrowthMultiplier = legacy.skillGrowthMultiplier,
             startingInfluence = legacy.startingInfluence,

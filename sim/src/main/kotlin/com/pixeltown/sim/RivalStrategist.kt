@@ -99,6 +99,23 @@ object RivalStrategist {
         return chosen
     }
 
+    /**
+     * Where a rival puts a decade's growth point.
+     *
+     * Same two rules as the opening allocation, in the same order: food floor first, then the
+     * personality's prior. The focus exponent is deliberately *not* rerolled here — a people's
+     * character does not change every ten years, so growth compounds the build the run started
+     * with rather than wandering back toward the average.
+     */
+    fun chooseGrowth(personality: Personality, current: TraitAllocation, rng: SimRandom): Trait? {
+        if (current.improvable.isEmpty()) return null
+        if (current[Trait.FARMING] < RivalConfig.MIN_VIABLE_FARMING) return Trait.FARMING
+
+        val prior = PRIORS.getValue(personality)
+        val pick = weightedPick(prior, current.values, rng) ?: return null
+        return Trait.entries[pick]
+    }
+
     /** Weighted draw over the traits that still have room, or null when every trait is capped. */
     private fun weightedPick(weights: DoubleArray, values: IntArray, rng: SimRandom): Int? {
         var total = 0.0

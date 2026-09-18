@@ -53,6 +53,25 @@ object GameConfig {
         /** Chronicle-bought bonus allocation points. Hard cap, regardless of spend (§14). */
         const val MAX_PURCHASED_ALLOCATION_POINTS = 4
 
+        /**
+         * A people grows: every this many years each civilisation earns
+         * [GENERATION_POINTS_PER_AWARD] trait points. The player spends theirs from the council
+         * screen; rivals spend theirs on the spot. `MAX_PER_TRAIT` is the real ceiling — from the
+         * opening 10 points there are 15 more to win, so a civ tops out around year 150.
+         */
+        const val GENERATION_INTERVAL_YEARS = 10
+        const val GENERATION_POINTS_PER_AWARD = 1
+
+        /**
+         * How long a player's earned point waits for them before the town spends it itself.
+         *
+         * This is an idle game with an offline catch-up path: a player who is away for a day must
+         * not come back behind the rivals, who spend theirs the moment they earn them. The
+         * automatic choice is deliberately conservative (see `Simulation.needBasedGrowth`), so
+         * attention is rewarded with *direction*, never with raw power.
+         */
+        const val GENERATION_AUTOSPEND_GRACE_DAYS = Time.DAYS_PER_YEAR
+
         // workMultiplier = 0.55 + 0.15 * Speed
         const val WORK_MULT_BASE = 0.55
         const val WORK_MULT_PER_SPEED = 0.15
@@ -373,6 +392,12 @@ object GameConfig {
         const val STARTING_FOOD_PER_SETTLER = 20.0
 
         const val FOOD_PER_ADULT_PER_DAY = 1.0
+
+        /**
+         * Below this many days of food in store, a town counts as hungry — used when a growth
+         * point is spent on the town's behalf rather than by the player.
+         */
+        const val HUNGRY_TOWN_FOOD_DAYS = 20.0
         const val FOOD_PER_CHILD_PER_DAY = 0.45
 
         /** Food above storage capacity spoils at this fraction per day. */

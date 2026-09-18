@@ -47,6 +47,22 @@ object Palette {
     fun civColor(civId: Int): Int = CIV[civId % CIV.size]
 
     /**
+     * Colours the player may choose from, brightest-first. A fixed set rather than a free picker:
+     * every one of these is tested against the terrain palette, and a player who picked, say, a
+     * forest green would lose their own people against the trees.
+     */
+    val PLAYER_CHOICES: IntArray = intArrayOf(
+        0xFFF2C14E.toInt(), // gold (the default)
+        0xFFEF6F4A.toInt(), // ember
+        0xFF6FC2F2.toInt(), // ice
+        0xFFE85D9B.toInt(), // magenta
+        0xFF9FD16B.toInt(), // lime
+        0xFFB18CF0.toInt(), // lilac
+        0xFFE8DCB8.toInt(), // bone
+        0xFF3FD9B0.toInt(), // jade
+    )
+
+    /**
      * Scales an ARGB colour's channels by [factor], clamped to `[0, 1]`. Used to dim citizens by
      * survival score, so a starving town visibly darkens, and to shade terrain by fertility.
      */

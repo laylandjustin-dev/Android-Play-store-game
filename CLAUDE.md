@@ -214,6 +214,44 @@ Three things are deliberate:
 - **`RunConfigSave.colonyName` is defaulted**, so a save written before this change still loads and
   simply carries the default name — which is what it was displaying anyway. No format bump.
 
+**AD-50 — A people grows: one trait point every ten years, and an idle player never falls
+behind.** The opening ten points were the only allocation decision in a 300-year run, which left
+the trait sheet inert after minute one. Each civ now earns a point per decade. Four consequences
+worth recording:
+
+- **`Civilization.traits` is now a `var`, and that is safe because nothing caches it.** Every
+  system reads `civ.traits` live and `TraitAllocation` computes its derived stats in its
+  constructor, so growth is a whole new allocation object, never a mutated one.
+- **The ceiling does the balancing.** `MAX_PER_TRAIT` is 8 and the opening budget is 10, so there
+  are 15 points to win and a civ tops out around year 150. No new cap was needed.
+- **Rivals spend on the spot; the player's point waits.** A rival's choice is a weighted draw, so
+  it has to happen at a fixed point in the tick to stay deterministic. The player's accumulates —
+  the decision is the mechanic.
+- **But an unspent point auto-spends after a year** (`GENERATION_AUTOSPEND_GRACE_DAYS`). This is an
+  idle game with an offline catch-up path (AD-41): a player away for a day must not return behind
+  four rivals who spend theirs immediately. The automatic choice is deliberately the *safe* one —
+  food if the town is hungry or cannot feed itself, otherwise its weakest trait — so attention is
+  rewarded with direction, never with raw power. Without this the fifty-year building gate
+  regressed on the first run of the suite, which is how the asymmetry was caught.
+
+**AD-51 — The player chooses where to land, and an illegal choice is ignored rather than
+rejected.** `WorldGenerator.generate` takes an optional `playerSite`; if it is buildable ground on
+the main landmass it becomes civ 0's site and the rivals are placed around it by the existing
+separation pass. Anything else — ocean, a mountain, an offshore islet, a stale cell from a
+different seed — is silently discarded and the generator's own pick stands, so a bad value can
+never produce an unplayable run. The RNG is consumed identically either way, so a seed plus a site
+is all a replay needs. `legalStartSites` exposes the same test the generator applies, because a UI
+that lets the player tap anywhere and then quietly overrules them is worse than no choice at all.
+
+**AD-52 — Civ colours are per-run state, not a global table.** `Palette.CIV` was a fixed array,
+which was fine while the player was always gold. `CivColors` is now a value the renderer is handed:
+the map preview and a live run can disagree about who is what colour, which they must, since the
+preview exists before the run does. Rivals are recoloured around the player's pick for the same
+reason their names are chosen around the colony's (AD-49) — a rival in the player's own colour
+would defeat the point of choosing one. The choice is an index into a fixed set of eight tested
+swatches rather than a free picker: a player who chose forest green would lose their own people
+against the trees, and the game would have let them.
+
 **AD-16 — Map previews are exported as PNGs from the test source set.** `MapPreviewExporter`
 writes `sim/build/preview/map-seed-*.png` on every test run using `javax.imageio`, which lets the
 renderer be inspected without a device. It is test-only on purpose: `java.awt` does not exist on
