@@ -197,14 +197,21 @@ object BalanceRunner {
         fun evaluate(results: List<Run>): List<Target> {
             val naive = results.filter { it.allocationName == "naive-even" }
             val reasoned = results.filter { it.allocationName in REASONED }
-            val single = results.filter { it.allocationName in SINGLE_TRAIT }
 
             val naiveMean = naive.map { it.years }.average()
             val capShare = reasoned.count { it.reachedCap } / reasoned.size.toDouble()
             val ascensions = results.count { it.endState == EndState.ASCENSION } / results.size.toDouble()
-            val singleBest = single.groupBy { it.allocationName }
+
+            // The first sweep's version of this compared one hand-picked set against another, and
+            // "hardy" sat in both — so a build that died in year three dragged down the very mean it
+            // was being compared against. Split by the only thing the target actually names: does
+            // the allocation put 8 into a trait?
+            val means = results.groupBy { it.allocationName }
                 .mapValues { (_, runs) -> runs.map { it.years }.average() }
-            val bestReasoned = reasoned.map { it.years }.average()
+            val maxedOut = means.filterKeys { name -> spec(name).values.any { it >= GameConfig.Traits.MAX_PER_TRAIT } }
+            val spread = means.filterKeys { name -> name !in maxedOut && name != "bad" }
+            val bestMaxed = maxedOut.maxByOrNull { it.value }
+            val bestSpread = spread.maxByOrNull { it.value }
             // "On a first play" - so this is the naive allocation, not the whole sweep.
             val meanMinutes = naive.filter { it.years > 0 }.map { it.watchMinutes }.average()
 
@@ -222,9 +229,10 @@ object BalanceRunner {
                 ),
                 Target(
                     "no single trait at 8 is dominant on its own",
-                    singleBest.values.none { it > bestReasoned },
-                    singleBest.entries.joinToString { "${it.key} ${fmt(it.value)}y" } +
-                        " vs reasoned ${fmt(bestReasoned)}y",
+                    bestMaxed == null || bestSpread == null ||
+                        bestMaxed.value <= bestSpread.value * MAXED_TOLERANCE,
+                    "best with an 8: ${bestMaxed?.key} ${fmt(bestMaxed?.value ?: 0.0)}y; " +
+                        "best without: ${bestSpread?.key} ${fmt(bestSpread?.value ?: 0.0)}y",
                 ),
                 Target(
                     "Ascension is rare without Chronicle upgrades",
@@ -240,11 +248,17 @@ object BalanceRunner {
             )
         }
 
-        /** Allocations a player who read the trait descriptions might plausibly build. */
-        private val REASONED = setOf("farmer", "farm+elements", "hardy", "swift", "scholar-ish", "weathered")
+        /**
+         * Allocations a player deliberately built: everything except the naive even spread and the
+         * one included to prove the harness can see a failure.
+         */
+        private val REASONED = ALLOCATIONS.map { it.first }.toSet() - setOf("naive-even", "bad")
 
-        /** Builds that put 8 into one trait, to check none of them wins by itself. */
-        private val SINGLE_TRAIT = setOf("hunter", "hardy", "swift", "weathered")
+        /** How much better a maxed-out build may be before it counts as dominant. */
+        private const val MAXED_TOLERANCE = 1.15
+
+        private fun spec(name: String): TraitAllocation =
+            ALLOCATIONS.first { it.first == name }.second
     }
 
     private fun report(results: List<Run>, elapsedSeconds: Double): String = buildString {

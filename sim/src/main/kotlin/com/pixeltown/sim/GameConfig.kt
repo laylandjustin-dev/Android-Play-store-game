@@ -243,8 +243,21 @@ object GameConfig {
         const val WILD_GAME_REGEN_PER_DAY = 0.010
         const val HUNT_DEPLETION_PER_DAY = 0.008
 
-        /** Fertility drained per farmer-day worked on a cell. */
-        const val FERTILITY_DRAIN_PER_FARM_DAY = 0.0035
+        /**
+         * Fertility drained per farmer-day worked on a cell.
+         *
+         * M7 tuning, and the sweep's most useful finding. At 0.0035 against a recovery of
+         * 0.0032/day for a Farming-5 people, a cell worked every day of the year lost 0.0003 —
+         * over-farming broke even, so the failure mode AD-21 was designed around did not exist and
+         * nothing ever stopped a comfortable town. Recovery applies to every cell every day while
+         * drain applies only to worked ones, so this number is the whole constraint.
+         *
+         * At 0.0075 a continuously worked cell falls from 0.85 to the abandon threshold in about
+         * six months and the town has to rotate its fields or spread out. That is pressure that
+         * scales with the number of farmers — it squeezes a large, successful colony and barely
+         * touches a struggling one, which is exactly the shape the brief's targets ask for.
+         */
+        const val FERTILITY_DRAIN_PER_FARM_DAY = 0.0075
 
         /**
          * The same two tables as flat arrays indexed by [TerrainType.ordinal].
@@ -444,14 +457,15 @@ object GameConfig {
          * formula needs an absolute scale: a competent farmer feeds roughly two and a half people,
          * which is what leaves room for hunters, gatherers, builders and scholars.
          *
-         * M7 tuning lowered both from 3.0. At 3.0 the 200-sim sweep had a naive even spread
-         * surviving 241 years against the brief's 80-140 target, and seven of ten allocations
-         * averaging past 200: the game was too generous everywhere, not in one place. Food
-         * throughput is the one dial that moves every allocation at once without changing the
-         * shape of the economy, so it is the dial that sets the overall difficulty.
+         * M7 tried lowering both to 2.35 to make the game harder, and measured the opposite: a
+         * naive spread went from 241 years to 273 and its peak population from 212 to 306, while
+         * the marginal builds went from dying in year 3 to dying in year 0. Less food per worker
+         * means a smaller town, and a smaller town does not over-farm itself into a famine — so
+         * food throughput is a *cliff* dial, not a difficulty dial. It sets who can feed
+         * themselves at all, and is left where AD-23 put it.
          */
-        const val FARM_OUTPUT_SCALE = 2.35
-        const val HUNT_OUTPUT_SCALE = 2.35
+        const val FARM_OUTPUT_SCALE = 3.0
+        const val HUNT_OUTPUT_SCALE = 3.0
 
         /**
          * How much a candidate work cell's value is discounted per cell of walking distance.
