@@ -102,9 +102,24 @@ object GameConfig {
         const val HUNT_YIELD_BASE = 0.4
         const val HUNT_YIELD_PER_HUNTING = 0.18
 
-        // farmYield = 0.5 + 0.16 * Farming
-        const val FARM_YIELD_BASE = 0.5
-        const val FARM_YIELD_PER_FARMING = 0.16
+        /**
+         * farmYield = base + perPoint * Farming.
+         *
+         * M7 tuning, and the deepest thing the 300-sim sweep found. At the design's 0.5 + 0.16 the
+         * five one-trait builds came out Farming-8 131.6 years, Hunting-8 87, Speed-8 110,
+         * Elements-8 4.5 and **Health-8 0.1** — twenty runs out of twenty dead inside the first
+         * year. Two of the five traits were not weak, they were unbuildable, and a build with
+         * Farming 4 and Speed 3 could not feed fifty settlers even with the crisis override putting
+         * 85% of its workforce in the fields. That predates M7: the very first sweep had the same
+         * build at 3.0 years.
+         *
+         * Anchoring the line higher and flattening the slope keeps a master farmer exactly where
+         * the design put them (Farming 8 is still 1.78) while lifting a poor one from 1.14 to 1.34.
+         * The same principle as AD-23's skill floor: the trait should decide how *well* a people
+         * farms, not whether farming works at all.
+         */
+        const val FARM_YIELD_BASE = 0.90
+        const val FARM_YIELD_PER_FARMING = 0.11
 
         // Elements reduces cold/heat/storm penalties by 0.11 per point.
         const val ELEMENTS_PENALTY_REDUCTION_PER_POINT = 0.11
