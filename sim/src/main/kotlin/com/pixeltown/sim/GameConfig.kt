@@ -72,9 +72,17 @@ object GameConfig {
          */
         const val GENERATION_AUTOSPEND_GRACE_DAYS = Time.DAYS_PER_YEAR
 
-        // workMultiplier = 0.55 + 0.15 * Speed
-        const val WORK_MULT_BASE = 0.55
-        const val WORK_MULT_PER_SPEED = 0.15
+        /**
+         * workMultiplier = base + perPoint * Speed.
+         *
+         * M7 tuning. The design's 0.55 + 0.15 made Speed the dominant trait by a distance: it
+         * multiplies *every* kind of work, food included, so the 200-sim sweep found survival
+         * tracking `workMultiplier x farmYield` almost exactly and a Speed-8 build out-living
+         * every considered allocation. Narrowing the range from 2.5x (0.70..1.75) to 1.6x
+         * (0.86..1.42) leaves Speed clearly worth having without making it the only real choice.
+         */
+        const val WORK_MULT_BASE = 0.78
+        const val WORK_MULT_PER_SPEED = 0.08
 
         /** Cells per day a citizen can move, scaled by Speed. */
         const val MOVE_SPEED_BASE = 0.6
@@ -433,11 +441,17 @@ object GameConfig {
          * The design writes farm output as `fertility x farmYield x skill x workMultiplier x
          * seasonMod`, which at baseline lands near 1.0 — exactly one person's daily ration. A
          * colony where one farmer feeds one person can never staff anything but farms, so the
-         * formula needs an absolute scale: a competent farmer feeds roughly three people, which
-         * is what leaves room for hunters, gatherers, builders and scholars.
+         * formula needs an absolute scale: a competent farmer feeds roughly two and a half people,
+         * which is what leaves room for hunters, gatherers, builders and scholars.
+         *
+         * M7 tuning lowered both from 3.0. At 3.0 the 200-sim sweep had a naive even spread
+         * surviving 241 years against the brief's 80-140 target, and seven of ten allocations
+         * averaging past 200: the game was too generous everywhere, not in one place. Food
+         * throughput is the one dial that moves every allocation at once without changing the
+         * shape of the economy, so it is the dial that sets the overall difficulty.
          */
-        const val FARM_OUTPUT_SCALE = 3.0
-        const val HUNT_OUTPUT_SCALE = 3.0
+        const val FARM_OUTPUT_SCALE = 2.35
+        const val HUNT_OUTPUT_SCALE = 2.35
 
         /**
          * How much a candidate work cell's value is discounted per cell of walking distance.
