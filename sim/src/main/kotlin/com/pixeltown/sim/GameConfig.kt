@@ -116,9 +116,19 @@ object GameConfig {
         const val SEASON_SWING_AMPLITUDE = 0.55
         const val SEASON_SWING_DAMP_PER_ELEMENTS = 0.11
 
-        /** Soil recovery per day scales with the owning civ's Farming trait. */
-        const val FERTILITY_RECOVERY_BASE = 0.0012
-        const val FERTILITY_RECOVERY_PER_FARMING = 0.0004
+        /**
+         * Soil recovery per day, scaling with the owning civ's Farming trait.
+         *
+         * M7 raised both. Drain alone (see `FERTILITY_DRAIN_PER_FARM_DAY`) made over-farming real
+         * but turned it into a *movement* race: with recovery this slow, a stripped field never
+         * came back, so a town had to keep walking to new ground and every Speed-3 build in the
+         * sweep collapsed while the even spread — Speed 5 — became the strongest allocation in the
+         * game. Fast recovery turns the same pressure into rotation instead of migration: a cell
+         * worked for six months is restored by three months of rest, which a slow people can do as
+         * well as a quick one. Speed should buy reach, not decide whether farming works at all.
+         */
+        const val FERTILITY_RECOVERY_BASE = 0.0030
+        const val FERTILITY_RECOVERY_PER_FARMING = 0.0006
     }
 
     // ---------------------------------------------------------------- world
