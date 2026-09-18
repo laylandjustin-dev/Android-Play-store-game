@@ -119,23 +119,20 @@ object GameConfig {
         const val HUNT_YIELD_PER_HUNTING = 0.18
 
         /**
-         * farmYield = base + perPoint * Farming.
+         * farmYield = 0.5 + 0.16 * Farming, exactly as the design specifies.
          *
-         * M7 tuning, and the deepest thing the 300-sim sweep found. At the design's 0.5 + 0.16 the
-         * five one-trait builds came out Farming-8 131.6 years, Hunting-8 87, Speed-8 110,
-         * Elements-8 4.5 and **Health-8 0.1** — twenty runs out of twenty dead inside the first
-         * year. Two of the five traits were not weak, they were unbuildable, and a build with
-         * Farming 4 and Speed 3 could not feed fifty settlers even with the crisis override putting
-         * 85% of its workforce in the fields. That predates M7: the very first sweep had the same
-         * build at 3.0 years.
+         * M7 tried raising the floor here to rescue the builds that could not feed themselves, and
+         * the attempt is recorded because of what it cost. Lifting a poor farmer from 1.14 to 1.34
+         * moved a Health-8 people from 0.1 years to only 3.8, while making a *Farming-1* colony
+         * survive 57 years — breaking the M3 gate that a people who cannot farm collapses inside
+         * 30. A linear `base + perPoint` cannot deliver a fatal Farming 1, a viable Farming 4 and
+         * the design's 1.78 at Farming 8 all at once, and the endpoint is the design's to set.
          *
-         * Anchoring the line higher and flattening the slope keeps a master farmer exactly where
-         * the design put them (Farming 8 is still 1.78) while lifting a poor one from 1.14 to 1.34.
-         * The same principle as AD-23's skill floor: the trait should decide how *well* a people
-         * farms, not whether farming works at all.
+         * The trap turned out not to live here at all: narrowing movement (see MOVE_SPEED_BASE)
+         * took the same build from 3.8 years to 24.4. Reverted, with the measurement kept.
          */
-        const val FARM_YIELD_BASE = 0.90
-        const val FARM_YIELD_PER_FARMING = 0.11
+        const val FARM_YIELD_BASE = 0.5
+        const val FARM_YIELD_PER_FARMING = 0.16
 
         // Elements reduces cold/heat/storm penalties by 0.11 per point.
         const val ELEMENTS_PENALTY_REDUCTION_PER_POINT = 0.11
@@ -293,12 +290,16 @@ object GameConfig {
          * nothing ever stopped a comfortable town. Recovery applies to every cell every day while
          * drain applies only to worked ones, so this number is the whole constraint.
          *
-         * At 0.0075 a continuously worked cell falls from 0.85 to the abandon threshold in about
-         * six months and the town has to rotate its fields or spread out. That is pressure that
-         * scales with the number of farmers — it squeezes a large, successful colony and barely
-         * touches a struggling one, which is exactly the shape the brief's targets ask for.
+         * It must also sit *inside* the range of recovery rates, and a later pass in this milestone
+         * broke that: at 0.0085 against a Farming-8 people's 0.0078 recovery, no allocation in the
+         * game could sustain a worked field, so towns stopped growing past their fifty settlers and
+         * built nothing in fifty years. `EconomyTest` caught it, and the number it was asserting is
+         * the right invariant — drain between the worst and best recovery is what makes Farming
+         * decide *sustainability* rather than merely speed. At 0.0060 a Farming-3 people runs a
+         * deficit, a Farming-5 people breaks even, and a Farming-8 people gains: the trait sheet's
+         * promise that farmers restore their land, made real.
          */
-        const val FERTILITY_DRAIN_PER_FARM_DAY = 0.0085
+        const val FERTILITY_DRAIN_PER_FARM_DAY = 0.0060
 
         /**
          * The same two tables as flat arrays indexed by [TerrainType.ordinal].

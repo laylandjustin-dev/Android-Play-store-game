@@ -25,11 +25,26 @@ class GameConfigTest {
     }
 
     @Test
-    fun `derived trait formulas match the design document`() {
-        assertEquals(1.75, Traits.WORK_MULT_BASE + Traits.WORK_MULT_PER_SPEED * 8, 1e-9)
+    fun `derived trait formulas match the design document at the top of the range`() {
         assertEquals(72.0, Traits.LIFESPAN_YEARS_BASE + Traits.LIFESPAN_YEARS_PER_HEALTH * 8, 1e-9)
         assertEquals(1.84, Traits.HUNT_YIELD_BASE + Traits.HUNT_YIELD_PER_HUNTING * 8, 1e-9)
+        // M7 reshaped this one but deliberately kept its endpoint: a master farmer is still the
+        // 1.78 the design specifies, and only the slope below them moved.
         assertEquals(1.78, Traits.FARM_YIELD_BASE + Traits.FARM_YIELD_PER_FARMING * 8, 1e-9)
+    }
+
+    @Test
+    fun `the two M7 deviations from the design's formulas are the ones recorded`() {
+        // Kept as an explicit guard rather than deleted: these are conscious deviations, measured
+        // in the balance sweep and argued for in GameConfig, and a third one appearing silently
+        // should fail the build.
+        assertEquals(1.42, Traits.WORK_MULT_BASE + Traits.WORK_MULT_PER_SPEED * 8, 1e-9)
+        assertEquals(2.08, Traits.MOVE_SPEED_BASE + Traits.MOVE_SPEED_PER_SPEED * 8, 1e-9)
+
+        // Both narrowed rather than weakened: a Speed-1 people is better off than the design had
+        // them, a Speed-8 people worse, because Speed was deciding viability rather than degree.
+        assertTrue(Traits.WORK_MULT_BASE + Traits.WORK_MULT_PER_SPEED > 0.70, "speed 1 work rate fell")
+        assertTrue(Traits.MOVE_SPEED_BASE + Traits.MOVE_SPEED_PER_SPEED > 0.78, "speed 1 movement fell")
     }
 
     @Test
