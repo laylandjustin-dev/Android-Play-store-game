@@ -252,6 +252,52 @@ would defeat the point of choosing one. The choice is an index into a fixed set 
 swatches rather than a free picker: a player who chose forest green would lose their own people
 against the trees, and the game would have let them.
 
+**AD-53 — The balance harness, and the four faults it found.** `sim/harness/BalanceRunner.kt`
+lives in its own Gradle source set so a development tool can never be linked into the app. It
+sweeps a grid of allocations across seeds, writes the CSV §12 asks for, and evaluates the five
+balance targets, exiting non-zero if any fails. Simulations are independent, so it runs one per
+core; determinism is per-run, so the CSV is identical whatever the machine's core count.
+
+About 2,400 simulations over ten sweeps produced four findings that no amount of reading the code
+would have given:
+
+- **Over-farming was a no-op.** A cell worked every day drained 0.0035 against a Farming-5 people's
+  0.0032/day of recovery — a net 0.0003. Recovery applies to every cell every day and drain only to
+  worked ones, so that one number was the whole constraint, and it made the failure mode AD-21 was
+  designed around not exist. Nothing ever stopped a comfortable town.
+- **Movement, not work rate, decided whether a people was viable at all.** Two builds with
+  *identical* Farming 4 measured 199 years (Speed 8) and 3.8 years (Speed 3). The work multiplier
+  could not explain a 52x gap. Work is spatial (AD-21) and a worker counts as working only when
+  standing on or beside their cell (AD-22), so at 1.14 cells a day a slow people spends its life
+  walking to a field rather than in it.
+- **Food output is a cliff dial, not a difficulty dial.** Lowering it to make the game harder made
+  a naive spread live *longer* — 241 years to 273, peak population 212 to 306 — because a smaller
+  town does not over-farm itself into a famine. It decides who can feed themselves at all.
+- **An emergency threshold above normal reserves makes emergency the only mode.** Raising the food
+  crisis trigger to 30 days of stock put every civ permanently in crisis with 95% of its workforce
+  farming: nothing gathered, nothing built, nobody housed, nobody born.
+
+**AD-54 — Three of the M7 tunings raise a floor rather than lower a ceiling.** Work rate, movement
+and (attempted) farm yield were all narrowed by lifting their bottom end, not cutting their top.
+The pattern behind it: *a trait that gates viability is a trait players cannot choose against*. When
+Speed decided whether farming worked at all rather than how well, four of the five traits were
+decoration. `GameConfigTest` now asserts the two deviations from the design's stated formulas
+explicitly, so a third one appearing silently fails the build.
+
+**AD-55 — The harness's targets can be met by a broken game, and the test suite is what catches
+it.** One tuning state hit three of the five balance targets — and it did so because soil drain had
+been pushed above *every* allocation's recovery rate, so no town could grow past its fifty settlers.
+Runs ended early, which the targets read as difficulty. `EconomyTest` ("even a Farming-8 people
+exhaust their land"), `CouncilTest` ("0 buildings after fifty years") and `PersistenceTest` ("twelve
+years without a birth") all failed at once and were right to. Outcome metrics measure what happened;
+invariant tests measure whether the thing that happened was the game. Both gates, every time.
+
+**AD-56 — Drain belongs inside the range of recovery rates.** That is what makes Farming decide
+*sustainability* rather than merely speed: at a drain of 0.0060 against recovery of
+`0.0022 + 0.00065 x Farming`, a Farming-3 people loses ground, a Farming-5 people roughly holds and a
+Farming-8 people gains. Put the drain above the top of the band and the game stops growing
+everywhere; put it below the bottom and over-farming is a no-op again.
+
 **AD-16 — Map previews are exported as PNGs from the test source set.** `MapPreviewExporter`
 writes `sim/build/preview/map-seed-*.png` on every test run using `javax.imageio`, which lets the
 renderer be inspected without a device. It is test-only on purpose: `java.awt` does not exist on
@@ -460,6 +506,10 @@ Developer API can be added later without touching call sites.
 ## Build and test commands
 
 ```bash
+# The headless balance sweep (section 12). Exits non-zero if a target is missed.
+./gradlew -Ppixeltown.simOnly=true :sim:balance
+./gradlew -Ppixeltown.simOnly=true :sim:balance --args="--seeds=20 --csv=out.csv --only=farmer,hunter"
+
 # Simulation only — works on any JDK 17+ machine, no Android SDK needed.
 ./gradlew -Ppixeltown.simOnly=true :sim:test     # JUnit 5 tests (~3 minutes)
 ./gradlew -Ppixeltown.simOnly=true :sim:build    # compile + tests + no-Android-imports check
@@ -491,6 +541,15 @@ then commit with a message naming the milestone. Do not move on with a red build
   starting sites, the pixel renderer and the viewport. The Compose gesture layer
   (`WorldGestures.kt`) and the HUD are written but **unbuilt and unrun** — see below. "Zoom and
   pan smoothly at 60fps" is therefore not yet verified on a device.
+- **M7 — Balance harness & tuning. Harness done; two of five targets met, and the gap is a design
+  question rather than a constant.** `./gradlew -Ppixeltown.simOnly=true :sim:balance` runs the
+  sweep (`--seeds=N`, `--only=a,b`, `--csv=path`). About 2,400 sims over ten sweeps; see AD-53 to
+  AD-56 for what it found and the M7 tables below for where the numbers landed. **Not met, and why:
+  Health and Elements contribute nothing to food throughput**, which is the binding constraint, so a
+  people built on either subsists at its fifty founding settlers and dies — 19 collapses out of 20.
+  Every dial that rescues them rescues the strong builds too, or starves the economy of non-food
+  work, because the workforce food share is a fixed weight system (AD-25, AD-29). Making those two
+  traits affect food *need* or *loss* would fix it and is a design decision, not a sweep.
 - **M6 — Meta layer & persistence.** Done and tested. A versioned save that round-trips exactly
   (including mid-campaign and mid-war), gzipped on disk; offline catch-up through the same
   `step()` as live play; all four end states with Ascension outranking Endurance; Chronicle point
@@ -567,12 +626,53 @@ Wealth now has sinks — trade pays for grain and tribute is extorted in it — 
 still large. And a **Hunting-8 civ is still non-viable** — the
 Premier now sets the food share, but the farm/hunt split inside it stays fixed (AD-25).
 
-Against the §12 targets: runs are currently **too survivable** — a naive spread should fail in
-80-140 years and a good one should reach 300 only about one run in three. Both are expected to
-tighten once buildings carry upkeep (M4) and rivals raid, extort and invade (M5); the real tuning
-pass is the headless harness at M7, over 200+ sims. Seed-to-seed variance is large (even spread
+Against the §12 targets: runs were **too survivable** here, and the M7 harness is where that was
+measured properly — see the M7 tables below. A naive spread came down from 254 years to 242 with a
+sound economy, still short of the 80-140 target, while "a good one reaches 300 about one run in
+three" now holds at 27%. Seed-to-seed variance is large (even spread
 peaks at 102 on one seed and 1,237 on another), which is worth watching: some of it is map luck,
 but some is famine cascades near a knife edge.
+
+### M7 balance measurements
+
+300 runs (15 allocations x 20 seeds), 300-year cap, all five civs.
+Reproduce with `:sim:balance --args="--seeds=20 --csv=out.csv"`; CSVs in `sim/build/balance/`.
+
+| allocation | mean y | median | reached 300y | peak pop | tech tier |
+|---|---|---|---|---|---|
+| farmer / pure-farming 3/4/3/4/8 | 264 | 300 | 60% | 309 | 4.3 |
+| farm+elements 3/4/3/6/6 | 254 | 298 | 50% | 439 | 4.7 |
+| warlike 4/3/7/3/6 | 248 | 295 | 45% | 390 | 4.2 |
+| naive-even 5/5/5/5/5 | 242 | 300 | 55% | 266 | 3.9 |
+| swift 8/4/3/3/5 | 226 | 249 | 35% | 349 | 4.0 |
+| scholar-ish 7/5/3/3/5 | 210 | 258 | 45% | 263 | 3.4 |
+| pure-speed 8/4/3/3/4 | 112 | 56 | 20% | 128 | 1.3 |
+| hunter 5/4/8/3/3 | 95 | 26 | 15% | 159 | 1.5 |
+| pure-hunting 3/4/8/3/4 | 80 | 2 | 15% | 112 | 0.9 |
+| weathered 3/4/3/8/5 | 66 | 22 | 10% | 61 | 0.5 |
+| **pure-health 3/8/3/4/4** | **3.6** | 0.5 | 0% | 50 | 0.0 |
+| **pure-elements 3/4/3/8/4** | **2.0** | 1 | 0% | 50 | 0.0 |
+| bad 8/3/3/3/1 | 0.0 | 0 | 0% | 50 | 0.0 |
+
+Against the §12 targets:
+
+| target | measured | |
+|---|---|---|
+| a naive even spread survives 80-140 years | 242y | FAIL |
+| a reasoned allocation reaches 300y about 1 in 3 | 27% | **PASS** |
+| no single trait at 8 is dominant on its own | 132x spread | FAIL |
+| Ascension is rare without Chronicle upgrades | 12% | FAIL (was 31%) |
+| mean run length on a first play is 25-45 minutes | 34.4 min | **PASS** |
+
+Two things about reading this table. **Years survived is confounded by Ascension**, which ends a run
+the moment tier 6 meets 400 people — making tier 6 harder converts year-200 ascensions into
+year-300 endurances and *raises* mean run length. And **an 8-seed probe cannot confirm anything
+here**: the naive distribution is bimodal, four runs dying between 71 and 102 years and ten reaching
+the cap, which is map luck. Probes screen a change; only the full sweep measures it.
+
+The five one-trait builds are the honest summary of what is left: Farming 264, Speed 112, Hunting
+80, Elements 2.0, Health 3.6. Two of the five traits are not weak but unbuildable, and that is the
+open item M7 hands on.
 
 ## Building `:app`
 
