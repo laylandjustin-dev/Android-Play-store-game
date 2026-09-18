@@ -196,6 +196,24 @@ going (rivals keep the full survival-brightness range), the player's claimed ter
 it is a toggle in the UI and off by default. Hardship is still visible: a starving player civ is
 dimmer than a fed one, just never invisible.
 
+**AD-49 — The colony's name is the player's, cleaned in `:sim`, and part of the save.** Naming is
+presentation — no system reads it to decide anything, which is what makes it safe: a named run and
+an unnamed one on the same seed have identical RNG state after 400 ticks, and a test asserts that.
+Three things are deliberate:
+
+- **Cleaning lives in `ColonyName`, not in a UI.** `sanitise` is total and has no RNG in it, so
+  every front end applies the same rules and a stored name always reloads to the same string.
+  Whitespace is collapsed, control and FORMAT characters are dropped (a pasted right-to-left
+  override would reorder the whole HUD line it is drawn on), and the result is capped at
+  `MAX_COLONY_NAME_LENGTH` — a layout limit, since the name shares a line with the year on a phone.
+  A name that cleans away to nothing becomes the default rather than an error.
+- **Rival names are chosen around the player's.** The Chronicle prints names, not ids, so a player
+  who calls their town "Kressen" would otherwise be indistinguishable from a rival. The name pool
+  is longer than the civ count and rivals take the first entries the player leaves free — a
+  deterministic scan, so it costs nothing from the RNG stream. `Simulation.CIV_NAMES` is gone.
+- **`RunConfigSave.colonyName` is defaulted**, so a save written before this change still loads and
+  simply carries the default name — which is what it was displaying anyway. No format bump.
+
 **AD-16 — Map previews are exported as PNGs from the test source set.** `MapPreviewExporter`
 writes `sim/build/preview/map-seed-*.png` on every test run using `javax.imageio`, which lets the
 renderer be inspected without a device. It is test-only on purpose: `java.awt` does not exist on

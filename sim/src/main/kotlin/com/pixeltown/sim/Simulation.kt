@@ -1535,6 +1535,7 @@ class Simulation(
         rng = rng.snapshot().let { RngState(it.s0, it.s1, it.s2, it.s3) },
         config = RunConfigSave(
             traits = config.traits.values.toList(),
+            colonyName = config.colony,
             settlers = config.settlers,
             civCount = config.civCount,
             skillGrowthMultiplier = config.skillGrowthMultiplier,
@@ -1714,13 +1715,18 @@ class Simulation(
             }
             val rivalTraits = RivalStrategist.allocateAll(rivalPersonalities, rng)
 
+            // The player names their own colony; the rivals take the first pool names it leaves
+            // free, so nobody in the Chronicle shares a name with anybody else.
+            val playerName = config.colony
+            val rivalNames = ColonyName.rivalNames(playerName, config.civCount - 1)
+
             val civs = ArrayList<Civilization>(config.civCount)
             for (id in 0 until config.civCount) {
                 val isPlayer = id == WorldConfig.PLAYER_CIV_ID
                 civs.add(
                     Civilization(
                         id = id,
-                        name = CIV_NAMES[id],
+                        name = if (isPlayer) playerName else rivalNames[id - 1],
                         traits = if (isPlayer) config.traits else rivalTraits[id - 1],
                         personality = if (isPlayer) Personality.ISOLATIONIST else rivalPersonalities[id - 1],
                         homeSite = generated.civStartSites[id],
@@ -1798,6 +1804,7 @@ class Simulation(
             simulation.config = RunConfig(
                 seed = save.seed,
                 traits = TraitAllocation.of(*save.config.traits.toIntArray()),
+                colonyName = save.config.colonyName,
                 settlers = save.config.settlers,
                 civCount = save.config.civCount,
                 skillGrowthMultiplier = save.config.skillGrowthMultiplier,
@@ -1928,7 +1935,5 @@ class Simulation(
         /** Jobs whose work cell is an exclusive claim, and so must be re-registered on load. */
         private val FIELD_CLAIM_JOBS = setOf(Job.FARMER, Job.HUNTER, Job.GATHERER)
 
-        /** Placeholder names until the naming system arrives with the Premier (M4). */
-        val CIV_NAMES = listOf("Aurelia", "Kressen", "Tolmar", "Veyra", "Sildan")
     }
 }

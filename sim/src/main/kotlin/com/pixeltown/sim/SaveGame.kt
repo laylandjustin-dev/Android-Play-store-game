@@ -57,6 +57,11 @@ data class RngState(val s0: Long, val s1: Long, val s2: Long, val s3: Long)
 @Serializable
 data class RunConfigSave(
     val traits: List<Int>,
+    /**
+     * Defaulted so a save written before colonies could be named still loads — the run simply
+     * carries the default name, which is what it was displaying anyway.
+     */
+    val colonyName: String = ColonyName.DEFAULT,
     val settlers: Int,
     val civCount: Int,
     val skillGrowthMultiplier: Double,

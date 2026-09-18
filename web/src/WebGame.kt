@@ -5,6 +5,7 @@ package com.pixeltown.web
 import com.pixeltown.sim.Agenda
 import com.pixeltown.sim.BuildingCategory
 import com.pixeltown.sim.ChronicleEventKind
+import com.pixeltown.sim.ColonyName
 import com.pixeltown.sim.FrameRenderer
 import com.pixeltown.sim.GameConfig
 import com.pixeltown.sim.Palette
@@ -34,13 +35,18 @@ class WebGame(
     hunting: Int,
     elements: Int,
     farming: Int,
+    colonyName: String = ColonyName.DEFAULT,
 ) {
     private val simulation = Simulation.newRun(
         RunConfig(
             seed = seed.toLong(),
             traits = TraitAllocation(speed, health, hunting, elements, farming),
+            colonyName = colonyName,
         ),
     )
+
+    /** What the colony ended up called — the typed name, cleaned by `:sim`, or the default. */
+    val colony: String = simulation.civ(GameConfig.World.PLAYER_CIV_ID).name
     private val renderer = FrameRenderer(simulation.world)
     private val buffer = IntArray(simulation.world.cellCount)
     /**
@@ -84,7 +90,8 @@ class WebGame(
         val campaign = simulation.campaignFor(GameConfig.World.PLAYER_CIV_ID)
         val sb = StringBuilder(1024)
 
-        sb.append("{\"year\":").append(simulation.year)
+        sb.append("{\"colony\":\"").append(escape(colony)).append('"')
+        sb.append(",\"year\":").append(simulation.year)
         sb.append(",\"day\":").append(simulation.day % GameConfig.Time.DAYS_PER_YEAR)
         sb.append(",\"season\":\"").append(simulation.season.name.lowercase()).append('"')
         sb.append(",\"pop\":").append(player.population)

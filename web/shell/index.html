@@ -41,6 +41,14 @@
   .stepper { display: flex; align-items: center; gap: 6px; }
   .stepper .val { width: 22px; text-align: center; font-weight: 700; color: var(--ink-bright); font-variant-numeric: tabular-nums; }
   .stepper button { padding: 4px 10px; }
+  .naming { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 11px 12px; border-bottom: 1px solid var(--line); }
+  .naming .nm { color: var(--ink-bright); font-weight: 500; }
+  .naming input {
+    font: inherit; font-size: 13px; background: var(--panel-2); color: var(--ink-bright);
+    border: 1px solid var(--line); padding: 7px 9px; width: 11em; max-width: 46vw; text-align: right;
+  }
+  .naming input:focus-visible { outline: 2px solid var(--player); outline-offset: 1px; }
+  .naming input::placeholder { color: var(--ink-dim); }
   .budget { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 11px 12px; border-bottom: 1px solid var(--line); }
   .budget .pts { color: var(--player); font-weight: 700; }
   .preview { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 1px; background: var(--line); }
@@ -119,6 +127,11 @@
       picks its own traits to suit its character, so you never face four copies of your build.
     </p>
     <div class="alloc" style="margin-top:14px">
+      <label class="naming" for="colony">
+        <span class="nm">Name your colony</span>
+        <input id="colony" type="text" maxlength="24" placeholder="Aurelia"
+               autocomplete="off" spellcheck="false" enterkeyhint="done">
+      </label>
       <div class="budget">
         <span>Points remaining</span>
         <span class="pts" id="points">10</span>
@@ -276,7 +289,9 @@
   let image = null, view32 = null;
 
   document.getElementById('begin').addEventListener('click', () => {
-    game = new api.WebGame(seed, alloc.speed, alloc.health, alloc.hunting, alloc.elements, alloc.farming);
+    game = new api.WebGame(
+      seed, alloc.speed, alloc.health, alloc.hunting, alloc.elements, alloc.farming,
+      document.getElementById('colony').value);
     off.width = game.width; off.height = game.height;
     image = offCtx.createImageData(game.width, game.height);
     view32 = new Uint32Array(image.data.buffer);
@@ -338,7 +353,7 @@
 
   function renderGame() {
     const s = state;
-    document.getElementById('hud-date').textContent = `Year ${s.year} · ${s.season}`;
+    document.getElementById('hud-date').textContent = `${s.colony} · Year ${s.year} · ${s.season}`;
     document.getElementById('hud-pop').textContent = `${s.pop} people`;
     document.getElementById('rate').textContent =
       speed === 0 ? 'paused' : `${speed}x · ${shownRate} ticks/s`;

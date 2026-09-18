@@ -152,6 +152,12 @@ class Legacy {
 data class RunConfig(
     val seed: Long,
     val traits: TraitAllocation,
+    /**
+     * What the player called their colony. Always a name the game will display — [RunConfig] runs
+     * it through [ColonyName.sanitise] on construction, so no caller can put an unusable string
+     * into a run or a save.
+     */
+    val colonyName: String = ColonyName.DEFAULT,
     val settlers: Int = GameConfig.World.STARTING_SETTLERS,
     val civCount: Int = GameConfig.World.TOTAL_CIV_COUNT,
     val skillGrowthMultiplier: Double = 1.0,
@@ -162,6 +168,12 @@ data class RunConfig(
     /** Offline catch-up cap in hours, raised by the Founders Pass. */
     val offlineCapHours: Int = Meta.OFFLINE_CAP_HOURS_FREE,
 ) {
+    /**
+     * Cleaned here rather than at every call site, so a name is legal by the time it reaches the
+     * simulation, the save, or a UI — whatever a caller passed in.
+     */
+    val colony: String get() = ColonyName.sanitise(colonyName)
+
     companion object {
         /** Builds the starting configuration a legacy earns, for the traits the player allocated. */
         fun from(
@@ -169,9 +181,11 @@ data class RunConfig(
             traits: TraitAllocation,
             legacy: Legacy,
             offlineCapHours: Int = Meta.OFFLINE_CAP_HOURS_FREE,
+            colonyName: String = ColonyName.DEFAULT,
         ): RunConfig = RunConfig(
             seed = seed,
             traits = traits,
+            colonyName = colonyName,
             settlers = legacy.startingSettlers,
             skillGrowthMultiplier = legacy.skillGrowthMultiplier,
             startingInfluence = legacy.startingInfluence,

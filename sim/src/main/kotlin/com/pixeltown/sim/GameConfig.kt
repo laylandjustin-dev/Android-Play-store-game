@@ -115,6 +115,12 @@ object GameConfig {
         const val TOTAL_CIV_COUNT = RIVAL_CIV_COUNT + 1
         const val PLAYER_CIV_ID = 0
 
+        /**
+         * Longest colony name the game will display. The HUD, the Chronicle feed and the rivals
+         * list all have to fit it on a phone, so this is a layout limit rather than a data one.
+         */
+        const val MAX_COLONY_NAME_LENGTH = 24
+
         // Value-noise elevation / moisture generation.
         const val NOISE_OCTAVES = 5
         const val NOISE_BASE_FREQUENCY = 0.045
