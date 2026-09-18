@@ -84,9 +84,25 @@ object GameConfig {
         const val WORK_MULT_BASE = 0.78
         const val WORK_MULT_PER_SPEED = 0.08
 
-        /** Cells per day a citizen can move, scaled by Speed. */
-        const val MOVE_SPEED_BASE = 0.6
-        const val MOVE_SPEED_PER_SPEED = 0.18
+        /**
+         * Cells per day a citizen can move, scaled by Speed.
+         *
+         * M7 tuning, and the answer to the sweep's hardest question. Two builds with *identical*
+         * Farming 4 came out 199 years (Speed 8) and 3.8 years (Speed 3) — a 52x difference that
+         * the work multiplier cannot explain, since narrowing it left Speed 8 only 39% more
+         * productive per working day. The gap was movement: work is spatial (AD-21) and a worker
+         * only counts as working when standing on or beside their cell (AD-22), so at 1.14 cells a
+         * day a slow people spends most of its life walking to a field. Making over-farming real
+         * amplified it, because a rotating town keeps having to walk somewhere new.
+         *
+         * At 1.20 + 0.11 the range narrows from 1.8x (1.14..2.04) to 1.3x (1.53..2.08): the fast
+         * keep their edge and the slow are no longer unable to farm at all. This is the third time
+         * in this tuning pass that the answer has been to raise a floor rather than lower a
+         * ceiling, which is the pattern worth remembering — a trait that gates viability is a trait
+         * players cannot choose against.
+         */
+        const val MOVE_SPEED_BASE = 1.20
+        const val MOVE_SPEED_PER_SPEED = 0.11
 
         // lifespan = 48 + 3.0 * Health   (years)
         const val LIFESPAN_YEARS_BASE = 48.0
