@@ -486,18 +486,16 @@ object GameConfig {
         /**
          * Below this many days of food stock, job assignment is forced toward food.
          *
-         * M7 raised it from 10 and the crisis share from 0.85. A people who are *nearly* able to
-         * feed themselves — Farming 4, where the sweep found the viability line — died before the
-         * override ever engaged, because ten days of stock is already a death spiral: the town is
-         * rationing, workers are weak, and the reassignment itself costs skill. Reacting at 30 days
-         * is reacting while there is still something to react with.
+         * M7 tried raising this to 30 days, reasoning that ten days of stock is already a death
+         * spiral and a nearly-viable people should react while it still can. Measured, it was much
+         * worse: 30 days of stock is a *normal* amount, so the override became the permanent state,
+         * 95% of every workforce stood in the fields forever, and with no gatherers or builders the
+         * towns never housed anyone and never grew. Health-8 went from 6.2 years to 0.8.
          *
-         * This lever is precise about who it helps. A town one notch short of self-sufficiency is
-         * saved by putting everyone in the fields; a Farming-1 town cannot be, because its yield is
-         * too low for any share of the workforce to close the gap. So it lifts the builds that
-         * should be playable without softening the collapse that M3's gate depends on.
+         * The threshold has to stay well below what a working town holds, or emergency mode is just
+         * mode. Left at the design's 10.
          */
-        const val FOOD_CRISIS_DAYS_OF_STOCK = 30
+        const val FOOD_CRISIS_DAYS_OF_STOCK = 10
 
         /** Jobs are reassigned once per week. */
         const val JOB_REASSIGN_INTERVAL_DAYS = 7
@@ -575,7 +573,7 @@ object GameConfig {
         const val BUILDER_SHARE_OF_INFRASTRUCTURE = 0.35
 
         /** In a food crisis, this share of the workforce is pushed onto food production. */
-        const val CRISIS_FOOD_WORKER_SHARE = 0.95
+        const val CRISIS_FOOD_WORKER_SHARE = 0.85
 
         const val GATHERER_OUTPUT = 0.35
         const val BUILDER_OUTPUT = 1.0
