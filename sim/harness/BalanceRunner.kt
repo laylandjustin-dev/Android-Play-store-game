@@ -71,7 +71,18 @@ object BalanceRunner {
         "scholar-ish" to TraitAllocation.of(7, 5, 3, 3, 5),
         "weathered" to TraitAllocation.of(3, 4, 3, 8, 5),
         "bad" to TraitAllocation.of(8, 3, 3, 3, 1),
+        // One build per trait, each with 8 in that trait and the spare two points spread, so the
+        // brief's "no single trait at 8 should be dominant on its own" can be tested as written
+        // rather than inferred from builds that happen to have an 8 in them.
+        "pure-speed" to TraitAllocation.of(8, 4, 3, 3, 4),
+        "pure-health" to TraitAllocation.of(3, 8, 3, 4, 4),
+        "pure-hunting" to TraitAllocation.of(3, 4, 8, 3, 4),
+        "pure-elements" to TraitAllocation.of(3, 4, 3, 8, 4),
+        "pure-farming" to TraitAllocation.of(3, 4, 3, 4, 8),
     )
+
+    /** The five one-trait builds above, in trait order. */
+    private val PURE = listOf("pure-speed", "pure-health", "pure-hunting", "pure-elements", "pure-farming")
 
     /** One simulation's result — one row of the CSV. */
     data class Run(
@@ -202,16 +213,17 @@ object BalanceRunner {
             val capShare = reasoned.count { it.reachedCap } / reasoned.size.toDouble()
             val ascensions = results.count { it.endState == EndState.ASCENSION } / results.size.toDouble()
 
-            // The first sweep's version of this compared one hand-picked set against another, and
-            // "hardy" sat in both — so a build that died in year three dragged down the very mean it
-            // was being compared against. Split by the only thing the target actually names: does
-            // the allocation put 8 into a trait?
             val means = results.groupBy { it.allocationName }
                 .mapValues { (_, runs) -> runs.map { it.years }.average() }
-            val maxedOut = means.filterKeys { name -> spec(name).values.any { it >= GameConfig.Traits.MAX_PER_TRAIT } }
-            val spread = means.filterKeys { name -> name !in maxedOut && name != "bad" }
-            val bestMaxed = maxedOut.maxByOrNull { it.value }
-            val bestSpread = spread.maxByOrNull { it.value }
+
+            // "No single trait at 8 should be dominant on its own" is a statement about the five
+            // one-trait builds, so it is measured over exactly those. Earlier versions of this
+            // check compared hand-picked sets and asked the weaker question of whether a specialist
+            // may beat a generalist — which it should. The question here is whether any one trait
+            // is an answer by itself, and its mirror: whether any one trait is a trap.
+            val pure = PURE.mapNotNull { name -> means[name]?.let { name to it } }
+            val bestPure = pure.maxByOrNull { it.second }
+            val worstPure = pure.minByOrNull { it.second }
             // "On a first play" - so this is the naive allocation, not the whole sweep.
             val meanMinutes = naive.filter { it.years > 0 }.map { it.watchMinutes }.average()
 
@@ -228,11 +240,13 @@ object BalanceRunner {
                     "${pct(capShare)} of ${reasoned.size} reasoned runs reached the cap",
                 ),
                 Target(
-                    "no single trait at 8 is dominant on its own",
-                    bestMaxed == null || bestSpread == null ||
-                        bestMaxed.value <= bestSpread.value * MAXED_TOLERANCE,
-                    "best with an 8: ${bestMaxed?.key} ${fmt(bestMaxed?.value ?: 0.0)}y; " +
-                        "best without: ${bestSpread?.key} ${fmt(bestSpread?.value ?: 0.0)}y",
+                    "no single trait at 8 is dominant on its own, and none is a trap",
+                    bestPure != null && worstPure != null &&
+                        bestPure.second <= worstPure.second * PURE_SPREAD_TOLERANCE,
+                    "strongest ${bestPure?.first} ${fmt(bestPure?.second ?: 0.0)}y, " +
+                        "weakest ${worstPure?.first} ${fmt(worstPure?.second ?: 0.0)}y  " +
+                        pure.sortedByDescending { it.second }
+                            .joinToString(" ") { "${it.first.removePrefix("pure-")}:${fmt(it.second)}" },
                 ),
                 Target(
                     "Ascension is rare without Chronicle upgrades",
@@ -254,11 +268,12 @@ object BalanceRunner {
          */
         private val REASONED = ALLOCATIONS.map { it.first }.toSet() - setOf("naive-even", "bad")
 
-        /** How much better a maxed-out build may be before it counts as dominant. */
-        private const val MAXED_TOLERANCE = 1.15
-
-        private fun spec(name: String): TraitAllocation =
-            ALLOCATIONS.first { it.first == name }.second
+        /**
+         * How far apart the five one-trait builds may be. A factor of three is generous — it allows
+         * a clear best and worst trait — but it does rule out a trait that is either an auto-win or
+         * a death sentence, which is what the target is for.
+         */
+        private const val PURE_SPREAD_TOLERANCE = 3.0
     }
 
     private fun report(results: List<Run>, elapsedSeconds: Double): String = buildString {
