@@ -257,7 +257,7 @@ object GameConfig {
          * scales with the number of farmers — it squeezes a large, successful colony and barely
          * touches a struggling one, which is exactly the shape the brief's targets ask for.
          */
-        const val FERTILITY_DRAIN_PER_FARM_DAY = 0.0075
+        const val FERTILITY_DRAIN_PER_FARM_DAY = 0.0085
 
         /**
          * The same two tables as flat arrays indexed by [TerrainType.ordinal].
@@ -409,8 +409,17 @@ object GameConfig {
     // ---------------------------------------------------------------- economy
 
     object Economy {
-        /** Food a civ is founded with, per settler. At 1 food/adult/day this is the grace period. */
-        const val STARTING_FOOD_PER_SETTLER = 20.0
+        /**
+         * Food a civ is founded with, per settler. At 1 food/adult/day this is the grace period.
+         *
+         * M7 raised it from 20. A build that cannot quite feed itself used to die in year zero —
+         * fifty settlers, one bad harvest, gone before the player had seen anything happen. The
+         * allocation screen then reads as a pass/fail quiz with an invisible answer. At 34 days a
+         * marginal colony instead limps through its first year and declines where the player can
+         * watch it, which is the difference between a lesson and a shrug. It changes nothing for a
+         * build that feeds itself: a working colony never touches the bottom of this store.
+         */
+        const val STARTING_FOOD_PER_SETTLER = 34.0
 
         const val FOOD_PER_ADULT_PER_DAY = 1.0
 
@@ -518,8 +527,14 @@ object GameConfig {
          * that most runs don't reach": at face value a town of 150 reached tier 6 in about twelve
          * years. The tier costs are kept exactly as specified and the output is scaled instead,
          * since the cost curve is the thing the whole incremental spine is shaped around.
+         *
+         * M7 lowered it from 0.10. Ascension ends a run the moment tier 6 meets 400 people, and at
+         * 0.10 any run that got comfortable hit both — 31% of sweep runs ascended against a target
+         * of "rare", and §13's "tier 6 and Ascension should take 20+ runs". Scaling knowledge is
+         * the same lever AD-30 chose for the same reason: the cost curve is the design, so the
+         * other side of the equation moves.
          */
-        const val KNOWLEDGE_OUTPUT_SCALE = 0.10
+        const val KNOWLEDGE_OUTPUT_SCALE = 0.06
         const val ARTISAN_OUTPUT = 0.30
 
         /** Healer care capacity, in citizens fully covered per healer. */
