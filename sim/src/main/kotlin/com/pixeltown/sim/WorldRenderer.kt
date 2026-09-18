@@ -34,23 +34,74 @@ object WorldRenderer {
 
     /**
      * Tints a cell by its owning civ, used to show claimed territory faintly under the citizens.
-     * [strength] 0 leaves the terrain alone, 1 replaces it with the civ colour.
+     * [strength] 0 leaves the terrain alone, 1 replaces it with the civ colour. The player's own
+     * ground is tinted harder, so the shape of what is *yours* is readable at a glance.
      */
-    fun tintOwnership(world: World, out: IntArray, strength: Float) {
+    fun tintOwnership(world: World, out: IntArray, strength: Float, playerCivId: Int = -1) {
         if (strength <= 0f) return
+        val playerStrength = (strength * GameConfig.Render.PLAYER_TERRITORY_TINT_SCALE).coerceAtMost(1f)
         for (i in 0 until world.cellCount) {
             val civ = world.ownerCivId[i].toInt()
             if (civ < 0) continue
-            out[i] = blend(out[i], Palette.civColor(civ), strength)
+            val amount = if (civ == playerCivId) playerStrength else strength
+            out[i] = blend(out[i], Palette.civColor(civ), amount)
         }
     }
 
-    /** Draws one citizen pixel: the civ colour, dimmed by survival score. */
-    fun drawCitizen(out: IntArray, index: Int, civId: Int, survival: Float) {
+    /**
+     * Draws one citizen pixel: the civ colour, dimmed by survival score.
+     *
+     * [isPlayer] holds the player's own people to a higher brightness floor, and [focus] pushes
+     * everyone else further back still.
+     */
+    fun drawCitizen(
+        out: IntArray,
+        index: Int,
+        civId: Int,
+        survival: Float,
+        isPlayer: Boolean = false,
+        focus: Boolean = false,
+    ) {
+        val render = GameConfig.Render
         val t = (survival / GameConfig.Survival.MAX).toFloat().coerceIn(0f, 1f)
-        val brightness = GameConfig.Render.CITIZEN_MIN_BRIGHTNESS +
-            (GameConfig.Render.CITIZEN_MAX_BRIGHTNESS - GameConfig.Render.CITIZEN_MIN_BRIGHTNESS) * t
+        val floor = if (isPlayer) render.PLAYER_MIN_BRIGHTNESS else render.CITIZEN_MIN_BRIGHTNESS
+        var brightness = floor + (render.CITIZEN_MAX_BRIGHTNESS - floor) * t
+        if (!isPlayer) {
+            brightness *= if (focus) render.FOCUS_RIVAL_BRIGHTNESS_SCALE else render.RIVAL_BRIGHTNESS_SCALE
+        }
         out[index] = Palette.scaleBrightness(Palette.civColor(civId), brightness)
+    }
+
+    /**
+     * A ring around a civ's founding site, drawn under the citizens.
+     *
+     * Fifty gold pixels on a 128x128 island are easy to lose, especially once a town has spread
+     * out or been pushed back. The ring says "this is where you are" without covering anybody up.
+     */
+    fun drawHomeMarker(
+        world: World,
+        out: IntArray,
+        cell: Int,
+        civId: Int,
+        radius: Int = GameConfig.Render.HOME_MARKER_RADIUS,
+    ) {
+        val cx = cell % world.width
+        val cy = cell / world.width
+        val colour = Palette.scaleBrightness(Palette.civColor(civId), 0.85f)
+
+        // A broken ring — four arcs with gaps at the diagonals — so it reads as a marker rather
+        // than as a wall someone built.
+        for (offset in -radius..radius) {
+            if (offset == -radius || offset == radius) continue
+            plot(world, out, cx + offset, cy - radius, colour)
+            plot(world, out, cx + offset, cy + radius, colour)
+            plot(world, out, cx - radius, cy + offset, colour)
+            plot(world, out, cx + radius, cy + offset, colour)
+        }
+    }
+
+    private fun plot(world: World, out: IntArray, x: Int, y: Int, colour: Int) {
+        if (world.inBounds(x, y)) out[world.index(x, y)] = colour
     }
 
     /** Draws a building as a solid block of its category colour, clipped to the world. */
@@ -103,7 +154,16 @@ class FrameRenderer(private val world: World) {
      * Draws the current state of [simulation] into [out], which must hold one pixel per world
      * cell. [ownershipTint] fades claimed territory toward its civ colour under the citizens.
      */
-    fun render(simulation: Simulation, out: IntArray, ownershipTint: Float = 0.12f) {
+    /**
+     * [focusPlayer] pushes every other civilisation into the background — the quickest way to find
+     * your own people on a small screen.
+     */
+    fun render(
+        simulation: Simulation,
+        out: IntArray,
+        ownershipTint: Float = 0.12f,
+        focusPlayer: Boolean = false,
+    ) {
         require(out.size >= world.cellCount) {
             "pixel buffer holds ${out.size} pixels, world needs ${world.cellCount}"
         }
@@ -112,10 +172,20 @@ class FrameRenderer(private val world: World) {
             terrainPainted = true
         }
         terrainCache.copyInto(out, 0, 0, world.cellCount)
-        WorldRenderer.tintOwnership(world, out, ownershipTint)
+
+        val playerCivId = GameConfig.World.PLAYER_CIV_ID
+        WorldRenderer.tintOwnership(world, out, ownershipTint, playerCivId)
+
+        simulation.civs.firstOrNull { it.isPlayer }?.let {
+            WorldRenderer.drawHomeMarker(world, out, it.homeSite, it.id)
+        }
 
         for (citizen in simulation.citizens) {
-            WorldRenderer.drawCitizen(out, world.index(citizen.x, citizen.y), citizen.civId, citizen.survival)
+            WorldRenderer.drawCitizen(
+                out, world.index(citizen.x, citizen.y), citizen.civId, citizen.survival,
+                isPlayer = citizen.civId == playerCivId,
+                focus = focusPlayer,
+            )
         }
     }
 }

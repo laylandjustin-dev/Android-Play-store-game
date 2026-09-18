@@ -115,7 +115,8 @@
       Spend <b>10 points</b> across five inherited traits. They are genetic to your people and
       apply for the whole run. Then fifty settlers drop onto a procedurally generated island and
       start living — working, eating, pairing, ageing and dying — alongside four rival
-      civilisations running the same simulation.
+      civilisations running the same simulation. These ten points are yours alone: each rival
+      picks its own traits to suit its character, so you never face four copies of your build.
     </p>
     <div class="alloc" style="margin-top:14px">
       <div class="budget">
@@ -150,6 +151,7 @@
       <button class="sp" data-speed="10" aria-pressed="false">10x</button>
       <button class="sp" data-speed="100" aria-pressed="false">100x</button>
       <button id="recentre">Recentre</button>
+      <button id="focus" aria-pressed="false">Highlight my people</button>
     </div>
 
     <div class="stats" id="stats" style="margin-top:12px"></div>
@@ -292,6 +294,17 @@
   }
   document.querySelectorAll('.sp').forEach(b => b.addEventListener('click', () => setSpeed(Number(b.dataset.speed))));
   document.getElementById('recentre').addEventListener('click', () => { zoom = 1; panX = 0; panY = 0; paint(); });
+
+  // Highlight mode dims the four rivals so the player's own civ reads at a glance. The renderer
+  // does the work (GameConfig.Render); this only flips the flag and repaints.
+  const focusBtn = document.getElementById('focus');
+  focusBtn.addEventListener('click', () => {
+    if (!game) return;
+    game.focusPlayer = !game.focusPlayer;
+    focusBtn.setAttribute('aria-pressed', String(game.focusPlayer));
+    focusBtn.textContent = game.focusPlayer ? 'Show everyone' : 'Highlight my people';
+    paint();
+  });
 
   function paint() {
     if (!game) return;

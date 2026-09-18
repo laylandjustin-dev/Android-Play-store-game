@@ -1707,6 +1707,13 @@ class Simulation(
                 }
             }
 
+            // Rivals pick their own personalities first, then allocate their own points to suit
+            // them (see RivalStrategist). The player's allocation is the player's alone.
+            val rivalPersonalities = (1 until config.civCount).map {
+                Personality.entries[rng.nextInt(Personality.entries.size)]
+            }
+            val rivalTraits = RivalStrategist.allocateAll(rivalPersonalities, rng)
+
             val civs = ArrayList<Civilization>(config.civCount)
             for (id in 0 until config.civCount) {
                 val isPlayer = id == WorldConfig.PLAYER_CIV_ID
@@ -1714,10 +1721,8 @@ class Simulation(
                     Civilization(
                         id = id,
                         name = CIV_NAMES[id],
-                        traits = if (isPlayer) config.traits else TraitAllocation.random(rng),
-                        personality = if (isPlayer) Personality.ISOLATIONIST else {
-                            Personality.entries[rng.nextInt(Personality.entries.size)]
-                        },
+                        traits = if (isPlayer) config.traits else rivalTraits[id - 1],
+                        personality = if (isPlayer) Personality.ISOLATIONIST else rivalPersonalities[id - 1],
                         homeSite = generated.civStartSites[id],
                     ),
                 )

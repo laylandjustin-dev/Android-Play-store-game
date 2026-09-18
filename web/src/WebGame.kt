@@ -65,9 +65,15 @@ class WebGame(
         return ran
     }
 
+    /**
+     * Highlight mode: dims the rival civilisations so the player's own people, territory and home
+     * are unmistakable. Set from the interface; the default view keeps every civ fully visible.
+     */
+    var focusPlayer: Boolean = false
+
     /** The current frame as ARGB pixels, one per world cell. */
     fun pixels(): IntArray {
-        renderer.render(simulation, buffer, ownershipTint = 0.18f)
+        renderer.render(simulation, buffer, ownershipTint = 0.18f, focusPlayer = focusPlayer)
         return buffer
     }
 

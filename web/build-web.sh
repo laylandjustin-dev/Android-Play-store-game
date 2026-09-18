@@ -20,7 +20,17 @@ mkdir -p "$LIBS" "$JS"
 
 fetch() { # coordinate -> klib
   local path="$1" file="$LIBS/$(basename "$1")"
-  [ -f "$file" ] || curl -sSf --max-time 120 -o "$file" "https://repo1.maven.org/maven2/$path"
+  # Maven Central answers 429 under load, and -f leaves a zero-byte file behind that the resolver
+  # then reports as "could not find". Retry with backoff and never keep a failed download.
+  if [ ! -s "$file" ]; then
+    rm -f "$file"
+    local delay=2 attempt=1
+    until curl -sSf --max-time 120 -o "$file" "https://repo1.maven.org/maven2/$path"; do
+      rm -f "$file"
+      [ "$attempt" -lt 4 ] || { echo "failed to fetch $path" >&2; return 1; }
+      sleep "$delay"; delay=$((delay * 2)); attempt=$((attempt + 1))
+    done
+  fi
   echo "$file"
 }
 

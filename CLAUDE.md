@@ -163,6 +163,39 @@ made the loop untestable: this environment's headless Chrome delivers exactly on
 so the world sat at year zero. Ticks now run from `setInterval` under a 12ms budget checked
 *after* each tick (checking before meant a frame could run none at all), and rAF only repaints.
 
+**AD-47 — Rival civilisations allocate their own traits: archetype priors, a viability floor, and
+diversity rejection.** The allocation screen belongs to the player alone, so the four AI civs need a
+method of their own. Three alternatives were rejected: uniform random (produces incoherent peoples,
+and a third of them Hunting-heavy and therefore dead in two years — AD-26), a fixed table of
+handmade builds (identical rivals every run, which kills replay value), and optimising for survival
+(every rival converges on farming, so the map holds five of the same civ). The method now in
+`RivalStrategist.kt` follows four principles:
+
+- **Coherent.** Each `Personality` carries prior weights over the five traits, and points are drawn
+  against those weights, so a militant people really is built for war and a mercantile one for
+  trade. This is the same idea as AD-33 — personality should be legible in what a civ *does* — one
+  layer earlier, in what its people *are*.
+- **Viable.** Farming is raised to `Rivals.MIN_VIABLE_FARMING` before the priors get a say. Measured,
+  not asserted: rivals still alive at year 150 across five seeds came out 10/20 at a floor of 3,
+  **13/20 at 4**, and 10/20 at 5 — a floor of 5 eats a fifth of the budget and starts hurting.
+- **Diverse.** A per-civ "focus" exponent (0.6–2.6) is rolled on the priors, so some peoples commit
+  hard to one idea and others hedge; duplicate builds within a run are rejected and redrawn. Sixty
+  draws produce at least ten distinct builds.
+- **Honest.** The build matches the personality the Rivals panel shows the player, so reading
+  "militant" is real information about who you are facing.
+
+**AD-48 — The player's civ is rendered to be found, and there is a highlight mode for when it is
+not.** Five civs in five colours on a 128x128 island is legible in a screenshot and not on a phone
+at arm's length. Three changes, all in the renderer so they are tested and shared by every front
+end: the player's citizens never dim below `Render.PLAYER_MIN_BRIGHTNESS` however badly the run is
+going (rivals keep the full survival-brightness range), the player's claimed territory is tinted
+`PLAYER_TERRITORY_TINT_SCALE` harder than anyone else's, and a broken ring of
+`HOME_MARKER_RADIUS` marks the player's founding site without ever painting over the cell itself.
+`FrameRenderer.render(focusPlayer = true)` additionally pushes the rivals down to
+`FOCUS_RIVAL_BRIGHTNESS_SCALE` — the answer to "where am I?" rather than a permanent view mode, so
+it is a toggle in the UI and off by default. Hardship is still visible: a starving player civ is
+dimmer than a fed one, just never invisible.
+
 **AD-16 — Map previews are exported as PNGs from the test source set.** `MapPreviewExporter`
 writes `sim/build/preview/map-seed-*.png` on every test run using `javax.imageio`, which lets the
 renderer be inspected without a device. It is test-only on purpose: `java.awt` does not exist on

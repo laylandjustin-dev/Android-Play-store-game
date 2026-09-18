@@ -104,3 +104,81 @@ class WorldRendererTest {
         assertTrue(millisPerFrame < 4.0, "terrain repaint took ${millisPerFrame}ms, budget is 16ms")
     }
 }
+
+/** The player has to be able to find their own people on a 128x128 map. */
+class PlayerLegibilityTest {
+
+    @Test
+    fun `the player's people are brighter than a rival's in the same condition`() {
+        fun luminance(argb: Int) = (argb ushr 16 and 0xFF) + (argb ushr 8 and 0xFF) + (argb and 0xFF)
+        val pixels = IntArray(4)
+
+        // A struggling colony of the player's still reads clearly; a healthy rival is drawn back.
+        WorldRenderer.drawCitizen(pixels, 0, civId = 0, survival = 25f, isPlayer = true)
+        WorldRenderer.drawCitizen(pixels, 1, civId = 0, survival = 25f, isPlayer = false)
+        assertTrue(luminance(pixels[0]) > luminance(pixels[1]), "the player's pixels were no brighter")
+
+        // Focus pushes everyone else further back again.
+        WorldRenderer.drawCitizen(pixels, 2, civId = 1, survival = 90f, isPlayer = false, focus = false)
+        WorldRenderer.drawCitizen(pixels, 3, civId = 1, survival = 90f, isPlayer = false, focus = true)
+        assertTrue(luminance(pixels[3]) < luminance(pixels[2]), "focus did not dim rivals")
+    }
+
+    @Test
+    fun `a starving town still looks worse than a thriving one`() {
+        // Raising the floor must not flatten the signal: dimming by survival is information.
+        fun luminance(argb: Int) = (argb ushr 16 and 0xFF) + (argb ushr 8 and 0xFF) + (argb and 0xFF)
+        val pixels = IntArray(2)
+        WorldRenderer.drawCitizen(pixels, 0, civId = 0, survival = 95f, isPlayer = true)
+        WorldRenderer.drawCitizen(pixels, 1, civId = 0, survival = 10f, isPlayer = true)
+        assertTrue(luminance(pixels[0]) > luminance(pixels[1]), "hardship stopped showing on the map")
+    }
+
+    @Test
+    fun `the founding site is ringed so it can be found`() {
+        val world = World(48, 48)
+        for (i in 0 until world.cellCount) world.setTerrain(i, TerrainType.PLAIN)
+        val pixels = IntArray(world.cellCount)
+        WorldRenderer.renderTerrain(world, pixels)
+        val before = pixels.copyOf()
+
+        val home = world.index(24, 24)
+        WorldRenderer.drawHomeMarker(world, pixels, home, civId = 0, radius = 4)
+
+        val changed = (0 until world.cellCount).count { pixels[it] != before[it] }
+        assertTrue(changed > 8, "the home marker drew almost nothing ($changed cells)")
+        assertEquals(before[home], pixels[home], "the marker covered the home cell itself")
+    }
+
+    @Test
+    fun `the marker stays inside the map at the edge`() {
+        val world = World(32, 32)
+        val pixels = IntArray(world.cellCount)
+        WorldRenderer.drawHomeMarker(world, pixels, world.index(1, 1), civId = 0, radius = 4)
+        WorldRenderer.drawHomeMarker(world, pixels, world.index(30, 30), civId = 0, radius = 4)
+        // Reaching this line without an exception is the assertion; nothing wrapped around.
+        assertTrue(pixels.any { it != 0 })
+    }
+
+    @Test
+    fun `the player's territory is tinted harder than a rival's`() {
+        val world = World(8, 8)
+        for (i in 0 until world.cellCount) world.setTerrain(i, TerrainType.PLAIN)
+        val pixels = IntArray(world.cellCount)
+        WorldRenderer.renderTerrain(world, pixels)
+        val terrain = pixels[world.index(0, 0)]
+
+        world.ownerCivId[world.index(1, 1)] = 0
+        world.ownerCivId[world.index(2, 2)] = 1
+        WorldRenderer.tintOwnership(world, pixels, strength = 0.15f, playerCivId = 0)
+
+        fun distance(a: Int, b: Int) = kotlin.math.abs((a ushr 16 and 0xFF) - (b ushr 16 and 0xFF)) +
+            kotlin.math.abs((a ushr 8 and 0xFF) - (b ushr 8 and 0xFF)) +
+            kotlin.math.abs((a and 0xFF) - (b and 0xFF))
+
+        assertTrue(
+            distance(pixels[world.index(1, 1)], terrain) > distance(pixels[world.index(2, 2)], terrain),
+            "the player's ground was no more distinct than a rival's",
+        )
+    }
+}

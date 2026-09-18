@@ -721,6 +721,16 @@ object GameConfig {
     // ---------------------------------------------------------------- rivals
 
     object Rivals {
+        /**
+         * The lowest Farming a rival civilisation will found itself with.
+         *
+         * Not a difficulty knob — a viability floor. The balance runs put the line plainly:
+         * Farming 3 dies inside two years whatever else the allocation holds, and Farming 1 never
+         * reaches year one. A rival that starves immediately is an opponent deleted from the game
+         * before the player ever meets it.
+         */
+        const val MIN_VIABLE_FARMING = 4
+
         /** Full per-citizen detail within this radius of player-visible area; aggregated beyond. */
         const val DETAIL_RADIUS_CELLS = 24
 
@@ -917,5 +927,27 @@ object GameConfig {
         /** Citizen brightness is scaled between these by survival score. */
         const val CITIZEN_MIN_BRIGHTNESS = 0.35f
         const val CITIZEN_MAX_BRIGHTNESS = 1.0f
+
+        /**
+         * The player's own people are held to a higher brightness floor than anyone else.
+         *
+         * At one pixel per person, a struggling colony dimmed by its survival score sank into the
+         * terrain and became genuinely hard to find on a phone. A starving town should still read
+         * as starving — so the floor is raised, not removed, and the range above it is narrower:
+         * the player's pixels stay locatable while still visibly dimming under hardship.
+         */
+        const val PLAYER_MIN_BRIGHTNESS = 0.70f
+
+        /** Rival citizens are drawn slightly back, so gold reads first in a crowded frame. */
+        const val RIVAL_BRIGHTNESS_SCALE = 0.86f
+
+        /** With focus on, rivals fall this far back — for picking your own people out at a glance. */
+        const val FOCUS_RIVAL_BRIGHTNESS_SCALE = 0.45f
+
+        /** Radius, in cells, of the ring drawn around the player's founding site. */
+        const val HOME_MARKER_RADIUS = 4
+
+        /** The player's territory is tinted this much harder than a rival's. */
+        const val PLAYER_TERRITORY_TINT_SCALE = 2.0f
     }
 }
