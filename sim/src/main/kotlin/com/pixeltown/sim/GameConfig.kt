@@ -154,9 +154,16 @@ object GameConfig {
          * game. Fast recovery turns the same pressure into rotation instead of migration: a cell
          * worked for six months is restored by three months of rest, which a slow people can do as
          * well as a quick one. Speed should buy reach, not decide whether farming works at all.
+         *
+         * The band is then positioned *around* the drain rate, which is what makes Farming decide
+         * sustainability: at 0.0022 + 0.00065 a Farming-3 people recovers 0.0042 against a drain of
+         * 0.0060 and loses ground, a Farming-5 people 0.0055 and roughly holds, a Farming-8 people
+         * 0.0074 and gains. Lowering the band under a fixed drain is the difficulty dial that does
+         * not create a cliff — it squeezes a town big enough to work most of its land, and a colony
+         * of fifty never notices.
          */
-        const val FERTILITY_RECOVERY_BASE = 0.0030
-        const val FERTILITY_RECOVERY_PER_FARMING = 0.0006
+        const val FERTILITY_RECOVERY_BASE = 0.0022
+        const val FERTILITY_RECOVERY_PER_FARMING = 0.00065
     }
 
     // ---------------------------------------------------------------- world
@@ -476,8 +483,21 @@ object GameConfig {
         const val SPOILAGE_PER_DAY_OVER_CAPACITY = 0.02
         const val BASE_FOOD_STORAGE_CAPACITY = 400.0
 
-        /** Below this many days of food stock, job assignment is forced toward food. */
-        const val FOOD_CRISIS_DAYS_OF_STOCK = 10
+        /**
+         * Below this many days of food stock, job assignment is forced toward food.
+         *
+         * M7 raised it from 10 and the crisis share from 0.85. A people who are *nearly* able to
+         * feed themselves — Farming 4, where the sweep found the viability line — died before the
+         * override ever engaged, because ten days of stock is already a death spiral: the town is
+         * rationing, workers are weak, and the reassignment itself costs skill. Reacting at 30 days
+         * is reacting while there is still something to react with.
+         *
+         * This lever is precise about who it helps. A town one notch short of self-sufficiency is
+         * saved by putting everyone in the fields; a Farming-1 town cannot be, because its yield is
+         * too low for any share of the workforce to close the gap. So it lifts the builds that
+         * should be playable without softening the collapse that M3's gate depends on.
+         */
+        const val FOOD_CRISIS_DAYS_OF_STOCK = 30
 
         /** Jobs are reassigned once per week. */
         const val JOB_REASSIGN_INTERVAL_DAYS = 7
@@ -555,7 +575,7 @@ object GameConfig {
         const val BUILDER_SHARE_OF_INFRASTRUCTURE = 0.35
 
         /** In a food crisis, this share of the workforce is pushed onto food production. */
-        const val CRISIS_FOOD_WORKER_SHARE = 0.85
+        const val CRISIS_FOOD_WORKER_SHARE = 0.95
 
         const val GATHERER_OUTPUT = 0.35
         const val BUILDER_OUTPUT = 1.0
