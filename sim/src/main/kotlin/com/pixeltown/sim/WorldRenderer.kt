@@ -68,6 +68,8 @@ object WorldRenderer {
         isPlayer: Boolean = false,
         focus: Boolean = false,
         colors: CivColors = CivColors.DEFAULT,
+        /** The citizen's id, which gives them their own stable shade of the civ colour. */
+        citizenId: Int = 0,
     ) {
         val render = GameConfig.Render
         val t = (survival / GameConfig.Survival.MAX).toFloat().coerceIn(0f, 1f)
@@ -76,7 +78,21 @@ object WorldRenderer {
         if (!isPlayer) {
             brightness *= if (focus) render.FOCUS_RIVAL_BRIGHTNESS_SCALE else render.RIVAL_BRIGHTNESS_SCALE
         }
-        out[index] = Palette.scaleBrightness(colors[civId], brightness)
+        // A stable per-citizen hue offset: the same person is the same shade every frame, and a
+        // crowd is visibly a crowd. A plain multiply left a visible period in the pattern, so the
+        // id is run through an integer hash first — neighbouring ids, which are siblings born in
+        // the same week, then land on unrelated shades.
+        val spread = GameConfig.Render.CITIZEN_HUE_SPREAD_DEGREES
+        val shade = (hash(citizenId) and 0xFF) / 255f * 2f - 1f
+        out[index] = Palette.scaleBrightness(Palette.shiftHue(colors[civId], shade * spread), brightness)
+    }
+
+    /** A cheap integer avalanche hash, so consecutive citizen ids give unrelated shades. */
+    private fun hash(value: Int): Int {
+        var h = value * -2048144789 // 0x85EBCA6B as a signed Int
+        h = h xor (h ushr 13)
+        h *= -1028477387 // 0xC2B2AE35
+        return h xor (h ushr 16)
     }
 
     /**
@@ -92,19 +108,17 @@ object WorldRenderer {
         civId: Int,
         radius: Int = GameConfig.Render.HOME_MARKER_RADIUS,
         colors: CivColors = CivColors.DEFAULT,
+        /** The glyph, which says what kind of people live here. See [Archetype]. */
+        shape: MarkerShape = MarkerShape.RING,
     ) {
         val cx = cell % world.width
         val cy = cell / world.width
         val colour = Palette.scaleBrightness(colors[civId], 0.85f)
 
-        // A broken ring — four arcs with gaps at the diagonals — so it reads as a marker rather
-        // than as a wall someone built.
-        for (offset in -radius..radius) {
-            if (offset == -radius || offset == radius) continue
-            plot(world, out, cx + offset, cy - radius, colour)
-            plot(world, out, cx + offset, cy + radius, colour)
-            plot(world, out, cx - radius, cy + offset, colour)
-            plot(world, out, cx + radius, cy + offset, colour)
+        // The shape owns its geometry and this owns the clipping, so a new glyph cannot introduce
+        // an out-of-bounds write. No offset is ever the centre, so the home cell stays visible.
+        for ((dx, dy) in shape.offsets(radius)) {
+            plot(world, out, cx + dx, cy + dy, colour)
         }
     }
 
@@ -185,8 +199,16 @@ class FrameRenderer(private val world: World) {
         val colors = simulation.colors
         WorldRenderer.tintOwnership(world, out, ownershipTint, playerCivId, colors)
 
-        simulation.civs.firstOrNull { it.isPlayer }?.let {
-            WorldRenderer.drawHomeMarker(world, out, it.homeSite, it.id, colors = colors)
+        // Every civ is marked with the glyph of its archetype, so what kind of people live in a
+        // town is legible from the map rather than only from a panel. The player's is drawn last so
+        // a neighbour's marker can never overlap theirs.
+        for (civ in simulation.civs.sortedBy { it.isPlayer }) {
+            if (civ.population == 0) continue
+            WorldRenderer.drawHomeMarker(
+                world, out, civ.homeSite, civ.id,
+                colors = colors,
+                shape = Archetype.of(civ.traits).shape,
+            )
         }
 
         for (citizen in simulation.citizens) {
@@ -195,6 +217,7 @@ class FrameRenderer(private val world: World) {
                 isPlayer = citizen.civId == playerCivId,
                 focus = focusPlayer,
                 colors = colors,
+                citizenId = citizen.id,
             )
         }
     }

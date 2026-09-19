@@ -42,6 +42,12 @@ class Civilization(
     /** The day the oldest unspent point was earned, for the player's auto-spend grace period. */
     var oldestUnspentPointDay: Long = 0L
 
+    /** Days left in the current epidemic, 0 when the town is well. */
+    var epidemicDaysLeft: Int = 0
+
+    /** Epidemics this civ has lived through, for the Ledger and the return report. */
+    var epidemicCount: Int = 0
+
     /** Influence points the player spends on the council. Accrues for rivals too, unused for now. */
     var influencePoints: Double = 0.0
 

@@ -146,6 +146,38 @@ class Simulation(
      */
     val colors: CivColors get() = config.colors
 
+    /**
+     * True while the run is being advanced with nobody watching — offline catch-up, or a headless
+     * harness sweep. Decisions the game would otherwise hold open for the player are taken for
+     * them while this is set, and only while it is set.
+     */
+    var unattended: Boolean = false
+        private set
+
+    /**
+     * Runs [days] with nobody watching: the decisions live play holds open for the player are taken
+     * on their behalf for the duration. Offline catch-up and the headless harness use this; live
+     * play never does, which is what keeps the decade's trait point the player's to make.
+     */
+    fun runUnattended(days: Int) {
+        unattended = true
+        try {
+            run(days)
+        } finally {
+            unattended = false
+        }
+    }
+
+    /** As [runUntilEnd], with nobody watching. */
+    fun runUnattendedUntilEnd(maxDays: Int): Int {
+        unattended = true
+        return try {
+            runUntilEnd(maxDays)
+        } finally {
+            unattended = false
+        }
+    }
+
     /** The player's meta progression. Saved alongside the run. */
     var legacy: Legacy = Legacy()
         internal set
@@ -189,6 +221,10 @@ class Simulation(
                 ),
                 traits = civ.traits,
             )
+            // Founders were farmers and hunters somewhere before they emigrated. See
+            // WorldConfig.SETTLER_STARTING_SKILL for why starting them at zero was the founding
+            // cliff rather than a detail.
+            citizen.skill = WorldConfig.SETTLER_STARTING_SKILL
             placed.add(citizen)
         }
 
@@ -375,6 +411,12 @@ class Simulation(
      * and a run can be reloaded at any point in it.
      */
     private fun autoSpendStaleGrowth() {
+        // Only while nobody is watching. AD-50 introduced this so a player who is away does not
+        // fall behind four rivals who spend on the spot, and then applied it during live play too —
+        // where it is exactly wrong. At 10x a game year is 36 seconds and at 100x under four, so
+        // the decision the mechanic exists for was taken away from the player before they could
+        // reach it. Reported as "the new stat every 10 doesn't work", and it didn't.
+        if (!unattended) return
         for (civ in civs) {
             if (!civ.isPlayer || civ.unspentTraitPoints <= 0) continue
             if (day - civ.oldestUnspentPointDay < TraitConfig.GENERATION_AUTOSPEND_GRACE_DAYS) continue
@@ -1308,14 +1350,68 @@ class Simulation(
     }
 
     private fun applyDisease() {
+        maybeStartEpidemics()
+
         for (citizen in living) {
             val traits = traitsOf(citizen)
-            val resist = traits.diseaseResist + effects[citizen.civId].diseaseResistBonus
-            val chance = Life.DISEASE_EVENT_BASE_CHANCE * (1.0 - resist).coerceAtLeast(0.0)
-            if (rng.chance(chance)) {
+            val resist = (traits.diseaseResist + effects[citizen.civId].diseaseResistBonus)
+                .coerceIn(0.0, 0.95)
+
+            // The background rate: a citizen falls ill now and then and usually recovers.
+            if (rng.chance(Life.DISEASE_EVENT_BASE_CHANCE * (1.0 - resist))) {
                 citizen.hp = max(0f, citizen.hp - Life.DISEASE_HP_DAMAGE.toFloat())
             }
+
+            // An epidemic is a different thing: a large share of the town falls ill at once, and
+            // whether they come through it is what a Health trait decides.
+            if (civ(citizen.civId).epidemicDaysLeft > 0) {
+                val care = careAccessOf(citizen.civId) * Life.EPIDEMIC_CARE_MITIGATION
+                val chance = Life.EPIDEMIC_DAILY_INFECTION_CHANCE *
+                    (1.0 - resist - care).coerceAtLeast(0.0)
+                if (rng.chance(chance)) {
+                    citizen.hp = max(0f, citizen.hp - Life.EPIDEMIC_HP_DAMAGE.toFloat())
+                }
+            }
         }
+    }
+
+    /**
+     * Crowd disease, which is density-dependent: the more people live together, the more often an
+     * outbreak arrives. That makes it the one pressure in the game that scales with success.
+     */
+    private fun maybeStartEpidemics() {
+        for (civ in civs) {
+            if (civ.epidemicDaysLeft > 0) {
+                civ.epidemicDaysLeft--
+                continue
+            }
+            if (civ.population < Life.EPIDEMIC_MIN_POPULATION) continue
+            val crowding = civ.population / Life.EPIDEMIC_POPULATION_REFERENCE
+            if (!rng.chance(Life.EPIDEMIC_DAILY_CHANCE_AT_REFERENCE * crowding)) continue
+
+            civ.epidemicDaysLeft = Life.EPIDEMIC_DAYS
+            civ.epidemicCount++
+            chronicle.record(
+                ChronicleEvent(
+                    day, ChronicleEventKind.DISASTER, civ.id,
+                    detail = "a sickness spreads through ${civ.name}",
+                    value = civ.population,
+                ),
+            )
+        }
+    }
+
+    /**
+     * Winter kills the unsheltered. Elements is what a people has instead of a roof, and a roof is
+     * what they have instead of Elements — either answers the same threat, which is what ties the
+     * trait to the building layer rather than leaving it a private stat.
+     */
+    private fun exposureDeathChance(citizen: Citizen, traits: TraitAllocation): Double {
+        val severity = normalisedSeasonSeverity()
+        if (severity <= 0.0) return 0.0
+        val shelter = traits.elementsShelter.coerceIn(0.0, 0.95)
+        val roof = if (citizen.homeBuildingId != null) Life.EXPOSURE_HOUSED_MULTIPLIER else 1.0
+        return Life.EXPOSURE_DAILY_DEATH_CHANCE * severity * (1.0 - shelter) * roof
     }
 
     private fun resolveDeaths() {
@@ -1340,6 +1436,7 @@ class Simulation(
             return DeathCause.STARVATION
         }
         if (citizen.hp <= 0f) return DeathCause.ILLNESS
+        if (rng.chance(exposureDeathChance(citizen, traits))) return DeathCause.EXPOSURE
         if (citizen.ageDays >= traits.lifespanDays * Life.MAX_AGE_LIFESPAN_MULTIPLE) return DeathCause.OLD_AGE
 
         val shortfall = 1.0 - citizen.survival / SurvivalConfig.MAX
@@ -1689,6 +1786,8 @@ class Simulation(
                 unspentTraitPoints = civ.unspentTraitPoints,
                 generationsAwarded = civ.generationsAwarded,
                 oldestUnspentPointDay = civ.oldestUnspentPointDay,
+                epidemicDaysLeft = civ.epidemicDaysLeft,
+                epidemicCount = civ.epidemicCount,
                 influencePoints = civ.influencePoints,
                 unpaidUpkeepDays = civ.unpaidUpkeepDays,
                 vetoesUsedThisYear = civ.vetoesUsedThisYear,
@@ -1909,6 +2008,8 @@ class Simulation(
                     civ.unspentTraitPoints = c.unspentTraitPoints
                     civ.generationsAwarded = c.generationsAwarded
                     civ.oldestUnspentPointDay = c.oldestUnspentPointDay
+                    civ.epidemicDaysLeft = c.epidemicDaysLeft
+                    civ.epidemicCount = c.epidemicCount
                     civ.influencePoints = c.influencePoints
                     civ.unpaidUpkeepDays = c.unpaidUpkeepDays
                     civ.vetoesUsedThisYear = c.vetoesUsedThisYear

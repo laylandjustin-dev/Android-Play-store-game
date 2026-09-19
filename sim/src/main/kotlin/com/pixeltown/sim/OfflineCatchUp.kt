@@ -89,7 +89,9 @@ object OfflineCatchUp {
         val techBefore = player.techTier
         val electionsBefore = simulation.elections.size
 
-        simulation.run(ticks.toInt())
+        // Nobody is watching a catch-up, so the decisions the game holds open during live play —
+        // the decade's trait point above all — are taken on the player's behalf for its duration.
+        simulation.runUnattended(ticks.toInt())
 
         val events = simulation.chronicle.since(startDay)
         val deathEvents = events.filter { it.kind == ChronicleEventKind.DEATH && it.civId == player.id }

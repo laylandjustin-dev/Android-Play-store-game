@@ -254,16 +254,12 @@
 
   function spent() { return TRAITS.reduce((n, [k]) => n + alloc[k] - BASE, 0); }
 
+  // The simulation decides what a build is called, so the name here is the same one the HUD
+  // shows and the same one the marker on the map stands for. A second opinion in JavaScript
+  // would be a second implementation, which is the thing this project does not do.
   function archetypeOf() {
-    const { hunting, speed, farming, health, elements } = alloc;
-    if (hunting >= 6 && speed >= 5) return ['Raiders', 'fast, dangerous, and hungry'];
-    if (farming >= 6 && health >= 5) return ['Settlers', 'slow to start, hard to kill'];
-    if (farming >= 6 && elements >= 5) return ['Husbandmen', 'steady through every winter'];
-    if (elements >= 6) return ['Weatherborn', 'the seasons barely touch them'];
-    if (health >= 6) return ['Long-lived', 'they bury fewer of their own'];
-    if (hunting >= 6) return ['Hunters', 'they live off the wild'];
-    if (farming >= 6) return ['Ploughmen', 'boom and bust with the harvest'];
-    return ['Generalists', 'good at everything, best at nothing'];
+    const a = JSON.parse(api.describeBuild(alloc.speed, alloc.health, alloc.hunting, alloc.elements, alloc.farming));
+    return [a.label, a.blurb];
   }
 
   function renderAlloc() {
@@ -455,34 +451,48 @@
     renderGame();
   }
 
+  // Panels are rebuilt from innerHTML, and renderGame runs on every animation frame the sim is
+  // dirty on — which is all of them. That destroyed and recreated every button several times a
+  // second, so a tap landed on an element that no longer existed and the whole panel visibly
+  // flickered. Writing only when the markup has actually changed makes the buttons stable DOM:
+  // the council and the growth panel then sit still between the events that change them.
+  const lastHTML = new Map();
+  function setHTML(id, html) {
+    if (lastHTML.get(id) === html) return;
+    lastHTML.set(id, html);
+    document.getElementById(id).innerHTML = html;
+  }
+
   function renderGame() {
     const s = state;
-    document.getElementById('hud-date').textContent = `${s.colony} · Year ${s.year} · ${s.season}`;
-    document.getElementById('hud-pop').textContent = `${s.pop} people`;
+    document.getElementById('hud-date').textContent =
+      `${s.colony} · ${s.archetype} · Year ${s.year} · ${s.season}`;
+    document.getElementById('hud-pop').textContent =
+      s.epidemic ? `${s.pop} people · sickness` : `${s.pop} people`;
     document.getElementById('rate').textContent =
       speed === 0 ? 'paused' : `${speed}x · ${shownRate} ticks/s`;
 
-    document.getElementById('stats').innerHTML = [
+    setHTML('stats', [
       ['People', s.pop], ['Food', s.food], ['Wood', s.wood], ['Stone', s.stone],
       ['Tech', s.tier + '/6'], ['Buildings', s.buildings], ['Unrest', s.unrest], ['Influence', s.influence]
-    ].map(([k, v]) => `<div class="stat"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
+    ].map(([k, v]) => `<div class="stat"><span class="k">${k}</span><span class="v">${v}</span></div>`).join(''));
 
     // A generation comes of age: the decade's trait point, and where it goes.
     const growthPanel = document.getElementById('growth-panel');
     growthPanel.hidden = !s.growthPoints;
     if (s.growthPoints) {
       const plural = s.growthPoints === 1 ? '' : 's';
-      document.getElementById('growth').innerHTML =
-        `<p class="sub" style="margin:0">Your people have ${s.growthPoints} trait point${plural} to
-         spend. Choose, or the town will shore up its weakest side within the year.</p>
+      setHTML('growth',
+        `<p class="sub" style="margin:0">A generation has come of age: ${s.growthPoints} trait
+         point${plural} to spend, and they will wait as long as you like. While you are away the
+         town shores up its own weakest side instead.</p>
          <div class="levers">` +
         Object.entries(s.traits).map(([k, v]) => `
           <button data-grow="${k}" ${v >= 8 ? 'disabled' : ''}>${k} ${v} &rarr; ${v + 1}</button>`).join('') +
-        '</div>';
+        '</div>');
     }
 
     // Council
-    const c = document.getElementById('council');
     let html = '';
     if (s.premier) {
       html += `<div class="premier"><div class="nm">${s.premier.name}</div>
@@ -504,27 +514,27 @@
       <button data-petition="MILITARY">Petition: military (35)</button>
       <button data-veto="1">Veto next build (45)</button>
     </div>`;
-    c.innerHTML = html;
+    setHTML('council', html);
 
     // Chronicle
     const feed = document.getElementById('feed');
-    feed.innerHTML = events.length ? events.slice(-14).reverse().map(e => {
+    setHTML('feed', events.length ? events.slice(-14).reverse().map(e => {
       const colour = EV_COLOUR[e.kind] || (e.civ === 0 ? 'var(--player)' : (s.rivals[e.civ - 1] || {}).colour || 'var(--ink-dim)');
       const rival = (s.rivals[e.civ - 1] || {}).name || '';
       const who = (e.civ === 0 || !rival || (e.detail || '').indexOf(rival) === 0) ? '' : `${rival} · `;
       return `<div class="ev"><i style="background:${colour}"></i>
         <span><em>Y${e.year} ${EV[e.kind] || e.kind}</em> · ${who}${e.detail || ''}</span></div>`;
-    }).join('') : '<p class="quiet">Nothing has happened yet.</p>';
+    }).join('') : '<p class="quiet">Nothing has happened yet.</p>');
 
     // Rivals
-    document.getElementById('rivals').innerHTML = s.rivals.map(r => `
+    setHTML('rivals', s.rivals.map(r => `
       <div class="rival ${r.war ? 'at-war' : ''}">
         <div class="top">
           <span class="who"><i class="dot" style="background:${r.colour}"></i>${r.name} · ${r.pop}</span>
-          <span class="trait2">${r.war ? 'at war' : (r.pop === 0 ? 'destroyed' : r.personality)}</span>
+          <span class="trait2">${r.war ? 'at war' : (r.pop === 0 ? 'destroyed' : `${r.archetype} · ${r.personality}`)}</span>
         </div>
         <div class="tension"><i style="width:${Math.round(r.tension * 100)}%"></i></div>
-      </div>`).join('');
+      </div>`).join(''));
 
     const box = document.getElementById('ended-box');
     if (s.end && s.summary) {

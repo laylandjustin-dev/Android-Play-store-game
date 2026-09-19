@@ -181,6 +181,23 @@ object GameConfig {
         /** Share of founding settlers who arrive already partnered. */
         const val SETTLER_PARTNERED_SHARE = 0.55
 
+        /**
+         * Skill the founding settlers arrive with, 0..1.
+         *
+         * They were farmers and hunters somewhere before they emigrated, so starting them at zero
+         * was never right — and it is what made the opening decade a pass/fail quiz. A colony's
+         * first year is decided entirely by the output of fifty untrained people, so any build a
+         * point short of self-sufficiency died before its long-run advantages could appear at all:
+         * the `ConstraintProbe` shows a Health-8 people dying of starvation in year zero with 86% of
+         * its deaths there, never living long enough for its lifespan or its disease resistance to
+         * mean anything.
+         *
+         * Arriving competent lifts the whole founding decade without touching the steady-state
+         * yield curve, so it softens the cliff without making a poor farmer into a good one — a
+         * Farming-1 people still cannot feed itself however skilled it is.
+         */
+        const val SETTLER_STARTING_SKILL = 0.55f
+
         /** How far from the home site settlers are scattered when a civ is founded. */
         const val SETTLEMENT_SPAWN_RADIUS = 7
         const val RIVAL_CIV_COUNT = 4
@@ -433,9 +450,67 @@ object GameConfig {
         const val PAIR_DAILY_PROBABILITY = 0.006
         const val WIDOW_REPAIR_DELAY_DAYS = 180
 
-        // Disease
+        // Disease. The background rate: a citizen falls ill occasionally and recovers.
         const val DISEASE_EVENT_BASE_CHANCE = 0.0004
         const val DISEASE_HP_DAMAGE = 18.0
+
+        /**
+         * Epidemics: the pressure Health actually answers.
+         *
+         * The `ConstraintProbe` measured illness at **0% of deaths** across every build over sixty
+         * years. At a 0.0004 daily chance of losing 18 HP against 84 that regenerates, a citizen is
+         * struck once every seven years and always heals first, so Health's disease resistance was
+         * defending against something that could not happen. One of the five traits was therefore
+         * decoration, which is what made Health-8 a death sentence rather than a style of play.
+         *
+         * Crowd disease is the historically correct check on a pre-modern town, and it is
+         * density-dependent: the chance of an outbreak rises with how many people live together, so
+         * this is pressure that bites a *successful* colony. That also happens to be the shape the
+         * §12 targets need, where a comfortable naive spread was living 240 years unchallenged.
+         *
+         * An outbreak runs for [EPIDEMIC_DAYS] and infects a share of the town each day, resisted by
+         * Health (0.06 per point, so 0.48 at Health 8) and by healers and hospitals through the same
+         * care term the survival score uses.
+         */
+        const val EPIDEMIC_DAILY_CHANCE_AT_REFERENCE = 0.0022
+        const val EPIDEMIC_POPULATION_REFERENCE = 200.0
+        /**
+         * Below this many people an outbreak cannot take hold. Epidemiology's critical community
+         * size: a crowd disease needs a large enough pool of susceptibles to sustain a chain of
+         * transmission, and a hamlet does not have one. At 25 the founding colony of fifty was
+         * catching plagues in its first decade, which killed the very builds this pressure exists to
+         * make playable. At 80 it is a pressure on a *town*, which is the point — it constrains
+         * success rather than survival.
+         */
+        const val EPIDEMIC_MIN_POPULATION = 80
+        const val EPIDEMIC_DAYS = 70
+        /**
+         * Tuned against `HP_REGEN_PER_FED_DAY` (0.8), which is what a first attempt missed: at a 5%
+         * daily chance of 9 damage a fed citizen out-heals the outbreak and illness stayed at 0%.
+         * At 18% of 12 a Health-3 people loses about 1.0 HP a day net and the frail among them die,
+         * while a Health-8 people roughly breaks even and comes through it. An epidemic should thin
+         * a town, not erase it.
+         */
+        const val EPIDEMIC_DAILY_INFECTION_CHANCE = 0.18
+        const val EPIDEMIC_HP_DAMAGE = 12.0
+
+        /** Care — healers and hospitals — removes up to this much of the infection chance. */
+        const val EPIDEMIC_CARE_MITIGATION = 0.45
+
+        /**
+         * Winter exposure: the pressure Elements answers.
+         *
+         * Measured at 8-11% of deaths and only as a *label* — `EXPOSURE` was what the generic
+         * mortality roll was called when the citizen was neither old nor starving, so no mechanic
+         * belonged to Elements at all and no amount of it saved anybody. The harsh season now
+         * carries its own daily risk, scaled by the season's severity and reduced by
+         * `elementsShelter` (0.11 per point, so 0.88 at Elements 8) and by having a roof.
+         *
+         * A roof matters as much as the trait does, which is what ties Elements to the building
+         * layer rather than leaving it a private stat.
+         */
+        const val EXPOSURE_DAILY_DEATH_CHANCE = 0.00012
+        const val EXPOSURE_HOUSED_MULTIPLIER = 0.25
 
         /** Morale drifts toward this baseline; buildings and events push it around. */
         const val MORALE_BASELINE = 0.55
@@ -1071,6 +1146,16 @@ object GameConfig {
          * the player's pixels stay locatable while still visibly dimming under hardship.
          */
         const val PLAYER_MIN_BRIGHTNESS = 0.70f
+
+        /**
+         * How far each citizen's hue may drift from their civ's colour, in degrees either way.
+         *
+         * One flat colour for thousands of people made a town look like spilled paint. A small,
+         * stable per-citizen offset makes the same town read as a crowd — and it stays clearly
+         * *one* people, which is why this is a few degrees and not a rainbow. The offset is derived
+         * from the citizen's id, so it never shimmers between frames and costs no state.
+         */
+        const val CITIZEN_HUE_SPREAD_DEGREES = 9f
 
         /** Rival citizens are drawn slightly back, so gold reads first in a crowded frame. */
         const val RIVAL_BRIGHTNESS_SCALE = 0.86f

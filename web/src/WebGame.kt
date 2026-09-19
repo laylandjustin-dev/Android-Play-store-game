@@ -3,6 +3,7 @@
 package com.pixeltown.web
 
 import com.pixeltown.sim.Agenda
+import com.pixeltown.sim.Archetype
 import com.pixeltown.sim.BuildingCategory
 import com.pixeltown.sim.ChronicleEventKind
 import com.pixeltown.sim.CivColors
@@ -123,6 +124,8 @@ class WebGame(
         sb.append(",\"unrest\":").append(round2(player.unrest))
         sb.append(",\"influence\":").append(player.influencePoints.toInt())
         sb.append(",\"growthPoints\":").append(player.unspentTraitPoints)
+        sb.append(",\"epidemic\":").append(player.epidemicDaysLeft > 0)
+        sb.append(",\"archetype\":\"").append(Archetype.of(player.traits).label).append('"')
         sb.append(",\"traits\":{")
         for ((i, trait) in Trait.entries.withIndex()) {
             if (i > 0) sb.append(',')
@@ -177,10 +180,14 @@ class WebGame(
             if (index > 0) sb.append(',')
             sb.append("{\"name\":\"").append(escape(report.name)).append('"')
             sb.append(",\"personality\":\"").append(report.personality.name.lowercase()).append('"')
+            sb.append(",\"archetype\":\"")
+                .append(Archetype.of(simulation.civ(report.civId).traits).label).append('"')
             sb.append(",\"pop\":").append(report.population)
             sb.append(",\"tension\":").append(round2(report.tension))
             sb.append(",\"war\":").append(report.atWar)
-            sb.append(",\"colour\":\"").append(hex(Palette.civColor(report.civId))).append("\"}")
+            // The run's own palette, not the stock table: rivals are recoloured around the
+            // player's pick (AD-52), so Palette.civColor here showed the colour they used to be.
+            sb.append(",\"colour\":\"").append(hex(simulation.colors[report.civId])).append("\"}")
         }
         sb.append(']')
 
@@ -300,6 +307,14 @@ fun playerColours(): String =
 private fun hexOf(argb: Int): String {
     val hex = (argb and 0xFFFFFF).toString(16).padStart(6, '0')
     return "#$hex"
+}
+
+/** What a build is called and what it is known for — the same names the map's markers stand for. */
+@JsExport
+fun describeBuild(speed: Int, health: Int, hunting: Int, elements: Int, farming: Int): String {
+    val archetype = Archetype.of(TraitAllocation(speed, health, hunting, elements, farming))
+    return "{\"label\":\"${archetype.label}\",\"blurb\":\"${archetype.blurb}\"," +
+        "\"shape\":\"${archetype.shape.name.lowercase()}\"}"
 }
 
 /** The derived numbers the allocation screen previews, without starting a run. */

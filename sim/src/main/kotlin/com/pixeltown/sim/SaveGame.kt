@@ -108,6 +108,9 @@ data class CivSave(
     val generationsAwarded: Int = 0,
     /** When the oldest unspent point was earned, so the auto-spend grace survives a reload. */
     val oldestUnspentPointDay: Long = 0L,
+    /** An epidemic in progress is part of the run, not a detail to re-roll on load. */
+    val epidemicDaysLeft: Int = 0,
+    val epidemicCount: Int = 0,
     val influencePoints: Double,
     val unpaidUpkeepDays: Int,
     val vetoesUsedThisYear: Int,

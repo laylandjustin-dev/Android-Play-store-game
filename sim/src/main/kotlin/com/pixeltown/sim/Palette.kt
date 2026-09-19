@@ -78,4 +78,58 @@ object Palette {
         val b = ((argb and 0xFF) * f).toInt()
         return (a shl 24) or (r shl 16) or (g shl 8) or b
     }
+
+    /**
+     * Shifts a colour's hue by [degrees], keeping its saturation and value.
+     *
+     * Used to give each citizen a slightly different shade of their civ's colour, so a town reads
+     * as a crowd of individuals rather than one flat block of paint. Kept as integer arithmetic on
+     * ARGB with no colour-space library, because this runs per citizen per frame and `:sim` must
+     * stay portable Kotlin (AD-44).
+     */
+    fun shiftHue(argb: Int, degrees: Float): Int {
+        if (degrees == 0f) return argb
+        val a = argb ushr 24 and 0xFF
+        val r = (argb ushr 16 and 0xFF) / 255f
+        val g = (argb ushr 8 and 0xFF) / 255f
+        val b = (argb and 0xFF) / 255f
+
+        val max = maxOf(r, g, b)
+        val min = minOf(r, g, b)
+        val delta = max - min
+        if (delta <= 0f) return argb // grey has no hue to shift
+
+        var hue = when (max) {
+            r -> 60f * (((g - b) / delta) % 6f)
+            g -> 60f * ((b - r) / delta + 2f)
+            else -> 60f * ((r - g) / delta + 4f)
+        }
+        hue = (hue + degrees) % 360f
+        if (hue < 0f) hue += 360f
+
+        val saturation = if (max <= 0f) 0f else delta / max
+        return hsvToArgb(a, hue, saturation, max)
+    }
+
+    private fun hsvToArgb(alpha: Int, hue: Float, saturation: Float, value: Float): Int {
+        val sector = hue / 60f
+        val i = sector.toInt()
+        val f = sector - i
+        val p = value * (1f - saturation)
+        val q = value * (1f - saturation * f)
+        val t = value * (1f - saturation * (1f - f))
+
+        val (r, g, b) = when (i % 6) {
+            0 -> Triple(value, t, p)
+            1 -> Triple(q, value, p)
+            2 -> Triple(p, value, t)
+            3 -> Triple(p, q, value)
+            4 -> Triple(t, p, value)
+            else -> Triple(value, p, q)
+        }
+        return (alpha shl 24) or
+            ((r * 255f).toInt().coerceIn(0, 255) shl 16) or
+            ((g * 255f).toInt().coerceIn(0, 255) shl 8) or
+            (b * 255f).toInt().coerceIn(0, 255)
+    }
 }

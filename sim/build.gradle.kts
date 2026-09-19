@@ -36,6 +36,13 @@ val balance by tasks.registering(JavaExec::class) {
     jvmArgs("-Xmx2g")
 }
 
+val probe by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Prints what is actually limiting each build: cause of death, seasonal swing."
+    mainClass.set("com.pixeltown.harness.ConstraintProbe")
+    classpath = sourceSets["harness"].runtimeClasspath
+}
+
 dependencies {
     implementation(libs.kotlinx.serialization.json)
 

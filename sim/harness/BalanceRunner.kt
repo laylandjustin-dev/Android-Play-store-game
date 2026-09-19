@@ -176,7 +176,10 @@ object BalanceRunner {
     /** One headless run, to its end or to the year cap. */
     fun simulate(seed: Long, name: String, allocation: TraitAllocation): Run {
         val sim = Simulation.newRun(RunConfig(seed = seed, traits = allocation))
-        sim.runUntilEnd(YEAR_CAP * GameConfig.Time.DAYS_PER_YEAR)
+        // A sweep has no player in it, so the decisions live play holds open are taken for it --
+        // otherwise the measured civ banks a trait point every decade and never spends one, which
+        // is not how anybody actually plays.
+        sim.runUnattendedUntilEnd(YEAR_CAP * GameConfig.Time.DAYS_PER_YEAR)
 
         val player = sim.civ(GameConfig.World.PLAYER_CIV_ID)
         val temperaments = sim.elections
