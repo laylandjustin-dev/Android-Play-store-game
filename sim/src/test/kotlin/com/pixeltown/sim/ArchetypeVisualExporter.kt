@@ -83,6 +83,32 @@ class ArchetypeVisualExporter {
         assertTrue(hues.length() > 0)
     }
 
+    @Test
+    fun `export the building silhouettes at both footprints`() {
+        val out = File("build/preview").apply { mkdirs() }
+        val cats = BuildingCategory.entries
+        val cell = 14
+        val world = World(cell * cats.size, cell * 2)
+        val pixels = IntArray(world.cellCount) { 0xFF0B0B0D.toInt() }
+
+        for ((i, category) in cats.withIndex()) {
+            // Top row: a tier 2+ building at footprint 3. Bottom row: a tier 0 at footprint 2.
+            WorldRenderer.drawBuilding(world, pixels, i * cell + 5, 5, 3, category)
+            WorldRenderer.drawBuilding(world, pixels, i * cell + 5, cell + 6, 2, category)
+        }
+
+        val scale = 10
+        val image = BufferedImage(world.width * scale, world.height * scale, BufferedImage.TYPE_INT_RGB)
+        for (y in 0 until world.height * scale) {
+            for (x in 0 until world.width * scale) {
+                image.setRGB(x, y, pixels[(y / scale) * world.width + (x / scale)])
+            }
+        }
+        val file = File(out, "building-shapes.png")
+        ImageIO.write(image, "png", file)
+        assertTrue(file.length() > 0)
+    }
+
     private companion object {
         const val SCALE = 4
     }

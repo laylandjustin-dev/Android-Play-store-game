@@ -1200,8 +1200,37 @@ object GameConfig {
          * stable per-citizen offset makes the same town read as a crowd — and it stays clearly
          * *one* people, which is why this is a few degrees and not a rainbow. The offset is derived
          * from the citizen's id, so it never shimmers between frames and costs no state.
+         *
+         * Kept small now that [JOB_HUE_DEGREES] carries the bulk of the variation: this is the
+         * jitter that stops two farmers being the same pixel, not the signal.
          */
-        const val CITIZEN_HUE_SPREAD_DEGREES = 9f
+        const val CITIZEN_HUE_SPREAD_DEGREES = 3f
+
+        /**
+         * Hue offset per [Job], in degrees from the civ's own colour, indexed by `Job.ordinal`.
+         *
+         * A citizen is one pixel, so what they are doing has nowhere to go but their colour. These
+         * are deliberately a spread around the civ's hue rather than arbitrary colours: a town has
+         * to stay recognisably one people, and a player has to be able to see at a glance that half
+         * of it is in the fields. Food jobs sit below the base hue, craft and knowledge above it,
+         * soldiers furthest out.
+         */
+        val JOB_HUE_DEGREES = floatArrayOf(
+            0f, // CHILD — the civ's own colour, dimmed below rather than shifted
+            -16f, // FARMER
+            -30f, // HUNTER
+            -23f, // GATHERER
+            14f, // BUILDER
+            34f, // SOLDIER
+            26f, // SCHOLAR
+            20f, // HEALER
+            8f, // ARTISAN
+            0f, // IDLE
+        )
+
+        /** Children and the idle are drawn dimmer, which is the other half of reading a crowd. */
+        const val CHILD_BRIGHTNESS_SCALE = 0.78f
+        const val IDLE_BRIGHTNESS_SCALE = 0.86f
 
         /** Rival citizens are drawn slightly back, so gold reads first in a crowded frame. */
         const val RIVAL_BRIGHTNESS_SCALE = 0.86f

@@ -72,15 +72,72 @@ class WorldRendererTest {
     }
 
     @Test
-    fun `buildings are drawn as blocks and clipped at the world edge`() {
+    fun `a building fills its footprint and is clipped at the world edge`() {
         val w = World(8, 8)
         val pixels = IntArray(w.cellCount)
         WorldRenderer.drawBuilding(w, pixels, x = 6, y = 6, footprint = 3, category = BuildingCategory.FARMS)
-        val expected = Palette.BUILDING[BuildingCategory.FARMS.ordinal]
-        assertEquals(expected, pixels[w.index(7, 7)])
-        assertEquals(expected, pixels[w.index(6, 6)])
+
+        // Every cell of the footprint that is on the map is painted: a building is a solid object,
+        // and only its *tone* says which cells are the figure.
+        for (y in 6..7) {
+            for (x in 6..7) assertNotEquals(0, pixels[w.index(x, y)], "footprint cell $x,$y unpainted")
+        }
+        // The base of a pentagon is the figure itself, in the category's accent.
+        assertEquals(Palette.BUILDING[BuildingCategory.FARMS.ordinal], pixels[w.index(7, 7)])
         // Nothing wrapped around to the opposite edge.
         assertEquals(0, pixels[w.index(0, 0)])
+    }
+
+    @Test
+    fun `each category is drawn as its own silhouette`() {
+        // Colour alone cannot carry what a building is at this scale, so shape is the second
+        // channel — which is only true if the shapes actually differ.
+        val seen = mutableSetOf<List<Boolean>>()
+        for (category in BuildingCategory.entries) {
+            val w = World(4, 4)
+            val pixels = IntArray(w.cellCount)
+            WorldRenderer.drawBuilding(w, pixels, x = 0, y = 0, footprint = 3, category = category)
+
+            val accent = Palette.BUILDING[category.ordinal]
+            val figure = (0 until 3).flatMap { y -> (0 until 3).map { x -> pixels[w.index(x, y)] == accent } }
+            assertTrue(figure.any { it }, "$category drew no figure at all")
+            assertTrue(figure.any { !it }, "$category filled its whole footprint, so it has no shape")
+            assertTrue(seen.add(figure), "$category has the same silhouette as another category")
+        }
+        assertEquals(BuildingCategory.entries.size, seen.size)
+    }
+
+    @Test
+    fun `a half-built structure is drawn dimmer than a finished one`() {
+        // An unfinished building does nothing for the town and should not look as though it does.
+        val w = World(4, 4)
+        val done = IntArray(w.cellCount)
+        val building = IntArray(w.cellCount)
+        WorldRenderer.drawBuilding(w, done, 0, 0, 3, BuildingCategory.TECH, complete = true)
+        WorldRenderer.drawBuilding(w, building, 0, 0, 3, BuildingCategory.TECH, complete = false)
+
+        fun luminance(argb: Int) = (argb ushr 16 and 0xFF) + (argb ushr 8 and 0xFF) + (argb and 0xFF)
+        val finished = (0 until w.cellCount).sumOf { luminance(done[it]) }
+        val unfinished = (0 until w.cellCount).sumOf { luminance(building[it]) }
+        assertTrue(unfinished < finished, "a half-built structure was not drawn dimmer")
+    }
+
+    @Test
+    fun `citizens are shaded by their job`() {
+        // A citizen is one pixel, so what they are doing has nowhere to go but their colour.
+        val w = World(4, 4)
+        val shades = Job.entries.map { job ->
+            val pixels = IntArray(w.cellCount)
+            WorldRenderer.drawCitizen(
+                pixels, w.index(1, 1), civId = 0, survival = GameConfig.Survival.MAX.toFloat(),
+                isPlayer = true, citizenId = 7, job = job,
+            )
+            pixels[w.index(1, 1)]
+        }
+        // A farmer and a soldier must not be the same pixel, or the shading says nothing.
+        assertNotEquals(shades[Job.FARMER.ordinal], shades[Job.SOLDIER.ordinal])
+        assertNotEquals(shades[Job.CHILD.ordinal], shades[Job.FARMER.ordinal])
+        assertTrue(shades.distinct().size >= Job.entries.size - 2, "too many jobs share a shade: $shades")
     }
 
     @Test

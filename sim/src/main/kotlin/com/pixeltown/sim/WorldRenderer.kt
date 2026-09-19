@@ -70,6 +70,8 @@ object WorldRenderer {
         colors: CivColors = CivColors.DEFAULT,
         /** The citizen's id, which gives them their own stable shade of the civ colour. */
         citizenId: Int = 0,
+        /** What they are doing, which is most of what their shade says. */
+        job: Job = Job.IDLE,
     ) {
         val render = GameConfig.Render
         val t = (survival / GameConfig.Survival.MAX).toFloat().coerceIn(0f, 1f)
@@ -78,13 +80,19 @@ object WorldRenderer {
         if (!isPlayer) {
             brightness *= if (focus) render.FOCUS_RIVAL_BRIGHTNESS_SCALE else render.RIVAL_BRIGHTNESS_SCALE
         }
-        // A stable per-citizen hue offset: the same person is the same shade every frame, and a
-        // crowd is visibly a crowd. A plain multiply left a visible period in the pattern, so the
-        // id is run through an integer hash first — neighbouring ids, which are siblings born in
-        // the same week, then land on unrelated shades.
-        val spread = GameConfig.Render.CITIZEN_HUE_SPREAD_DEGREES
-        val shade = (hash(citizenId) and 0xFF) / 255f * 2f - 1f
-        out[index] = Palette.scaleBrightness(Palette.shiftHue(colors[civId], shade * spread), brightness)
+        // Shade says what they are doing. A citizen is one pixel, so their job has nowhere else to
+        // go, and a town where half the dots are farm-coloured is a town you can read at a glance.
+        // The per-citizen jitter on top is what stops two farmers being literally the same pixel;
+        // the id is run through an integer hash first, because a plain multiply left a visible
+        // period in the pattern and siblings born in the same week landed on neighbouring shades.
+        val jitter = (hash(citizenId) and 0xFF) / 255f * 2f - 1f
+        val hue = render.JOB_HUE_DEGREES[job.ordinal] + jitter * render.CITIZEN_HUE_SPREAD_DEGREES
+        val dim = when (job) {
+            Job.CHILD -> render.CHILD_BRIGHTNESS_SCALE
+            Job.IDLE -> render.IDLE_BRIGHTNESS_SCALE
+            else -> 1f
+        }
+        out[index] = Palette.scaleBrightness(Palette.shiftHue(colors[civId], hue), brightness * dim)
     }
 
     /** A cheap integer avalanche hash, so consecutive citizen ids give unrelated shades. */
@@ -127,6 +135,14 @@ object WorldRenderer {
     }
 
     /** Draws a building as a solid block of its category colour, clipped to the world. */
+    /**
+     * Draws a building as its category's silhouette (see [BuildingShape]).
+     *
+     * The whole footprint is painted either way — a building is a solid object on the map — with
+     * the figure in the category's accent colour and the rest of the footprint in a darker tone of
+     * it. [complete] is false for a half-built structure, which is drawn dimmer still: an unfinished
+     * building does nothing for the town and should not look as though it does.
+     */
     fun drawBuilding(
         world: World,
         out: IntArray,
@@ -134,13 +150,19 @@ object WorldRenderer {
         y: Int,
         footprint: Int,
         category: BuildingCategory,
+        complete: Boolean = true,
     ) {
-        val color = Palette.BUILDING[category.ordinal]
+        val accent = Palette.BUILDING[category.ordinal]
+        val figure = if (complete) accent else Palette.scaleBrightness(accent, 0.5f)
+        val ground = Palette.scaleBrightness(accent, if (complete) 0.42f else 0.24f)
+        val mask = BuildingShape.of(category).mask(footprint)
+
         for (dy in 0 until footprint) {
             for (dx in 0 until footprint) {
                 val px = x + dx
                 val py = y + dy
-                if (world.inBounds(px, py)) out[world.index(px, py)] = color
+                if (!world.inBounds(px, py)) continue
+                out[world.index(px, py)] = if (mask[dy * footprint + dx]) figure else ground
             }
         }
     }
@@ -211,6 +233,18 @@ class FrameRenderer(private val world: World) {
             )
         }
 
+        // Buildings, which until now were drawn by nothing: `drawBuilding` existed and was unit
+        // tested, and no frame ever called it, so a town of sixty structures was invisible on its
+        // own map. Drawn before the citizens so people walk over their own buildings.
+        for (civ in simulation.civs) {
+            for (building in simulation.buildingsOf(civ.id)) {
+                WorldRenderer.drawBuilding(
+                    world, out, building.x, building.y, building.spec.footprint,
+                    building.spec.category, complete = building.isComplete,
+                )
+            }
+        }
+
         for (citizen in simulation.citizens) {
             WorldRenderer.drawCitizen(
                 out, world.index(citizen.x, citizen.y), citizen.civId, citizen.survival,
@@ -218,6 +252,7 @@ class FrameRenderer(private val world: World) {
                 focus = focusPlayer,
                 colors = colors,
                 citizenId = citizen.id,
+                job = citizen.job,
             )
         }
     }
