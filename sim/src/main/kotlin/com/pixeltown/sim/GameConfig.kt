@@ -752,6 +752,21 @@ object GameConfig {
         /** Minimum gap between buildings, so towns do not become solid blocks. */
         const val SITE_SPACING = 1
 
+        /**
+         * A new building must stand within this many cells of one the civ already owns.
+         *
+         * The reach above says how far from the village a town may build; this says the town has to
+         * be a *town*. Without it the ring search happily placed a granary thirty cells out on the
+         * first patch of free ground it found, so a settlement became a scatter of unrelated
+         * structures across half the island with nothing joining them up. Growth now has to
+         * proceed from what is already built, which is what makes a town spread as a town and what
+         * makes taking its centre mean something.
+         *
+         * The first building is exempt, because there is nothing yet to be near: it anchors on the
+         * village itself.
+         */
+        const val MAX_DISTANCE_FROM_OWN_BUILDING = 9
+
         val CATALOGUE: List<BuildingSpec> = listOf(
             // ---- Farms: storage, yield, and turning surplus into money ----
             BuildingSpec(

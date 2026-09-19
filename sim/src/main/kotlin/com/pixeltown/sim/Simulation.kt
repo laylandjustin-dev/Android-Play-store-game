@@ -294,6 +294,12 @@ class Simulation(
 
     /** Advances one day. Systems run in this order every tick, for everyone. */
     fun step() {
+        // A tier reached is a decision, and the world waits for it. Nothing below runs — not even
+        // the clock — so a run held at a choice is genuinely paused rather than quietly ticking on
+        // underneath a dialog. Offline catch-up stops here too, which keeps it identical to live
+        // play (M6); the player comes back to the decision rather than to a fait accompli.
+        if (awaitingPlayer) return
+
         clock.runTicks(1) { /* the clock only counts days; the systems below are the tick */ }
 
         refreshPopulationIndex()
@@ -331,7 +337,7 @@ class Simulation(
     /** Runs [days] whole days. The only entry point offline catch-up and the harness need. */
     fun run(days: Int) {
         repeat(days) {
-            if (endState != null) return
+            if (endState != null || awaitingPlayer) return
             step()
         }
     }
@@ -339,7 +345,7 @@ class Simulation(
     /** Runs until the run ends or [maxDays] elapse. Returns the number of days actually run. */
     fun runUntilEnd(maxDays: Int): Int {
         var ran = 0
-        while (endState == null && ran < maxDays) {
+        while (endState == null && !awaitingPlayer && ran < maxDays) {
             step()
             ran++
         }
@@ -580,7 +586,7 @@ class Simulation(
             return
         }
 
-        val site = BuildingSystem.findSite(world, civ, spec.footprint) ?: return
+        val site = BuildingSystem.findSite(world, civ, spec.footprint, buildingsOf(civ.id)) ?: return
         civ.take(Resource.WOOD, spec.woodCost)
         civ.take(Resource.STONE, spec.stoneCost)
 
@@ -699,6 +705,7 @@ class Simulation(
         // Elements keeps a harvest through the winter rather than watching it spoil, so it adds to
         // capacity the same way a granary does.
         val weathered = 1.0 + TraitConfig.ELEMENTS_FOOD_STORAGE_BONUS * civs[civId].traits[Trait.ELEMENTS]
+        effects[civId] = effects[civId].withTech(civs[civId].techChoices)
         civs[civId].foodStorageCapacity =
             (Economy.BASE_FOOD_STORAGE_CAPACITY + effects[civId].foodStorageBonus) * weathered
     }
@@ -709,6 +716,7 @@ class Simulation(
     private fun advanceTech() {
         for (civ in civs) {
             if (civ.techTier >= GameConfig.Tech.MAX_TIER) continue
+            if (civ.pendingTechTier != null) continue // already waiting on a decision
             val cost = GameConfig.Tech.COST_BASE * GameConfig.Tech.COST_GROWTH.pow(civ.techTier + 1)
             if (civ[Resource.KNOWLEDGE] < cost) continue
             civ.take(Resource.KNOWLEDGE, cost)
@@ -716,7 +724,51 @@ class Simulation(
             chronicle.record(
                 ChronicleEvent(day, ChronicleEventKind.TECH_TIER, civ.id, value = civ.techTier),
             )
+
+            if (TechOption.forTier(civ.techTier).isEmpty()) continue
+            if (civ.isPlayer && !unattended) {
+                // The clock stops until they choose: see `step`.
+                civ.pendingTechTier = civ.techTier
+            } else {
+                TechOption.choiceFor(civ.personality, civ.techTier)?.let { applyTech(civ, it) }
+            }
         }
+    }
+
+    /**
+     * The choices waiting on [civId], or empty when nothing is pending. While this is non-empty for
+     * the player the simulation does not advance.
+     */
+    fun pendingTechChoices(civId: Int): List<TechOption> =
+        civ(civId).pendingTechTier?.let { TechOption.forTier(it) } ?: emptyList()
+
+    /** True while the clock is stopped waiting on a decision only the player can make. */
+    val awaitingPlayer: Boolean
+        get() = civ(WorldConfig.PLAYER_CIV_ID).pendingTechTier != null
+
+    /**
+     * Takes [option] for [civId]. False if it was not on offer — a stale tap from a UI, or a save
+     * from a build that offered something else.
+     */
+    fun chooseTech(civId: Int, option: TechOption): Boolean {
+        val civ = civ(civId)
+        val tier = civ.pendingTechTier ?: return false
+        if (option.tier != tier) return false
+        civ.pendingTechTier = null
+        applyTech(civ, option)
+        return true
+    }
+
+    private fun applyTech(civ: Civilization, option: TechOption) {
+        civ.techChoices.add(option)
+        refreshEffects(civ.id)
+        chronicle.record(
+            ChronicleEvent(
+                day, ChronicleEventKind.TECH_TIER, civ.id,
+                detail = "${civ.name} learns ${option.label}",
+                value = option.tier,
+            ),
+        )
     }
 
     /**
@@ -1243,7 +1295,8 @@ class Simulation(
             // is what puts those two traits on the food balance sheet at all. Job assignment reads
             // the same figure, or the feedback loop would be aiming at a demand that is not real.
             val severity = normalisedSeasonSeverity()
-            val demand = members.sumOf { it.dailyFoodNeed(civ.traits, severity) }
+            val techDiscount = civ.techChoices.sumOf { it.effects.rationDiscount }.coerceIn(0.0, 0.5)
+            val demand = members.sumOf { it.dailyFoodNeed(civ.traits, severity) } * (1.0 - techDiscount)
             val available = civ.take(Resource.FOOD, demand)
             val fedFraction = if (demand <= 0.0) 1.0 else available / demand
 
@@ -1802,6 +1855,8 @@ class Simulation(
                 oldestUnspentPointDay = civ.oldestUnspentPointDay,
                 epidemicDaysLeft = civ.epidemicDaysLeft,
                 epidemicCount = civ.epidemicCount,
+                techChoices = civ.techChoices.map { it.name },
+                pendingTechTier = civ.pendingTechTier,
                 influencePoints = civ.influencePoints,
                 unpaidUpkeepDays = civ.unpaidUpkeepDays,
                 vetoesUsedThisYear = civ.vetoesUsedThisYear,
@@ -2024,6 +2079,12 @@ class Simulation(
                     civ.oldestUnspentPointDay = c.oldestUnspentPointDay
                     civ.epidemicDaysLeft = c.epidemicDaysLeft
                     civ.epidemicCount = c.epidemicCount
+                    // Unknown names are dropped rather than throwing: a save from a build that
+                    // offered a tech this one does not must still load.
+                    for (name in c.techChoices) {
+                        TechOption.entries.firstOrNull { it.name == name }?.let { civ.techChoices.add(it) }
+                    }
+                    civ.pendingTechTier = c.pendingTechTier
                     civ.influencePoints = c.influencePoints
                     civ.unpaidUpkeepDays = c.unpaidUpkeepDays
                     civ.vetoesUsedThisYear = c.vetoesUsedThisYear

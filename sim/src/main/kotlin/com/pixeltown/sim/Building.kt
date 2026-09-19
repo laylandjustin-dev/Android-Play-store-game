@@ -141,6 +141,46 @@ data class CivEffects(
     val upkeepWealth: Double = 0.0,
     val completedCount: Int = 0,
 ) {
+    /**
+     * These effects with a civ's chosen techs folded in.
+     *
+     * Techs deliberately land in the same struct buildings produce, because every system already
+     * reads its civ's effects — so a new tech needs no new plumbing and no system can forget it.
+     */
+    fun withTech(choices: List<TechOption>): CivEffects {
+        if (choices.isEmpty()) return this
+        var farm = 0.0
+        var know = 0.0
+        var build = 0.0
+        var storageFraction = 0.0
+        var militaryFraction = 0.0
+        var safety = 0.0
+        var disease = 0.0
+        var care = 0.0
+        for (choice in choices) {
+            val e = choice.effects
+            farm += e.farmYield
+            know += e.knowledge
+            build += e.buildSpeed
+            storageFraction += e.foodStorage
+            militaryFraction += e.military
+            safety += e.safety
+            disease += e.diseaseResist
+            care += e.care
+        }
+        return copy(
+            farmYieldBonus = farmYieldBonus + farm,
+            knowledgeMultiplier = knowledgeMultiplier + know,
+            buildSpeedBonus = buildSpeedBonus + build,
+            foodStorageBonus = foodStorageBonus +
+                GameConfig.Economy.BASE_FOOD_STORAGE_CAPACITY * storageFraction,
+            militaryStrength = militaryStrength * (1.0 + militaryFraction),
+            safetyBonus = safetyBonus + safety,
+            diseaseResistBonus = diseaseResistBonus + disease,
+            careCapacity = careCapacity + care,
+        )
+    }
+
     companion object {
         val NONE = CivEffects()
     }

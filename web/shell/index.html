@@ -79,6 +79,14 @@
   .panel.tabbed { border-top: 0; }
   .speeds { padding-top: 10px; }
 
+  #tech { position: fixed; inset: 0; background: rgba(5,6,10,0.92); display: flex;
+          align-items: center; justify-content: center; padding: 20px; z-index: 20; }
+  #tech .sheet { width: min(520px, 100%); }
+  .sheet.wide .opt { display: block; width: 100%; text-align: left; padding: 12px; }
+  .sheet.wide .opt .t { color: var(--ink-bright); font-weight: 500; display: block; }
+  .sheet.wide .opt .b { color: var(--ink-dim); font-size: 11px; display: block; margin-top: 2px; }
+  #tech-options { display: flex; flex-direction: column; gap: 7px; margin-top: 4px; }
+
   #overlay { position: fixed; inset: 0; background: rgba(5,6,10,0.86); display: flex;
              align-items: center; justify-content: center; padding: 20px; z-index: 10; }
   #overlay .sheet { background: var(--panel); border: 1px solid var(--line); padding: 18px;
@@ -295,6 +303,17 @@
     </section>
   </div>
 
+  <!-- a tier reached: the clock is stopped until this is answered -->
+  <div id="tech" hidden>
+    <div class="sheet wide">
+      <h2 id="tech-title">A new age</h2>
+      <p class="sub" style="margin:0">
+        Your scholars have learned enough for something new. This choice is permanent.
+      </p>
+      <div id="tech-options"></div>
+    </div>
+  </div>
+
   <!-- the in-game menu -->
   <div id="overlay" hidden>
     <div class="sheet">
@@ -341,6 +360,28 @@
     for (const id of TABS) document.getElementById(id).hidden = id !== tab.dataset.tab;
     document.querySelectorAll('.tab').forEach(t =>
       t.setAttribute('aria-selected', String(t === tab)));
+  });
+
+  // ---------------- a tier reached ----------------
+  // The simulation stops itself while a choice is open (Simulation.awaitingPlayer), so this only
+  // has to put it on screen. Nothing here can skip it: refusing to draw the dialog would just
+  // leave the world frozen.
+  const techEl = document.getElementById('tech');
+  techEl.hidden = true;
+  function refreshTech() {
+    if (!game) return;
+    const options = JSON.parse(game.pendingTech());
+    if (options.length === 0) { techEl.hidden = true; return; }
+    document.getElementById('tech-title').textContent = `Tier ${options[0].tier} — a new age`;
+    setHTML('tech-options', options.map(o => `
+      <button class="opt" data-tech="${o.id}">
+        <span class="t">${o.label}</span><span class="b">${o.blurb}</span>
+      </button>`).join(''));
+    techEl.hidden = false;
+  }
+  document.getElementById('tech-options').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || !game) return;
+    if (game.chooseTech(b.dataset.tech)) { refreshTech(); pull(); }
   });
 
   // ---------------- the pause menu ----------------
@@ -584,6 +625,7 @@
 
   function pull() {
     state = JSON.parse(game.state());
+    refreshTech();
     for (const e of state.events) events.push(e);
     while (events.length > 40) events.shift();
     paint();
@@ -608,8 +650,9 @@
     document.getElementById('hud-date').textContent = `Year ${s.year} · ${s.season}`;
     document.getElementById('hud-pop').textContent =
       s.epidemic ? `${s.pop} people · sickness` : `${s.pop} people`;
-    document.getElementById('rate').textContent =
-      speed === 0 ? 'paused' : `${speed}x · ${shownRate} ticks/s`;
+    document.getElementById('rate').textContent = s.awaiting
+      ? 'stopped — a decision is waiting'
+      : (speed === 0 ? 'paused' : `${speed}x · ${shownRate} ticks/s`);
 
     setHTML('stats', [
       ['People', s.pop], ['Food', s.food], ['Wood', s.wood], ['Stone', s.stone],
@@ -728,6 +771,9 @@
       if (performance.now() >= budgetEnd) break;
     }
     if (acc > 400) acc = 400; // never let a stalled tab bank hours of catch-up
+
+    // The simulation refuses to advance while a choice is open, so stop asking and show it.
+    if (ran === 0 && game.awaitingPlayer === true) { acc = 0; refreshTech(); }
 
     if (ran > 0) {
       ticksThisSecond += ran;

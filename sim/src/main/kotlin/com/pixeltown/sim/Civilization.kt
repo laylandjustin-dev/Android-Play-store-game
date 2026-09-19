@@ -42,6 +42,17 @@ class Civilization(
     /** The day the oldest unspent point was earned, for the player's auto-spend grace period. */
     var oldestUnspentPointDay: Long = 0L
 
+    /** Techs this civ has chosen, one per tier reached. Permanent for the run. */
+    val techChoices: MutableList<TechOption> = mutableListOf()
+
+    /**
+     * A tier reached whose choice has not been made yet, or null.
+     *
+     * For the player this stops the clock: reaching a tier is a decision, and a decision the game
+     * takes for you while you watch is not one. Rivals never hold one open.
+     */
+    var pendingTechTier: Int? = null
+
     /** Days left in the current epidemic, 0 when the town is well. */
     var epidemicDaysLeft: Int = 0
 

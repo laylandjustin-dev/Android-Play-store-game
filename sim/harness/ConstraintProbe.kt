@@ -24,6 +24,34 @@ import com.pixeltown.sim.Trait
  */
 object ConstraintProbe {
 
+    /** Are buildings actually clustered, and do ruins explain the outliers? */
+    private fun siting() {
+        val sim = Simulation.newRun(
+            RunConfig(seed = 1_000L, traits = TraitAllocation.of(3, 4, 3, 4, 8)),
+        )
+        sim.runUnattended(150 * GameConfig.Time.DAYS_PER_YEAR)
+        val limit = GameConfig.Buildings.MAX_DISTANCE_FROM_OWN_BUILDING
+        for (civ in sim.civs) {
+            val bs = sim.buildingsOf(civ.id)
+            if (bs.isEmpty()) continue
+            var lonely = 0
+            var worst = 0
+            for (b in bs) {
+                val others = bs.filter { it !== b }
+                if (others.isEmpty()) continue
+                val nearest = others.minOf {
+                    maxOf(kotlin.math.abs(it.x - b.x), kotlin.math.abs(it.y - b.y))
+                }
+                if (nearest > limit) lonely++
+                if (nearest > worst) worst = nearest
+            }
+            println(
+                "PROBE ${civ.name.padEnd(9)} buildings=${bs.size.toString().padStart(3)} " +
+                    "beyond-limit=$lonely worst-gap=$worst",
+            )
+        }
+    }
+
     private val BUILDS = listOf(
         "even 5/5/5/5/5" to TraitAllocation.of(5, 5, 5, 5, 5),
         "farming 3/4/3/4/8" to TraitAllocation.of(3, 4, 3, 4, 8),
@@ -38,6 +66,7 @@ object ConstraintProbe {
 
     @JvmStatic
     fun main(args: Array<String>) {
+        if (args.contains("--siting")) { siting(); return }
         val years = args.firstOrNull { it.startsWith("--years=") }?.substringAfter('=')?.toInt() ?: YEARS
 
         println("Cause of death and limiting pressure, $years years, ${SEEDS.size} seeds per build.")

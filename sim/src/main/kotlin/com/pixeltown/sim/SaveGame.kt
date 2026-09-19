@@ -111,6 +111,9 @@ data class CivSave(
     /** An epidemic in progress is part of the run, not a detail to re-roll on load. */
     val epidemicDaysLeft: Int = 0,
     val epidemicCount: Int = 0,
+    /** Techs chosen, by name, and a tier whose choice is still open. Both part of the run. */
+    val techChoices: List<String> = emptyList(),
+    val pendingTechTier: Int? = null,
     val influencePoints: Double,
     val unpaidUpkeepDays: Int,
     val vetoesUsedThisYear: Int,

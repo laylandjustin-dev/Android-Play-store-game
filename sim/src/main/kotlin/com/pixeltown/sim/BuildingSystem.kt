@@ -17,12 +17,26 @@ internal object BuildingSystem {
      * Finds a site for a [footprint]-sized building near the civ's home: buildable ground, clear
      * of other buildings, with a gap between structures so a town does not become a solid block.
      */
-    fun findSite(world: World, civ: Civilization, footprint: Int): Int? {
+    /**
+     * Where a civ's next building goes, or null if it has nowhere left to build.
+     *
+     * Two constraints, and both matter. The site must be within the civ's *reach* of its village —
+     * a distance that grows with the population, because a town of a thousand is not built inside
+     * fourteen cells — and it must also stand within
+     * [BuildingConfig.MAX_DISTANCE_FROM_OWN_BUILDING] of something the civ has already built, so a
+     * settlement grows as one place rather than scattering across the island. [existing] is the
+     * civ's own buildings; the first one is exempt, since there is nothing yet to be near.
+     */
+    fun findSite(
+        world: World,
+        civ: Civilization,
+        footprint: Int,
+        existing: List<Building> = emptyList(),
+    ): Int? {
         val homeX = civ.homeSite % world.width
         val homeY = civ.homeSite / world.width
 
-        // Nearest-first ring search, so towns grow outward from their centre. The reach grows
-        // with the population — a town of a thousand is not built inside fourteen cells.
+        // Nearest-first ring search, so towns grow outward from their centre.
         val reach = (BuildingConfig.BASE_SITE_DISTANCE +
             civ.population * BuildingConfig.SITE_DISTANCE_PER_CITIZEN).toInt()
             .coerceIn(BuildingConfig.BASE_SITE_DISTANCE, BuildingConfig.MAX_SITE_DISTANCE)
@@ -33,11 +47,27 @@ internal object BuildingSystem {
                     if (max(abs(dx), abs(dy)) != radius) continue
                     val x = homeX + dx
                     val y = homeY + dy
-                    if (fits(world, x, y, footprint)) return world.index(x, y)
+                    // `fits` first: it reads the grid and rejects almost every candidate, so the
+                    // O(buildings) neighbour check below runs only for the few that survive.
+                    if (!fits(world, x, y, footprint)) continue
+                    if (!joinsTheTown(x, y, existing)) continue
+                    return world.index(x, y)
                 }
             }
         }
         return null
+    }
+
+    /** True if this site is close enough to one of the civ's own buildings to be part of the town. */
+    private fun joinsTheTown(x: Int, y: Int, existing: List<Building>): Boolean {
+        if (existing.isEmpty()) return true
+        val limit = BuildingConfig.MAX_DISTANCE_FROM_OWN_BUILDING
+        for (building in existing) {
+            // Chebyshev between the two footprints' origins is close enough at this scale, and it
+            // is the same metric the ring search and the start-site separation already use.
+            if (max(abs(building.x - x), abs(building.y - y)) <= limit) return true
+        }
+        return false
     }
 
     /**

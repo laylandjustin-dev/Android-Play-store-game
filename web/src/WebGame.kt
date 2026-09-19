@@ -16,6 +16,7 @@ import com.pixeltown.sim.RunConfig
 import com.pixeltown.sim.SimRandom
 import com.pixeltown.sim.Simulation
 import com.pixeltown.sim.Trait
+import com.pixeltown.sim.TechOption
 import com.pixeltown.sim.TraitAllocation
 import com.pixeltown.sim.WorldGenerator
 import com.pixeltown.sim.WorldRenderer
@@ -75,7 +76,11 @@ class WebGame(
     /** Runs whole days. Returns how many actually ran — a finished run stops advancing. */
     fun step(days: Int): Int {
         var ran = 0
-        while (ran < days && simulation.endState == null) {
+        // Stops on a pending decision as well as on the end of the run, and counts days the
+        // simulation actually took. Counting loop iterations instead reported a full year run
+        // while the world sat frozen at a tech choice, which is exactly the lie the caller uses
+        // this number to avoid.
+        while (ran < days && simulation.endState == null && !simulation.awaitingPlayer) {
             simulation.step()
             ran++
         }
@@ -98,6 +103,30 @@ class WebGame(
      * Spends one of the earned decade points. Returns true if it landed; false means the request
      * was not legal (nothing banked, or that trait is already at its ceiling).
      */
+    /**
+     * True while the simulation is refusing to advance because a decision is open. Read every tick
+     * by the loop, so it is a plain property rather than something to parse out of [state].
+     */
+    val awaitingPlayer: Boolean get() = simulation.awaitingPlayer
+
+    /**
+     * The tech choices waiting on the player, as JSON, or `[]`. While this is non-empty [step] runs
+     * no days at all — the simulation itself refuses, so a UI that forgot to stop cannot skip it.
+     */
+    fun pendingTech(): String {
+        val options = simulation.pendingTechChoices(GameConfig.World.PLAYER_CIV_ID)
+        return options.joinToString(",", "[", "]") {
+            "{\"id\":\"${it.name}\",\"label\":\"${escape(it.label)}\"," +
+                "\"blurb\":\"${escape(it.blurb)}\",\"tier\":${it.tier}}"
+        }
+    }
+
+    /** Takes one of them. False if it was not on offer. */
+    fun chooseTech(id: String): Boolean {
+        val option = TechOption.entries.firstOrNull { it.name == id } ?: return false
+        return simulation.chooseTech(GameConfig.World.PLAYER_CIV_ID, option)
+    }
+
     fun spendTraitPoint(trait: String): Boolean {
         val which = Trait.entries.firstOrNull { it.name.equals(trait, ignoreCase = true) } ?: return false
         return simulation.spendTraitPoint(GameConfig.World.PLAYER_CIV_ID, which)
@@ -125,6 +154,13 @@ class WebGame(
         sb.append(",\"influence\":").append(player.influencePoints.toInt())
         sb.append(",\"growthPoints\":").append(player.unspentTraitPoints)
         sb.append(",\"epidemic\":").append(player.epidemicDaysLeft > 0)
+        sb.append(",\"awaiting\":").append(simulation.awaitingPlayer)
+        sb.append(",\"techs\":[")
+        for ((i, choice) in player.techChoices.withIndex()) {
+            if (i > 0) sb.append(',')
+            sb.append('"').append(escape(choice.label)).append('"')
+        }
+        sb.append(']')
         sb.append(",\"archetype\":\"").append(Archetype.of(player.traits).label).append('"')
         sb.append(",\"traits\":{")
         for ((i, trait) in Trait.entries.withIndex()) {
