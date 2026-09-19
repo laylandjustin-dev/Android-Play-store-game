@@ -17,6 +17,7 @@ data class TraitAllocation(
     val hunting: Int,
     val elements: Int,
     val farming: Int,
+    val logging: Int = TraitConfig.BASE_VALUE,
 ) {
     init {
         for (value in values) {
@@ -26,7 +27,7 @@ data class TraitAllocation(
         }
     }
 
-    val values: IntArray get() = intArrayOf(speed, health, hunting, elements, farming)
+    val values: IntArray get() = intArrayOf(speed, health, hunting, elements, farming, logging)
 
     operator fun get(trait: Trait): Int = when (trait) {
         Trait.SPEED -> speed
@@ -34,6 +35,7 @@ data class TraitAllocation(
         Trait.HUNTING -> hunting
         Trait.ELEMENTS -> elements
         Trait.FARMING -> farming
+        Trait.LOGGING -> logging
     }
 
     /**
@@ -71,6 +73,11 @@ data class TraitAllocation(
 
     val diseaseResist: Double = TraitConfig.DISEASE_RESIST_PER_HEALTH * health
 
+    /** How readily this people bear children, relative to the baseline. */
+    val fertilityMultiplier: Double = (
+        1.0 + TraitConfig.FERTILITY_PER_HEALTH * (health - TraitConfig.BASE_VALUE)
+        ).coerceAtLeast(0.25)
+
     val maxHp: Float = (TraitConfig.MAX_HP_BASE + TraitConfig.MAX_HP_PER_HEALTH * health).toFloat()
 
     val huntYield: Double = TraitConfig.HUNT_YIELD_BASE + TraitConfig.HUNT_YIELD_PER_HUNTING * hunting
@@ -93,6 +100,12 @@ data class TraitAllocation(
      */
     val winterRationSurcharge: Double =
         (TraitConfig.WINTER_RATION_SURCHARGE * (1.0 - elementsShelterOf(elements))).coerceAtLeast(0.0)
+
+    /** Wood and stone a gatherer brings back, per worked day. */
+    val gatherYield: Double = TraitConfig.GATHER_YIELD_BASE + TraitConfig.GATHER_YIELD_PER_LOGGING * logging
+
+    /** How fast this people raise a structure, relative to the baseline. */
+    val buildRate: Double = TraitConfig.BUILD_RATE_BASE + TraitConfig.BUILD_RATE_PER_LOGGING * logging
 
     /** Fraction by which weather, season and disaster penalties are reduced. */
     val elementsShelter: Double = TraitConfig.ELEMENTS_PENALTY_REDUCTION_PER_POINT * elements
@@ -126,14 +139,30 @@ data class TraitAllocation(
             TraitConfig.BASE_VALUE,
             TraitConfig.BASE_VALUE,
             TraitConfig.BASE_VALUE,
+            TraitConfig.BASE_VALUE,
         )
 
-        /** The naive even spread the balance targets are measured against. */
-        val EVEN_SPREAD = TraitAllocation(5, 5, 5, 5, 5)
+        /**
+         * A flat one point in every trait — the shape a player produces when they refuse to choose.
+         *
+         * It spends six of the ten, not all of them: ten points do not divide evenly over six
+         * traits. The balance sweep's `naive-even` spends the full budget as evenly as it can
+         * (5/5/5/5/4/4) and is what the §12 target is measured against; this is the flat build the
+         * tests use where the exact figures do not matter, only that nothing is specialised.
+         */
+        val EVEN_SPREAD = TraitAllocation(4, 4, 4, 4, 4, 4)
 
+        /**
+         * Builds an allocation from values in [Trait] order. Five values are accepted as well as
+         * six: Logging arrived after a great many tests and balance tables were written against
+         * the original five, and defaulting it to base keeps every one of them meaningful.
+         */
         fun of(vararg values: Int): TraitAllocation {
-            require(values.size == TraitConfig.COUNT) { "expected ${TraitConfig.COUNT} traits" }
-            return TraitAllocation(values[0], values[1], values[2], values[3], values[4])
+            require(values.size == TraitConfig.COUNT || values.size == TraitConfig.COUNT - 1) {
+                "expected ${TraitConfig.COUNT} traits, or ${TraitConfig.COUNT - 1} without Logging"
+            }
+            val logging = if (values.size == TraitConfig.COUNT) values[5] else TraitConfig.BASE_VALUE
+            return TraitAllocation(values[0], values[1], values[2], values[3], values[4], logging)
         }
 
         /**

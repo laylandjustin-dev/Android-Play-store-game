@@ -36,6 +36,23 @@ class Citizen(
      */
     var vigour: Float = 1f
 
+    /**
+     * Who this person is: an index into the given-name syllable tables, and the family they belong
+     * to. Both are rendered by [CitizenNames] rather than stored as text — see the note there.
+     *
+     * A founding settler draws both. A child draws a new given name and *inherits* its family, so
+     * a town's surnames are a real lineage: the Chronicle can say a Premier is the third Hearthstone
+     * to hold the office, and it will be true.
+     */
+    var nameCode: Int = 0
+    var familyId: Int = 0
+
+    val firstName: String get() = CitizenNames.firstName(nameCode)
+
+    val surname: String get() = CitizenNames.surname(familyId)
+
+    val fullName: String get() = CitizenNames.fullName(nameCode, familyId)
+
     /** The cell this citizen works, or [World.NONE] for indoor work and the unemployed. */
     var workCell: Int = World.NONE
 

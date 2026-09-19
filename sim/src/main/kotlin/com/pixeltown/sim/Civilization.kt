@@ -43,6 +43,18 @@ class Civilization(
     var oldestUnspentPointDay: Long = 0L
 
     /**
+     * Every decade point this people has spent, in the order they spent them.
+     *
+     * Kept because the opening allocation and the final trait sheet do not tell the player what
+     * they actually decided: a Farming-8 people could have opened there or arrived there over two
+     * centuries, and those are different runs. The end-of-run breakdown reads this.
+     */
+    val traitGrowthHistory: MutableList<Trait> = mutableListOf()
+
+    /** How many of those points the town spent for itself because nobody chose in time. */
+    var autoSpentTraitPoints: Int = 0
+
+    /**
      * The standing instruction the player has left their town, or null.
      *
      * Unlike a petition this survives the Premier who was in office when it was made: every future
@@ -84,6 +96,18 @@ class Civilization(
     var peakPopulation: Int = 0
     var totalBirths: Int = 0
     var totalDeaths: Int = 0
+
+    /**
+     * What killed this people, by cause. Per civ rather than read off the Chronicle: the Chronicle
+     * is a ring buffer shared by all five civilisations, so it can answer "how did people die on
+     * this map" but never "how did *my* town die", which is the question the end-of-run breakdown
+     * is asking.
+     */
+    val deathsByCause = IntArray(DeathCause.entries.size)
+
+    /** Wars this civ has been party to, and raids launched against it. For the end-of-run record. */
+    var warsFought: Int = 0
+    var raidsSuffered: Int = 0
 
     var population: Int = 0
         set(value) {

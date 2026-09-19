@@ -23,17 +23,35 @@ class GenerationGrowthTest {
     private fun player(sim: Simulation) = sim.civ(WorldConfig.PLAYER_CIV_ID)
 
     /**
-     * Runs [days] as a watched run, answering the tech choices a tier offers along the way.
+     * Runs [days] as a watched run, answering the tech choices a tier offers along the way and
+     * leaving the decade's trait point alone.
      *
-     * These tests are about the decade's *trait* point, and a run that stops at a tech tier never
-     * reaches the decade at all. Answering the one and not the other is what keeps the thing under
-     * test isolated — `runUnattended` would resolve both and prove nothing.
+     * These tests are about the trait point, and a run that stops at a tech tier never reaches the
+     * decade at all. Answering the one and not the other is what keeps the thing under test
+     * isolated — `runUnattended` would resolve both and prove nothing. A pending trait point stops
+     * the clock, so a call that runs past a decade boundary simply stops there; that is the
+     * mechanic, and several tests below assert exactly it.
      */
     private fun runAnswering(sim: Simulation, days: Int) {
         repeat(days) {
             if (sim.endState != null) return
-            if (sim.awaitingPlayer) {
+            if (sim.pendingTechChoices(WorldConfig.PLAYER_CIV_ID).isNotEmpty()) {
                 sim.chooseTech(WorldConfig.PLAYER_CIV_ID, sim.pendingTechChoices(WorldConfig.PLAYER_CIV_ID).first())
+            }
+            sim.step()
+        }
+    }
+
+    /** As [runAnswering], but spending each decade point on the weakest trait so the run continues. */
+    private fun runSpending(sim: Simulation, days: Int) {
+        repeat(days) {
+            if (sim.endState != null) return
+            if (sim.pendingTechChoices(WorldConfig.PLAYER_CIV_ID).isNotEmpty()) {
+                sim.chooseTech(WorldConfig.PLAYER_CIV_ID, sim.pendingTechChoices(WorldConfig.PLAYER_CIV_ID).first())
+            }
+            while (sim.pendingTraitPoints(WorldConfig.PLAYER_CIV_ID) > 0) {
+                val trait = sim.needBasedGrowth(player(sim)) ?: break
+                if (!sim.spendTraitPoint(WorldConfig.PLAYER_CIV_ID, trait)) break
             }
             sim.step()
         }
@@ -76,35 +94,55 @@ class GenerationGrowthTest {
         assertFalse(sim.spendTraitPoint(WorldConfig.PLAYER_CIV_ID, Trait.SPEED), "spent a point it had not earned")
 
         runAnswering(sim, TraitConfig.GENERATION_INTERVAL_YEARS * Time.DAYS_PER_YEAR)
-        // Farming starts at the 8 ceiling, so this point has nowhere to go.
+        // Farming opened at 8, which is the *opening* cap — a decade point may still climb it, so
+        // this now checks the lifetime ceiling instead.
+        repeat(TraitConfig.MAX_PER_TRAIT) {
+            player(sim).unspentTraitPoints = 1
+            sim.spendTraitPoint(WorldConfig.PLAYER_CIV_ID, Trait.FARMING)
+        }
+        assertEquals(TraitConfig.MAX_PER_TRAIT, player(sim).traits[Trait.FARMING])
+        player(sim).unspentTraitPoints = 1
         assertFalse(sim.spendTraitPoint(WorldConfig.PLAYER_CIV_ID, Trait.FARMING), "pushed a trait past its cap")
         assertEquals(1, player(sim).unspentTraitPoints, "a refused spend must not consume the point")
     }
 
     @Test
-    fun `a watched run never spends the point for the player`() {
-        // The decision is the mechanic. At 10x a game year is 36 seconds, so a game that spent the
-        // point on a timer would take it away before the player could reach it — which is what was
-        // reported as the feature not working.
+    fun `a watched run stops the clock rather than spending the point for the player`() {
+        // The decision is the mechanic, and stopping the clock is what makes it symmetric with the
+        // rivals: a rival spends its point the day it earns it, so a player whose point merely
+        // banked was a point behind four neighbours for up to a game year — thirty-six seconds at
+        // 10x. Nothing advances until the player has spent.
+        val decade = TraitConfig.GENERATION_INTERVAL_YEARS * Time.DAYS_PER_YEAR
         val sim = newRun()
-        runAnswering(sim, TraitConfig.GENERATION_INTERVAL_YEARS * Time.DAYS_PER_YEAR +
-                TraitConfig.GENERATION_AUTOSPEND_GRACE_DAYS * 3,
-        )
+        runAnswering(sim, decade * 2)
+
         assertEquals(1, player(sim).unspentTraitPoints, "the game spent the player's point for them")
         assertEquals(START.pointsSpent, player(sim).traits.pointsSpent)
+        assertEquals(decade.toLong(), sim.day, "the clock ran on past a decision only the player can make")
+        assertTrue(sim.awaitingPlayer, "an unspent point did not stop the clock")
+        assertFalse(sim.step(), "a step advanced the world while a decision was open")
+
+        // And spending it starts the world again.
+        assertTrue(sim.spendTraitPoint(WorldConfig.PLAYER_CIV_ID, Trait.SPEED))
+        assertFalse(sim.awaitingPlayer)
+        assertTrue(sim.step())
     }
 
     @Test
-    fun `an unwatched run does spend it, after the grace period`() {
+    fun `an unwatched run spends it the day it is earned, exactly as a rival does`() {
         val sim = newRun()
-        val grace = TraitConfig.GENERATION_AUTOSPEND_GRACE_DAYS
-        sim.runUnattended(TraitConfig.GENERATION_INTERVAL_YEARS * Time.DAYS_PER_YEAR + grace)
+        sim.runUnattended(TraitConfig.GENERATION_INTERVAL_YEARS * Time.DAYS_PER_YEAR)
 
         assertEquals(0, player(sim).unspentTraitPoints, "the point was never spent")
         assertEquals(
             START.pointsSpent + 1,
             player(sim).traits.pointsSpent,
             "the automatic spend did not land anywhere",
+        )
+        // The whole decade ran: nothing stopped, because there was nobody to stop for.
+        assertEquals(
+            (TraitConfig.GENERATION_INTERVAL_YEARS * Time.DAYS_PER_YEAR).toLong(),
+            sim.day,
         )
     }
 
@@ -136,10 +174,7 @@ class GenerationGrowthTest {
     fun `an unwatched point always lands somewhere`() {
         val sim = newRun(traits = TraitAllocation.of(1, 4, 3, 5, 7))
         val before = sim.civ(0).traits
-        sim.runUnattended(
-            TraitConfig.GENERATION_INTERVAL_YEARS * Time.DAYS_PER_YEAR +
-                TraitConfig.GENERATION_AUTOSPEND_GRACE_DAYS,
-        )
+        sim.runUnattended(TraitConfig.GENERATION_INTERVAL_YEARS * Time.DAYS_PER_YEAR)
         assertEquals(before.pointsSpent + 1, player(sim).traits.pointsSpent)
     }
 
@@ -191,7 +226,9 @@ class GenerationGrowthTest {
 
     @Test
     fun `growth stops at the ceiling rather than overflowing`() {
-        val maxed = TraitAllocation.of(8, 8, 8, 8, 8)
+        // The lifetime ceiling, not the opening cap: two different numbers on purpose (AD-58).
+        val top = TraitConfig.MAX_PER_TRAIT
+        val maxed = TraitAllocation.of(top, top, top, top, top, top)
         assertTrue(maxed.improvable.isEmpty())
         assertNull(maxed.withPointIn(Trait.SPEED))
         assertNull(RivalStrategist.chooseGrowth(Personality.MILITANT, maxed, SimRandom(1L)))
@@ -211,18 +248,21 @@ class GenerationGrowthTest {
     }
 
     @Test
-    fun `growth survives a save, including a point held mid-grace`() {
+    fun `growth survives a save, including a point still waiting to be spent`() {
         val sim = newRun()
-        runAnswering(sim, TraitConfig.GENERATION_INTERVAL_YEARS * Time.DAYS_PER_YEAR + 5)
+        runAnswering(sim, TraitConfig.GENERATION_INTERVAL_YEARS * Time.DAYS_PER_YEAR)
         assertEquals(1, player(sim).unspentTraitPoints)
 
         val reloaded = Simulation.restore(SaveFormat.decode(SaveFormat.encode(sim.snapshot())))
         assertEquals(1, reloaded.civ(0).unspentTraitPoints)
         assertEquals(player(sim).generationsAwarded, reloaded.civ(0).generationsAwarded)
+        assertTrue(reloaded.awaitingPlayer, "the reloaded run forgot it was waiting on a decision")
 
-        // And the grace clock is not reset by the reload: both spend on the same day.
-        runAnswering(sim, TraitConfig.GENERATION_AUTOSPEND_GRACE_DAYS)
-        runAnswering(reloaded, TraitConfig.GENERATION_AUTOSPEND_GRACE_DAYS)
+        // Spend the same point the same way on both sides, and they stay the same run.
+        assertTrue(sim.spendTraitPoint(WorldConfig.PLAYER_CIV_ID, Trait.LOGGING))
+        assertTrue(reloaded.spendTraitPoint(WorldConfig.PLAYER_CIV_ID, Trait.LOGGING))
+        runSpending(sim, 5 * Time.DAYS_PER_YEAR)
+        runSpending(reloaded, 5 * Time.DAYS_PER_YEAR)
         assertEquals(sim.stateHash(), reloaded.stateHash())
     }
 
@@ -231,16 +271,18 @@ class GenerationGrowthTest {
         val a = newRun(77L)
         val b = newRun(77L)
         repeat(6) {
-            runAnswering(a, 10 * Time.DAYS_PER_YEAR)
-            runAnswering(b, 10 * Time.DAYS_PER_YEAR)
+            runSpending(a, 10 * Time.DAYS_PER_YEAR)
+            runSpending(b, 10 * Time.DAYS_PER_YEAR)
             assertEquals(a.stateHash(), b.stateHash(), "diverged by year ${a.year}")
         }
-        // Sanity: the rivals really did grow over sixty years, so the hashes above mean something.
-        // The player's own points bank rather than being spent, which is the point of the mechanic.
+        // Sanity: everybody really did grow over sixty years, so the hashes above mean something.
         assertTrue(
             (1 until a.civs.size).any { a.civ(it).traits.pointsSpent > TraitConfig.ALLOCATION_POINTS },
             "no rival grew in sixty years",
         )
-        assertTrue(a.civ(0).unspentTraitPoints > 0, "the player banked nothing in sixty years")
+        assertTrue(
+            a.civ(0).traits.pointsSpent > START.pointsSpent,
+            "the player grew nothing in sixty years",
+        )
     }
 }

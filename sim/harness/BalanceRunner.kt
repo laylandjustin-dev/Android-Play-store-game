@@ -61,7 +61,9 @@ object BalanceRunner {
      * does not read the trait descriptions will produce.
      */
     private val ALLOCATIONS: List<Pair<String, TraitAllocation>> = listOf(
-        "naive-even" to TraitAllocation.of(5, 5, 5, 5, 5),
+        // Ten points spread as evenly as six traits allow. Four of them get two and two get one;
+        // it is what a player who does not read the descriptions produces, which is the point.
+        "naive-even" to TraitAllocation.of(5, 5, 5, 5, 4, 4),
         "farmer" to TraitAllocation.of(3, 4, 3, 4, 8),
         "farm+elements" to TraitAllocation.of(3, 4, 3, 6, 6),
         "hardy" to TraitAllocation.of(3, 8, 3, 5, 4),
@@ -78,11 +80,17 @@ object BalanceRunner {
         "pure-health" to TraitAllocation.of(3, 8, 3, 4, 4),
         "pure-hunting" to TraitAllocation.of(3, 4, 8, 3, 4),
         "pure-elements" to TraitAllocation.of(3, 4, 3, 8, 4),
-        "pure-farming" to TraitAllocation.of(3, 4, 3, 4, 8),
+        "pure-farming" to TraitAllocation.of(3, 4, 3, 4, 8, 3),
+        "pure-logging" to TraitAllocation.of(3, 4, 3, 3, 4, 8),
+        // Logging is the sixth trait and the one AD-29 kept implying: a town that cannot gather
+        // never builds. This is the build that tests whether pairing it with food is viable.
+        "farm+logging" to TraitAllocation.of(3, 4, 3, 3, 6, 6),
     )
 
-    /** The five one-trait builds above, in trait order. */
-    private val PURE = listOf("pure-speed", "pure-health", "pure-hunting", "pure-elements", "pure-farming")
+    /** The six one-trait builds above, in trait order. */
+    private val PURE = listOf(
+        "pure-speed", "pure-health", "pure-hunting", "pure-elements", "pure-farming", "pure-logging",
+    )
 
     /** One simulation's result — one row of the CSV. */
     data class Run(

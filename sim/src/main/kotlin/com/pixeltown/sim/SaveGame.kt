@@ -108,6 +108,17 @@ data class CivSave(
     val generationsAwarded: Int = 0,
     /** When the oldest unspent point was earned, so the auto-spend grace survives a reload. */
     val oldestUnspentPointDay: Long = 0L,
+    /**
+     * The run's record of its own decisions, for the end-of-run breakdown: every growth point in
+     * the order it was spent, how many of them the town spent for itself, and what killed people.
+     * All defaulted — a save from before the breakdown existed loads with an empty record, which is
+     * the truth about it.
+     */
+    val traitGrowthHistory: List<Trait> = emptyList(),
+    val autoSpentTraitPoints: Int = 0,
+    val deathsByCause: List<Int> = emptyList(),
+    val warsFought: Int = 0,
+    val raidsSuffered: Int = 0,
     /** An epidemic in progress is part of the run, not a detail to re-roll on load. */
     val epidemicDaysLeft: Int = 0,
     val epidemicCount: Int = 0,
@@ -144,6 +155,14 @@ data class CitizenSave(
     val skill: Float,
     /** Individual constitution. Defaulted so a save from before people were individuals loads. */
     val vigour: Float = 1f,
+    /**
+     * Given name and family line, as indices into [CitizenNames]' tables rather than text — two
+     * ints per citizen instead of two strings. Defaulted, so a save written before citizens had
+     * names loads and its whole population turns out to be Aldn Ashgroves, which is odd but
+     * harmless and strictly better than refusing the file.
+     */
+    val nameCode: Int = 0,
+    val familyId: Int = 0,
     val influence: Float,
     val partnerId: Int? = null,
     val pregnantUntilDay: Int? = null,
@@ -166,6 +185,12 @@ data class BuildingSave(
     val buildProgress: Double,
     val complete: Boolean,
     val residents: Int,
+    /**
+     * What is left of the structure. Negative means "not recorded" rather than "rubble", which is
+     * how a save written before walls could be besieged loads with its walls intact: zero would
+     * have demolished every building in the file.
+     */
+    val integrity: Double = -1.0,
 )
 
 @Serializable

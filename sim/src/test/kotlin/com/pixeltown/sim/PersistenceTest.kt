@@ -152,10 +152,10 @@ class PersistenceTest {
 
         val ticks = OfflineCatchUp.ticksFor(8 * 3600L, Meta.OFFLINE_CAP_HOURS_FREE)
         // Both sides must advance the *same* way or this proves nothing. OfflineCatchUp.advance
-        // runs attended — it has to, or catch-up could resolve decisions live play leaves open —
-        // so the watched side does too. A blanket rewrite to runUnattended broke exactly this
-        // symmetry and the test caught it.
-        watched.run(ticks.toInt())
+        // runs unattended — it has to, because an unspent trait point now stops the clock and an
+        // attended catch-up would halt at the first decade boundary — so the watched side does too.
+        // Driving the two sides differently is exactly the mistake this test exists to catch.
+        watched.runUnattended(ticks.toInt())
         OfflineCatchUp.advance(away, ticks)
 
         assertEquals(watched.stateHash(), away.stateHash())

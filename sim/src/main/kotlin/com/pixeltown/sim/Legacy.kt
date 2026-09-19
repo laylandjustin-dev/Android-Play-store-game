@@ -2,6 +2,7 @@ package com.pixeltown.sim
 
 import com.pixeltown.sim.GameConfig.Meta
 import com.pixeltown.sim.GameConfig.Traits as TraitConfig
+import kotlin.math.roundToInt
 import kotlin.math.floor
 import kotlin.math.pow
 import kotlin.math.min
@@ -212,11 +213,94 @@ data class RunConfig(
     }
 }
 
-/** How a finished run scored, and what it earned. */
+/**
+ * How a finished run scored, what it earned, and — the larger half — what the player actually
+ * decided along the way.
+ *
+ * The score was always the easy part. A run of three centuries is a few dozen real decisions: ten
+ * opening points, a point every decade, a tech at every tier, the categories chartered and
+ * petitioned. None of that was visible anywhere when the run ended, so a player could not tell a
+ * good run from a lucky one. Everything here is a *record*, computed at the end from state the
+ * simulation was keeping anyway; nothing in it feeds back into the game.
+ */
 data class RunSummary(
     val endState: EndState,
     val yearsSurvived: Int,
     val peakPopulation: Int,
     val techTier: Int,
     val chroniclePointsEarned: Int,
-)
+    /** The allocation the run opened on, and the one it ended with. */
+    val openingTraits: TraitAllocation = TraitAllocation.BASE,
+    val finalTraits: TraitAllocation = TraitAllocation.BASE,
+    /** Where each decade point went, as a count per trait, and how many went unattended. */
+    val traitGrowth: Map<Trait, Int> = emptyMap(),
+    val traitPointsAutoSpent: Int = 0,
+    val traitPointsUnspent: Int = 0,
+    /** The techs chosen, in order, one per tier reached. */
+    val techsChosen: List<String> = emptyList(),
+    /** Completed buildings by category, and the standing charter at the end. */
+    val buildingsByCategory: Map<BuildingCategory, Int> = emptyMap(),
+    val finalCharter: BuildingCategory? = null,
+    /** Which platform the town kept electing, by dominant category. */
+    val premiersByPlatform: Map<BuildingCategory, Int> = emptyMap(),
+    val termsServed: Int = 0,
+    val coups: Int = 0,
+    /** What killed people, and how many of each. */
+    val deathsByCause: Map<DeathCause, Int> = emptyMap(),
+    val totalBirths: Int = 0,
+    val totalDeaths: Int = 0,
+    /** Wars, raids and trades this civ was party to, and the rivals still standing at the end. */
+    val warsFought: Int = 0,
+    val raidsSuffered: Int = 0,
+    val rivalsSurviving: Int = 0,
+    val rivalsExtinct: Int = 0,
+) {
+    /** A whole-number percentage of [total], for the UI. Zero total reads as zero, never NaN. */
+    private fun share(part: Int, total: Int): Int =
+        if (total <= 0) 0 else ((part * 100.0) / total).roundToInt()
+
+    /** Where the run's growth points went, as percentages. Largest share first. */
+    fun traitGrowthShare(): List<Pair<Trait, Int>> {
+        val total = traitGrowth.values.sum()
+        return traitGrowth.entries
+            .sortedWith(compareByDescending<Map.Entry<Trait, Int>> { it.value }.thenBy { it.key.ordinal })
+            .map { it.key to share(it.value, total) }
+    }
+
+    /** What the town built, as percentages of its completed buildings. Largest share first. */
+    fun buildingShare(): List<Pair<BuildingCategory, Int>> {
+        val total = buildingsByCategory.values.sum()
+        return buildingsByCategory.entries
+            .sortedWith(compareByDescending<Map.Entry<BuildingCategory, Int>> { it.value }.thenBy { it.key.ordinal })
+            .map { it.key to share(it.value, total) }
+    }
+
+    /** What killed this people, as percentages of all deaths. Largest share first. */
+    fun deathShare(): List<Pair<DeathCause, Int>> {
+        val total = deathsByCause.values.sum()
+        return deathsByCause.entries
+            .sortedWith(compareByDescending<Map.Entry<DeathCause, Int>> { it.value }.thenBy { it.key.ordinal })
+            .map { it.key to share(it.value, total) }
+    }
+
+    /** Which platform the electorate kept returning, as percentages. Largest share first. */
+    fun platformShare(): List<Pair<BuildingCategory, Int>> {
+        val total = premiersByPlatform.values.sum()
+        return premiersByPlatform.entries
+            .sortedWith(compareByDescending<Map.Entry<BuildingCategory, Int>> { it.value }.thenBy { it.key.ordinal })
+            .map { it.key to share(it.value, total) }
+    }
+
+    /**
+     * How much of this people's growth they chose themselves.
+     *
+     * The one number in here that is a judgement rather than a record: an idle run auto-spends its
+     * points on the safe answer (AD-50), so a low figure is the game telling the player that their
+     * civilisation grew up without them.
+     */
+    val attentionShare: Int
+        get() {
+            val spent = traitGrowth.values.sum()
+            return share(spent - traitPointsAutoSpent, spent)
+        }
+}

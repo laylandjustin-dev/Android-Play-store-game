@@ -44,6 +44,8 @@ class WebGame(
     hunting: Int,
     elements: Int,
     farming: Int,
+    /** Defaulted, so a shell built before the sixth trait existed still constructs a run. */
+    logging: Int = GameConfig.Traits.BASE_VALUE,
     colonyName: String = ColonyName.DEFAULT,
     /** Cell the player picked on the map preview, or -1 to take the generator's choice. */
     startCell: Int = -1,
@@ -52,7 +54,7 @@ class WebGame(
     private val simulation = Simulation.newRun(
         RunConfig(
             seed = seed.toLong(),
-            traits = TraitAllocation(speed, health, hunting, elements, farming),
+            traits = TraitAllocation(speed, health, hunting, elements, farming, logging),
             colonyName = colonyName,
             startCell = startCell.takeIf { it >= 0 },
             colorIndex = colorIndex,
@@ -244,7 +246,50 @@ class WebGame(
             sb.append(",\"summary\":{\"years\":").append(summary.yearsSurvived)
             sb.append(",\"peak\":").append(summary.peakPopulation)
             sb.append(",\"tier\":").append(summary.techTier)
-            sb.append(",\"points\":").append(summary.chroniclePointsEarned).append('}')
+            sb.append(",\"points\":").append(summary.chroniclePointsEarned)
+            // The breakdown: what the player actually decided over the run, not just how it scored.
+            sb.append(",\"opening\":").append(traitsJson(summary.openingTraits))
+            sb.append(",\"final\":").append(traitsJson(summary.finalTraits))
+            sb.append(",\"growth\":").append(
+                shareJson(summary.traitGrowthShare().map { it.first.name.lowercase() to it.second }),
+            )
+            sb.append(",\"growthCounts\":").append(
+                shareJson(Trait.entries.mapNotNull { t ->
+                    summary.traitGrowth[t]?.let { t.name.lowercase() to it }
+                }),
+            )
+            sb.append(",\"autoSpent\":").append(summary.traitPointsAutoSpent)
+            sb.append(",\"unspent\":").append(summary.traitPointsUnspent)
+            sb.append(",\"attention\":").append(summary.attentionShare)
+            sb.append(",\"techs\":").append(
+                summary.techsChosen.joinToString(",", "[", "]") { "\"${escape(it)}\"" },
+            )
+            sb.append(",\"built\":").append(
+                shareJson(summary.buildingShare().map { it.first.name.lowercase() to it.second }),
+            )
+            sb.append(",\"builtCounts\":").append(
+                shareJson(BuildingCategory.entries.mapNotNull { c ->
+                    summary.buildingsByCategory[c]?.let { c.name.lowercase() to it }
+                }),
+            )
+            sb.append(",\"charter\":").append(
+                summary.finalCharter?.let { "\"${it.name.lowercase()}\"" } ?: "null",
+            )
+            sb.append(",\"platforms\":").append(
+                shareJson(summary.platformShare().map { it.first.name.lowercase() to it.second }),
+            )
+            sb.append(",\"terms\":").append(summary.termsServed)
+            sb.append(",\"coups\":").append(summary.coups)
+            sb.append(",\"deaths\":").append(
+                shareJson(summary.deathShare().map { it.first.name.lowercase() to it.second }),
+            )
+            sb.append(",\"births\":").append(summary.totalBirths)
+            sb.append(",\"died\":").append(summary.totalDeaths)
+            sb.append(",\"wars\":").append(summary.warsFought)
+            sb.append(",\"raids\":").append(summary.raidsSuffered)
+            sb.append(",\"rivalsLeft\":").append(summary.rivalsSurviving)
+            sb.append(",\"rivalsGone\":").append(summary.rivalsExtinct)
+            sb.append('}')
         }
 
         sb.append(",\"premier\":")
@@ -350,6 +395,12 @@ class WebGame(
             ChronicleEventKind.FOUNDING,
         )
     }
+    private fun traitsJson(traits: TraitAllocation): String =
+        Trait.entries.joinToString(",", "{", "}") { "\"${it.name.lowercase()}\":${traits[it]}" }
+
+    /** An ordered list of label/number pairs. A list, not an object, because the order is the point. */
+    private fun shareJson(pairs: List<Pair<String, Int>>): String =
+        pairs.joinToString(",", "[", "]") { "{\"k\":\"${it.first}\",\"v\":${it.second}}" }
 }
 
 /**
@@ -415,20 +466,38 @@ private fun hexOf(argb: Int): String {
 
 /** What a build is called and what it is known for — the same names the map's markers stand for. */
 @JsExport
-fun describeBuild(speed: Int, health: Int, hunting: Int, elements: Int, farming: Int): String {
-    val archetype = Archetype.of(TraitAllocation(speed, health, hunting, elements, farming))
+fun describeBuild(
+    speed: Int,
+    health: Int,
+    hunting: Int,
+    elements: Int,
+    farming: Int,
+    logging: Int = GameConfig.Traits.BASE_VALUE,
+): String {
+    val archetype = Archetype.of(TraitAllocation(speed, health, hunting, elements, farming, logging))
     return "{\"label\":\"${archetype.label}\",\"blurb\":\"${archetype.blurb}\"," +
         "\"shape\":\"${archetype.shape.name.lowercase()}\"}"
 }
 
 /** The derived numbers the allocation screen previews, without starting a run. */
 @JsExport
-fun previewTraits(speed: Int, health: Int, hunting: Int, elements: Int, farming: Int): String {
-    val traits = TraitAllocation(speed, health, hunting, elements, farming)
+fun previewTraits(
+    speed: Int,
+    health: Int,
+    hunting: Int,
+    elements: Int,
+    farming: Int,
+    logging: Int = GameConfig.Traits.BASE_VALUE,
+): String {
+    val traits = TraitAllocation(speed, health, hunting, elements, farming, logging)
     return "{\"work\":${fixed(traits.workMultiplier)}," +
         "\"lifespan\":${traits.lifespanYears.toInt()}," +
         "\"hunt\":${fixed(traits.huntYield)}," +
         "\"farm\":${fixed(traits.farmYield)}," +
+        "\"gather\":${fixed(traits.gatherYield)}," +
+        "\"build\":${fixed(traits.buildRate)}," +
+        "\"fertility\":${fixed(traits.fertilityMultiplier)}," +
+        "\"ration\":${fixed(traits.rationMultiplier)}," +
         "\"shelter\":${fixed(traits.elementsShelter)}," +
         "\"winter\":${fixed(traits.seasonalYieldMultiplier(1.0))}}"
 }

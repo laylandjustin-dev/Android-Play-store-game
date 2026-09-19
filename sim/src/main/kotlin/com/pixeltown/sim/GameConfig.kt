@@ -44,11 +44,23 @@ object GameConfig {
     // ---------------------------------------------------------------- traits
 
     object Traits {
-        const val COUNT = 5
+        const val COUNT = 6
         const val BASE_VALUE = 3
         const val ALLOCATION_POINTS = 10
-        const val MAX_PER_TRAIT = 8
         const val MIN_PER_TRAIT = 1
+
+        /**
+         * The hard ceiling a trait can ever reach, and the cap on what the opening screen may put
+         * into one. Two different numbers on purpose.
+         *
+         * The brief fixes the opening allocation at "max 8 in any one trait", and that still holds:
+         * it is what stops a player dumping their whole budget into Farming on turn one. But the
+         * decade growth point (AD-50) ran into that same 8 and stopped, so a people finished
+         * growing around year 150 and the back half of a long run had nothing left to decide. The
+         * ceiling is now 20 and a civilisation keeps developing for as long as it survives.
+         */
+        const val MAX_PER_TRAIT = 20
+        const val ALLOCATION_MAX_PER_TRAIT = 8
 
         /** Chronicle-bought bonus allocation points. Hard cap, regardless of spend (§14). */
         const val MAX_PURCHASED_ALLOCATION_POINTS = 4
@@ -62,15 +74,6 @@ object GameConfig {
         const val GENERATION_INTERVAL_YEARS = 10
         const val GENERATION_POINTS_PER_AWARD = 1
 
-        /**
-         * How long a player's earned point waits for them before the town spends it itself.
-         *
-         * This is an idle game with an offline catch-up path: a player who is away for a day must
-         * not come back behind the rivals, who spend theirs the moment they earn them. The
-         * automatic choice is deliberately conservative (see `Simulation.needBasedGrowth`), so
-         * attention is rewarded with *direction*, never with raw power.
-         */
-        const val GENERATION_AUTOSPEND_GRACE_DAYS = Time.DAYS_PER_YEAR
 
         /**
          * workMultiplier = base + perPoint * Speed.
@@ -103,6 +106,15 @@ object GameConfig {
          */
         const val MOVE_SPEED_BASE = 1.20
         const val MOVE_SPEED_PER_SPEED = 0.11
+
+        /**
+         * fertilityMultiplier = 1 + perPoint * (Health - base).
+         *
+         * A healthy people carry more pregnancies to term. Measured from the base value, like
+         * [RATION_REDUCTION_PER_HEALTH], so a Health-3 people conceive at exactly the documented
+         * rate and the trait reads as a change in both directions.
+         */
+        const val FERTILITY_PER_HEALTH = 0.07
 
         // lifespan = 48 + 3.0 * Health   (years)
         const val LIFESPAN_YEARS_BASE = 48.0
@@ -189,6 +201,29 @@ object GameConfig {
          */
         const val FARM_YIELD_BASE = 0.5
         const val FARM_YIELD_PER_FARMING = 0.16
+
+        /**
+         * Wood and stone gathered per point of Logging.
+         *
+         * The sixth trait, and the one the other five kept implying: almost every building costs
+         * wood, a town that cannot gather it never builds anything (AD-29), and until now no trait
+         * touched that at all — gathering was flat whoever you were. A people can now be as good
+         * at working timber and stone as they are at farming.
+         */
+        const val GATHER_YIELD_BASE = 0.55
+        const val GATHER_YIELD_PER_LOGGING = 0.15
+
+        /**
+         * buildRate = base + perPoint * Logging.
+         *
+         * Gathering alone would have made Logging a resource dial rather than a build: a town
+         * short of wood simply puts more people on gathering. Tying construction speed to the
+         * same trait gives it one legible identity — *this is the people who build things* — and
+         * it is the trait the fifty-year building gate (AD-50) actually answers to. Scaled, like
+         * gathering, so a base-3 people builds at exactly the old rate.
+         */
+        const val BUILD_RATE_BASE = 0.70
+        const val BUILD_RATE_PER_LOGGING = 0.10
 
         // Elements reduces cold/heat/storm penalties by 0.11 per point.
         const val ELEMENTS_PENALTY_REDUCTION_PER_POINT = 0.11
@@ -714,6 +749,18 @@ object GameConfig {
         const val INFRASTRUCTURE_WORKER_SHARE = 0.18
         const val BUILDER_SHARE_OF_INFRASTRUCTURE = 0.35
 
+        /**
+         * How much each completed Lifestyle building raises a town's birth rate, and the ceiling
+         * on the sum.
+         *
+         * Housing already gates births through housing slack; this is the other half of the same
+         * idea — a town with plazas, baths and somewhere to gather is a town people start families
+         * in. Capped, because Lifestyle is the cheapest category and nine plazas must not double
+         * the population curve.
+         */
+        const val FERTILITY_PER_LIFESTYLE_BUILDING = 0.06
+        const val MAX_LIFESTYLE_FERTILITY_BONUS = 0.45
+
         /** In a food crisis, this share of the workforce is pushed onto food production. */
         const val CRISIS_FOOD_WORKER_SHARE = 0.85
 
@@ -1162,6 +1209,26 @@ object GameConfig {
         const val COMBAT_DAILY_ATTRITION = 0.12
         const val COMBAT_RANDOM_SPREAD = 0.20
         const val WALL_DEFENCE_BONUS = 1.45
+
+        /**
+         * The siege. A standing wall is not a multiplier any more — it is an obstacle that has to
+         * be brought down before an army reaches the town behind it.
+         *
+         * Three numbers. [SIEGE_DAMAGE_PER_STRENGTH] is how much integrity a point of attacking
+         * strength removes per day, so a wall's life is measured in army-days rather than in a dice
+         * roll. [SIEGE_ATTACKER_ATTRITION_SCALE] is the share of a normal battle's losses the
+         * besiegers still take while they work — the defenders are shooting down at them, so it is
+         * not free, but they are not storming the place either. [SIEGE_MAX_DAYS] is the patience of
+         * a raiding party: a raid that cannot get through a wall in a fortnight goes home, which is
+         * exactly what walls are for.
+         *
+         * A WALL's `buildPointsRequired` is 300, so one integrity point is one build point: it
+         * costs an army roughly what it cost the defenders, which is the trade the player is
+         * choosing when they charter Military.
+         */
+        const val SIEGE_DAMAGE_PER_STRENGTH = 0.9
+        const val SIEGE_ATTACKER_ATTRITION_SCALE = 0.35
+        const val SIEGE_MAX_DAYS = 14
     }
 
     // ---------------------------------------------------------------- meta

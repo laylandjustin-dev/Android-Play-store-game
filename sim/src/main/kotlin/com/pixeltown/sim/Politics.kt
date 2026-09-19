@@ -219,25 +219,3 @@ data class ElectionResult(
 ) {
     val totalVotes: Int get() = voteCounts.sumOf { it.second }
 }
-
-/** Name generation for candidates. Syllables, not a name list, so it never repeats itself. */
-object NameGenerator {
-
-    private val FIRST = listOf(
-        "Ald", "Bren", "Cor", "Dara", "Eil", "Fen", "Gar", "Hal", "Ira", "Jor",
-        "Kel", "Lys", "Mar", "Nev", "Oren", "Pell", "Quin", "Ros", "Sar", "Tam",
-        "Ulf", "Ver", "Wyn", "Yar", "Zel",
-    )
-    private val SECOND = listOf(
-        "a", "en", "is", "or", "wen", "ric", "dal", "mir", "ath", "ell",
-        "und", "ora", "iel", "arn", "ost",
-    )
-    private val FAMILY = listOf(
-        "Ashgrove", "Blackfen", "Coldwater", "Dunmoor", "Eastmarch", "Fairholt",
-        "Greyhill", "Hearthstone", "Ironbrook", "Larkfield", "Mossbank", "Northreach",
-        "Oakhollow", "Pinewatch", "Redbarrow", "Stonewell", "Thornfield", "Westmere",
-    )
-
-    fun name(rng: SimRandom): String =
-        "${rng.pick(FIRST)}${rng.pick(SECOND)} ${rng.pick(FAMILY)}"
-}

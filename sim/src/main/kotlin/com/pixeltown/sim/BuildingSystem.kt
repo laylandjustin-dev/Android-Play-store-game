@@ -144,7 +144,7 @@ internal object BuildingSystem {
         var points = 0.0
         for (builder in builders) {
             points += GameConfig.Economy.BUILDER_OUTPUT * builder.effectiveness() * traits.workMultiplier *
-                techMultiplier * effects.buildSpeedBonus
+                traits.buildRate * techMultiplier * effects.buildSpeedBonus
         }
 
         val completed = ArrayList<Building>()
@@ -172,6 +172,7 @@ internal object BuildingSystem {
         var disease = 0.0
         var foodToWealth = 0.0
         var upkeep = 0.0
+        var fertility = 0.0
         var count = 0
 
         for (building in buildings) {
@@ -191,6 +192,9 @@ internal object BuildingSystem {
             disease += spec.diseaseResistBonus
             foodToWealth += spec.foodToWealth
             upkeep += spec.upkeepWealth
+            if (spec.category == BuildingCategory.LIFESTYLE) {
+                fertility += GameConfig.Economy.FERTILITY_PER_LIFESTYLE_BUILDING
+            }
             count++
         }
 
@@ -209,6 +213,7 @@ internal object BuildingSystem {
             diseaseResistBonus = disease,
             foodToWealth = foodToWealth,
             upkeepWealth = upkeep,
+            fertilityBonus = min(fertility, GameConfig.Economy.MAX_LIFESTYLE_FERTILITY_BONUS),
             completedCount = count,
         )
     }

@@ -91,10 +91,30 @@ class Building(
     /** Occupants, for housing. */
     var residents: Int = 0
 
+    /**
+     * What is left of this structure, in the same units as [BuildingSpec.buildPointsRequired]: a
+     * besieging army takes it down at the cost of roughly what it cost to put up.
+     *
+     * Only walls are ever attacked today, so for everything else this is inert. It is stored on
+     * every building rather than on a wall subclass because there is no wall subclass and there
+     * should not be one — a building is its spec plus its state.
+     */
+    var integrity: Double = spec.buildPointsRequired
+
+    val isRubble: Boolean get() = integrity <= 0.0
+
+    /** Reduces integrity; returns true on the blow that brings the structure down. */
+    fun damage(points: Double): Boolean {
+        if (points <= 0.0 || isRubble) return false
+        integrity -= points
+        return isRubble
+    }
+
     /** Restores a saved building's progress without re-running construction. */
-    fun restoreProgress(progress: Double, complete: Boolean) {
+    fun restoreProgress(progress: Double, complete: Boolean, integrity: Double = spec.buildPointsRequired) {
         buildProgress = progress
         isComplete = complete
+        this.integrity = integrity
     }
 
     /** Adds builder output; returns true on the tick the building is finished. */
@@ -139,6 +159,8 @@ data class CivEffects(
     val diseaseResistBonus: Double = 0.0,
     val foodToWealth: Double = 0.0,
     val upkeepWealth: Double = 0.0,
+    /** Extra birth rate from Lifestyle buildings, over and above housing slack. */
+    val fertilityBonus: Double = 0.0,
     val completedCount: Int = 0,
 ) {
     /**

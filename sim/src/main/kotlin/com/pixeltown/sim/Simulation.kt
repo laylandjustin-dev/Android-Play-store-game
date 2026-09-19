@@ -264,6 +264,10 @@ class Simulation(
         ).apply {
             politicalBias = BuildingCategory.entries[rng.nextInt(BuildingCategory.entries.size)]
             politicalBiasStrength = rng.nextDouble(0.0, Politics.VOTE_BIAS_MAX).toFloat()
+            // Everyone is named here, founders and newborns alike, so no code path can produce an
+            // anonymous citizen. `giveBirth` overwrites the family afterwards with the parents'.
+            nameCode = CitizenNames.randomGiven(rng)
+            familyId = CitizenNames.randomFamily(rng)
         }
         living.add(citizen)
         byId[citizen.id] = citizen
@@ -313,7 +317,6 @@ class Simulation(
 
         ageEveryone()
         awardGenerationPoints()
-        autoSpendStaleGrowth()
         runCouncil()
         assignJobsIfDue()
         produceGoods()
@@ -415,35 +418,20 @@ class Simulation(
                 }
             }
         }
-    }
 
-    /**
-     * Spends a player's point for them once it has waited
-     * [TraitConfig.GENERATION_AUTOSPEND_GRACE_DAYS].
-     *
-     * Runs every tick rather than only on an anniversary, because the grace period is what matters
-     * and a run can be reloaded at any point in it.
-     */
-    /**
-     * Spends a banked point on the player's behalf — but only when there is no player.
-     *
-     * AD-50 had this run during live play, where it is exactly wrong: at 10x a game year is 36
-     * seconds and at 100x under four, so the decision the mechanic exists for was taken away before
-     * the player could reach it. Reported as "the new stat every 10 doesn't work", and it didn't.
-     *
-     * It does not run during offline catch-up either, because catch-up has to match live ticking
-     * exactly (M6). Points earned while away bank up and wait. What is left is the headless
-     * harness, which has no player at all and would otherwise measure a civ that never once spent
-     * a point — not how anybody plays.
-     */
-    private fun autoSpendStaleGrowth() {
+        // With nobody watching, the player's point is spent the same day a rival's is — the safe
+        // answer of `needBasedGrowth`, never the strong one. This is what makes the headless
+        // harness measure a symmetric game: before it, the sweep's player civ banked its points
+        // for a year while four rivals spent theirs immediately, and the harness read the
+        // difference as difficulty.
         if (!unattended) return
         for (civ in civs) {
-            if (!civ.isPlayer || civ.unspentTraitPoints <= 0) continue
-            if (day - civ.oldestUnspentPointDay < TraitConfig.GENERATION_AUTOSPEND_GRACE_DAYS) continue
-            val trait = needBasedGrowth(civ) ?: continue
-            if (!raiseTrait(civ, trait)) continue
-            civ.oldestUnspentPointDay = day
+            if (!civ.isPlayer) continue
+            while (civ.unspentTraitPoints > 0) {
+                val trait = needBasedGrowth(civ) ?: break
+                if (!raiseTrait(civ, trait)) break
+                civ.autoSpentTraitPoints++
+            }
         }
     }
 
@@ -485,6 +473,7 @@ class Simulation(
         val grown = civ.traits.withPointIn(trait) ?: return false
         civ.traits = grown
         civ.unspentTraitPoints--
+        civ.traitGrowthHistory.add(trait)
         // Anything derived from the traits has to be recomputed now. Food storage scales with
         // Elements, and it was only ever refreshed when a building completed — so a civ that grew
         // an Elements point kept a stale capacity until its next build, while a reload recomputed
@@ -792,9 +781,25 @@ class Simulation(
     fun pendingTechChoices(civId: Int): List<TechOption> =
         civ(civId).pendingTechTier?.let { TechOption.forTier(it) } ?: emptyList()
 
-    /** True while the clock is stopped waiting on a decision only the player can make. */
+    /**
+     * True while the clock is stopped waiting on a decision only the player can make: a tech to
+     * choose at a new tier, or a decade's trait point to spend.
+     *
+     * The trait point belongs here for the same reason the tech does, and it is the answer to why
+     * rival civilisations appeared to develop faster than the player's. A rival spends its point the
+     * day it earns it; the player's banked and waited, so for as much as a year of game time —
+     * thirty-six seconds at 10x — four rivals were a point ahead of a player who had done nothing
+     * wrong. Stopping the clock makes the two symmetric: nobody advances until everyone has spent.
+     */
     val awaitingPlayer: Boolean
-        get() = civ(WorldConfig.PLAYER_CIV_ID).pendingTechTier != null
+        get() {
+            val player = civ(WorldConfig.PLAYER_CIV_ID)
+            if (player.pendingTechTier != null) return true
+            return !unattended && player.unspentTraitPoints > 0 && player.traits.improvable.isNotEmpty()
+        }
+
+    /** Growth points the player has earned and not yet spent. Zero when nothing is waiting. */
+    fun pendingTraitPoints(civId: Int): Int = civ(civId).unspentTraitPoints
 
     /**
      * Takes [option] for [civId]. False if it was not on offer — a stale tap from a UI, or a save
@@ -872,7 +877,7 @@ class Simulation(
             civ,
             Premier(
                 citizenId = usurper.id,
-                name = NameGenerator.name(rng),
+                name = usurper.fullName,
                 // A usurper governs to the town's actual grievance — that is why they had support.
                 agenda = Agenda.of(townNeeds(civ, members)),
                 temperament = Temperament.AMBITIOUS,
@@ -1034,6 +1039,8 @@ class Simulation(
 
     private fun declareWar(aggressor: Civilization, defender: Civilization) {
         relations.declareWar(aggressor.id, defender.id, day)
+        aggressor.warsFought++
+        defender.warsFought++
         chronicle.record(
             ChronicleEvent(day, ChronicleEventKind.WAR_DECLARED, aggressor.id, detail = defender.name),
         )
@@ -1044,6 +1051,7 @@ class Simulation(
         if (armies.any { it.civId == raider.id && it.targetCivId == target.id }) return
         if (muster(raider, target, Army.Kind.RAID, RivalConfig.RAID_PARTY_SHARE)) {
             relations.raise(raider.id, target.id, RivalConfig.TENSION_RAID_LAUNCHED)
+            target.raidsSuffered++
             chronicle.record(
                 ChronicleEvent(day, ChronicleEventKind.RAID, raider.id, detail = target.name),
             )
@@ -1111,7 +1119,17 @@ class Simulation(
             }
             if (army.isBroken()) army.returning = true
 
-            val destination = if (army.returning) civ(army.civId).homeSite else army.targetCell
+            // An army cannot walk through a wall, so while one stands it marches on the wall
+            // instead of the town — which is also what makes a siege visible on the map.
+            val wall = if (army.returning) null else standingWallAgainst(army)
+            army.besieging = wall?.id
+            if (wall == null) army.siegeDays = 0
+
+            val destination = when {
+                army.returning -> civ(army.civId).homeSite
+                wall != null -> world.index(wall.x, wall.y)
+                else -> army.targetCell
+            }
             for (id in army.members) {
                 val soldier = byId[id] ?: continue
                 soldier.workCell = destination
@@ -1131,6 +1149,76 @@ class Simulation(
             for (id in army.members) byId[id]?.let { it.enlisted = false; it.workCell = World.NONE }
         }
         armies.removeAll(disbanded)
+    }
+
+    /**
+     * The defender's wall this army has to bring down first, or null when the way is open.
+     *
+     * "First" is the wall nearest the army, so a town with two walls is reduced one at a time and a
+     * force that has already broken through does not turn round to attack the far side. Only
+     * completed walls count: a half-built structure is inert everywhere else in the game, and a
+     * half-built wall that stopped an army would be the cheapest defence on the map.
+     */
+    private fun standingWallAgainst(army: Army): Building? {
+        val walls = buildingsOf(army.targetCivId).filter {
+            it.type == BuildingType.WALL && it.isComplete && !it.isRubble
+        }
+        if (walls.isEmpty()) return null
+        val leader = army.members.firstNotNullOfOrNull { byId[it] } ?: return walls.first()
+        return walls.minBy { maxOf(abs(it.x - leader.x), abs(it.y - leader.y)) }
+    }
+
+    /**
+     * A day of siege: the army works on the wall and takes fire while it does.
+     *
+     * Deliberately not a battle against the town's soldiers. The point of the mechanic the walls
+     * now have is that an army in front of a wall is *not* in the town: it cannot kill farmers, it
+     * cannot loot the granary, and every day it spends here is a day the defenders spend farming.
+     */
+    private fun besiege(army: Army, wall: Building) {
+        val attackers = army.members.mapNotNull { byId[it] }
+        if (attackers.isEmpty()) return
+        val attackerCiv = civ(army.civId)
+        val defenderCiv = civ(army.targetCivId)
+
+        val attackStrength = DiplomacySystem.strengthOf(
+            attackers, attackerCiv.traits, techMultiplier(attackerCiv), CivEffects.NONE,
+        )
+        army.siegeDays++
+
+        // The defenders shoot back, at a fraction of what a storming assault would cost.
+        val losses = (
+            attackers.size * RivalConfig.COMBAT_DAILY_ATTRITION * RivalConfig.SIEGE_ATTACKER_ATTRITION_SCALE
+            ).toInt()
+        if (losses > 0) {
+            for (casualty in attackers.take(losses)) kill(casualty, DeathCause.COMBAT)
+            compactDead()
+            refreshPopulationIndex()
+        }
+
+        if (wall.damage(attackStrength * RivalConfig.SIEGE_DAMAGE_PER_STRENGTH)) {
+            BuildingSystem.remove(world, wall)
+            allBuildings.remove(wall)
+            buildingsByCiv[defenderCiv.id].remove(wall)
+            refreshEffects(defenderCiv.id)
+            army.besieging = null
+            army.siegeDays = 0
+            chronicle.record(
+                ChronicleEvent(
+                    day, ChronicleEventKind.RAID, army.civId,
+                    detail = "breached ${defenderCiv.name}'s wall",
+                ),
+            )
+        } else if (army.kind == Army.Kind.RAID && army.siegeDays >= RivalConfig.SIEGE_MAX_DAYS) {
+            // A raiding party is not a siege engine. This is what walls are actually for.
+            army.returning = true
+            chronicle.record(
+                ChronicleEvent(
+                    day, ChronicleEventKind.RAID, army.civId,
+                    detail = "turned back by ${defenderCiv.name}'s walls",
+                ),
+            )
+        }
     }
 
     private fun Army.atHome(): Boolean {
@@ -1160,6 +1248,17 @@ class Simulation(
 
             val attackers = army.members.mapNotNull { byId[it] }
             if (attackers.isEmpty()) continue
+
+            // A wall in the way is fought before the town is. `marchArmies` has already pointed
+            // the column at it; this is the day's work once they arrive.
+            val wall = army.besieging?.let { id -> buildingsOf(defenderCiv.id).firstOrNull { it.id == id } }
+            if (wall != null) {
+                val inRange = attackers.any {
+                    maxOf(abs(it.x - wall.x), abs(it.y - wall.y)) <= RivalConfig.ENGAGEMENT_RANGE
+                }
+                if (inRange) besiege(army, wall)
+                continue
+            }
 
             // Defenders are whoever is standing near the fighting.
             val defenders = membersOf(defenderCiv.id).filter { defender ->
@@ -1593,6 +1692,7 @@ class Simulation(
 
         val civ = civ(citizen.civId)
         civ.totalDeaths++
+        civ.deathsByCause[cause.ordinal]++
         chronicle.record(
             ChronicleEvent(day, ChronicleEventKind.DEATH, citizen.civId, citizen.id, deathCause = cause),
         )
@@ -1668,8 +1768,16 @@ class Simulation(
             citizen.survival > Life.BIRTH_MIN_SURVIVAL &&
             civ(citizen.civId)[Resource.FOOD] > 0.0
 
+    /**
+     * Two things beyond condition and housing decide how often a town has children: how healthy a
+     * people are (Health, as a metabolic trait) and whether the town is somewhere worth raising
+     * them (its Lifestyle buildings). Both are multipliers on the documented base rate, so a
+     * Health-3 town with no plazas conceives at exactly the rate AD-24 measured.
+     */
     private fun conceptionChance(citizen: Citizen): Double =
-        Life.CONCEIVE_BASE * (citizen.survival / SurvivalConfig.MAX) * housingSlack(citizen.civId)
+        Life.CONCEIVE_BASE * (citizen.survival / SurvivalConfig.MAX) * housingSlack(citizen.civId) *
+            civ(citizen.civId).traits.fertilityMultiplier *
+            (1.0 + effects[citizen.civId].fertilityBonus)
 
     /**
      * The share of housing capacity still free. A town with nowhere to put a child has fewer of
@@ -1696,6 +1804,9 @@ class Simulation(
         // Heredity: the child starts from its parents' average and gets a fresh draw on top, so a
         // people's constitution drifts across generations instead of being resampled every birth.
         val father = mother.partnerId?.let { citizenOrNull(it) }
+        // The lineage: a child carries its father's family name where there is one, its mother's
+        // otherwise, so surnames descend through the run instead of being redrawn every birth.
+        child.familyId = father?.familyId ?: mother.familyId
         val inherited = if (father != null) (mother.vigour + father.vigour) / 2.0 else mother.vigour.toDouble()
         val mutation = rng.nextDouble(-TraitConfig.VIGOUR_MUTATION, TraitConfig.VIGOUR_MUTATION)
         // Pulled part of the way back toward the average, so a lineage improves without running
@@ -1840,16 +1951,73 @@ class Simulation(
         return owner >= 0 && owner != player.id
     }
 
-    /** How the run scored, once it has ended. Null while it is still running. */
+    /**
+     * How the run scored and what the player decided. Null while it is still running.
+     *
+     * Everything past the score is a *record* of choices the simulation was already keeping, which
+     * is why building it costs a few list walks at the end of a run and nothing per tick. The
+     * opening allocation is recovered from the final sheet minus the growth history rather than
+     * stored separately: the two must agree, and deriving one from the other means they cannot
+     * disagree.
+     */
     fun summary(): RunSummary? {
         val ending = endState ?: return null
         val player = civs.first { it.isPlayer }
+
+        val growth = HashMap<Trait, Int>()
+        for (trait in Trait.entries) growth[trait] = 0
+        for (trait in player.traitGrowthHistory) growth[trait] = (growth[trait] ?: 0) + 1
+
+        val opening = IntArray(TraitConfig.COUNT) { player.traits.values[it] }
+        for (trait in player.traitGrowthHistory) opening[trait.ordinal]--
+
+        val byCategory = HashMap<BuildingCategory, Int>()
+        for (category in BuildingCategory.entries) byCategory[category] = 0
+        for (building in buildingsOf(player.id)) {
+            if (building.isComplete) {
+                byCategory[building.spec.category] = (byCategory[building.spec.category] ?: 0) + 1
+            }
+        }
+
+        val byPlatform = HashMap<BuildingCategory, Int>()
+        for (category in BuildingCategory.entries) byPlatform[category] = 0
+        for (election in elections) {
+            if (election.civId != player.id) continue
+            val dominant = election.agenda.dominant
+            byPlatform[dominant] = (byPlatform[dominant] ?: 0) + 1
+        }
+
+        val deaths = HashMap<DeathCause, Int>()
+        for (cause in DeathCause.entries) {
+            val count = player.deathsByCause[cause.ordinal]
+            if (count > 0) deaths[cause] = count
+        }
+
+        val rivals = civs.filter { !it.isPlayer }
         return RunSummary(
             endState = ending,
             yearsSurvived = year,
             peakPopulation = player.peakPopulation,
             techTier = player.techTier,
             chroniclePointsEarned = Legacy.scoreRun(player.peakPopulation, year, player.techTier, ending),
+            openingTraits = TraitAllocation.of(*opening),
+            finalTraits = player.traits,
+            traitGrowth = growth.filterValues { it > 0 },
+            traitPointsAutoSpent = player.autoSpentTraitPoints,
+            traitPointsUnspent = player.unspentTraitPoints,
+            techsChosen = player.techChoices.map { it.label },
+            buildingsByCategory = byCategory.filterValues { it > 0 },
+            finalCharter = player.charter,
+            premiersByPlatform = byPlatform.filterValues { it > 0 },
+            termsServed = player.termCount,
+            coups = chronicle.totalOf(ChronicleEventKind.COUP),
+            deathsByCause = deaths,
+            totalBirths = player.totalBirths,
+            totalDeaths = player.totalDeaths,
+            warsFought = player.warsFought,
+            raidsSuffered = player.raidsSuffered,
+            rivalsSurviving = rivals.count { !it.isExtinct },
+            rivalsExtinct = rivals.count { it.isExtinct },
         )
     }
 
@@ -1915,6 +2083,11 @@ class Simulation(
                 unspentTraitPoints = civ.unspentTraitPoints,
                 generationsAwarded = civ.generationsAwarded,
                 oldestUnspentPointDay = civ.oldestUnspentPointDay,
+                traitGrowthHistory = civ.traitGrowthHistory.toList(),
+                autoSpentTraitPoints = civ.autoSpentTraitPoints,
+                deathsByCause = civ.deathsByCause.toList(),
+                warsFought = civ.warsFought,
+                raidsSuffered = civ.raidsSuffered,
                 epidemicDaysLeft = civ.epidemicDaysLeft,
                 epidemicCount = civ.epidemicCount,
                 charter = civ.charter,
@@ -1933,7 +2106,8 @@ class Simulation(
             CitizenSave(
                 id = c.id, x = c.x, y = c.y, civId = c.civId, sex = c.sex, ageDays = c.ageDays,
                 hp = c.hp, nutrition = c.nutrition, morale = c.morale, survival = c.survival,
-                job = c.job, skill = c.skill, vigour = c.vigour, influence = c.influence,
+                job = c.job, skill = c.skill, vigour = c.vigour,
+                nameCode = c.nameCode, familyId = c.familyId, influence = c.influence,
                 partnerId = c.partnerId,
                 pregnantUntilDay = c.pregnantUntilDay, homeBuildingId = c.homeBuildingId,
                 workCell = c.workCell, enlisted = c.enlisted, starvingDays = c.starvingDays,
@@ -1942,7 +2116,10 @@ class Simulation(
             )
         },
         buildings = allBuildings.map { b ->
-            BuildingSave(b.id, b.type, b.civId, b.x, b.y, b.buildProgress, b.isComplete, b.residents)
+            BuildingSave(
+                b.id, b.type, b.civId, b.x, b.y, b.buildProgress, b.isComplete, b.residents,
+                integrity = b.integrity,
+            )
         },
         premiers = civs.map { civ ->
             premiers[civ.id]?.let { premier ->
@@ -2141,6 +2318,15 @@ class Simulation(
                     civ.unspentTraitPoints = c.unspentTraitPoints
                     civ.generationsAwarded = c.generationsAwarded
                     civ.oldestUnspentPointDay = c.oldestUnspentPointDay
+                    civ.traitGrowthHistory.addAll(c.traitGrowthHistory)
+                    civ.autoSpentTraitPoints = c.autoSpentTraitPoints
+                    civ.warsFought = c.warsFought
+                    civ.raidsSuffered = c.raidsSuffered
+                    // Sized from the save rather than copied wholesale: a cause added since the
+                    // file was written must not run off the end of the array.
+                    for ((i, count) in c.deathsByCause.withIndex()) {
+                        if (i < civ.deathsByCause.size) civ.deathsByCause[i] = count
+                    }
                     civ.epidemicDaysLeft = c.epidemicDaysLeft
                     civ.epidemicCount = c.epidemicCount
                     // Unknown names are dropped rather than throwing: a save from a build that
@@ -2198,6 +2384,8 @@ class Simulation(
                     pregnantUntilDay = c.pregnantUntilDay, homeBuildingId = c.homeBuildingId,
                 ).apply {
                     vigour = c.vigour
+                    nameCode = c.nameCode
+                    familyId = c.familyId
                     workCell = c.workCell
                     enlisted = c.enlisted
                     starvingDays = c.starvingDays
@@ -2215,7 +2403,11 @@ class Simulation(
 
             for (b in save.buildings) {
                 val building = Building(b.id, b.type, b.civId, b.x, b.y)
-                building.restoreProgress(b.buildProgress, b.complete)
+                building.restoreProgress(
+                    b.buildProgress,
+                    b.complete,
+                    if (b.integrity < 0.0) building.spec.buildPointsRequired else b.integrity,
+                )
                 building.residents = b.residents
                 simulation.allBuildings.add(building)
                 simulation.buildingsByCiv[b.civId].add(building)

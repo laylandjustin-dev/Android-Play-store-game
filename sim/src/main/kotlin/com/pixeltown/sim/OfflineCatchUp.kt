@@ -89,11 +89,18 @@ object OfflineCatchUp {
         val techBefore = player.techTier
         val electionsBefore = simulation.elections.size
 
-        // Deliberately an ordinary run, not an unattended one. Catch-up has to match live ticking
-        // exactly — M6's gate, and the thing that makes a resumed save trustworthy — so it cannot
-        // take decisions that live play leaves open. Trait points earned while away simply bank up
-        // and are waiting when the player gets back, which is the friendlier reading anyway.
-        simulation.run(ticks.toInt())
+        // An unattended run, because that is what an absence is.
+        //
+        // This was an ordinary attended run while a banked trait point merely waited. Now an
+        // unspent point stops the clock, and an attended catch-up would halt at the first decade
+        // boundary: eight hours away is forty game years (AD-41) and the player would come back to
+        // ten of them. Unattended, the point is spent on the safe answer the same day a rival
+        // spends theirs, so time away costs the player nothing and gains them nothing.
+        //
+        // M6's gate still holds, and holds more tightly than before: catch-up must match live
+        // ticking *exactly*, which means the two sides have to be driven the same way. They are
+        // both unattended now, so the match no longer depends on a grace period's timing.
+        simulation.runUnattended(ticks.toInt())
 
         val events = simulation.chronicle.since(startDay)
         val deathEvents = events.filter { it.kind == ChronicleEventKind.DEATH && it.civId == player.id }

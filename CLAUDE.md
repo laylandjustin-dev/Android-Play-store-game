@@ -19,7 +19,8 @@ pixeltown/
 │       ├── World.kt           The 128x128 grid, as parallel primitive arrays.
 │       ├── WorldGenerator.kt  Island generation: fields, terrain, rivers, starting sites.
 │       ├── WorldRenderer.kt   Paints the world into a flat ARGB IntArray; FrameRenderer composites.
-│       ├── TraitAllocation.kt The five traits and every stat derived from them.
+│       ├── TraitAllocation.kt The six traits and every stat derived from them.
+│       ├── CitizenNames.kt    Given names from syllables, family names from a list. Two ints each.
 │       ├── Citizen.kt         One person, one pixel. Mutable by design.
 │       ├── Civilization.kt    A civ's shared state: stores, tech, unrest, statistics.
 │       ├── Chronicle.kt       The rolling event record behind the feed and the return report.
@@ -297,6 +298,88 @@ invariant tests measure whether the thing that happened was the game. Both gates
 `0.0022 + 0.00065 x Farming`, a Farming-3 people loses ground, a Farming-5 people roughly holds and a
 Farming-8 people gains. Put the drain above the top of the band and the game stops growing
 everywhere; put it below the bottom and over-farming is a no-op again.
+
+**AD-57 — Logging is the sixth trait, and it exists because the other five kept implying it.**
+Almost every building costs wood, a town that never gathers it never builds anything (AD-29), and
+until now no trait touched gathering at all: a Farming-8 people and a Farming-1 people gathered
+timber at exactly the same rate. Logging drives both `gatherYield` and `buildRate`, which gives it
+one legible identity — *this is the people who build things* — rather than making it a second
+resource dial. Two details are deliberate:
+
+- **Both derived stats are scaled so a base-3 people is unchanged.** `GATHER_YIELD_BASE 0.55 +
+  0.15 x Logging` is exactly 1.0 at 3, and `BUILD_RATE_BASE 0.70 + 0.10 x Logging` likewise. Every
+  balance table in this file was measured against five traits; scaling this way means they all still
+  mean what they say, and the new trait is a change from the documented baseline in both directions.
+- **`TraitAllocation.of` accepts five values as well as six**, defaulting Logging to base. A great
+  many tests, saved games and the M3–M7 tables were written against the original five, and a
+  migration would have invalidated all of them at once.
+
+**AD-58 — Stats are capped at 20 for life and 8 at the opening screen, and those are two different
+numbers.** The brief fixes the opening allocation at "max 8 in any one trait" and that still holds —
+it is what stops a player emptying their budget into Farming on turn one. But the decade growth
+point (AD-50) hit the same 8 and stopped, so a people finished growing around year 150 and the back
+half of a long run had nothing left to decide. `RivalStrategist.weightedPick` now takes the cap as
+a parameter: a rival's opening draw is bound by `ALLOCATION_MAX_PER_TRAIT` exactly as the player's
+is, and only its decade points may climb to `MAX_PER_TRAIT`. Passing one number for both was how a
+rival could be born with a trait no player could open with.
+
+**AD-59 — An unspent trait point stops the clock, and that is the answer to "why do the NPCs
+develop faster than I do?".** A rival spends its decade point the day it earns it; the player's
+banked and waited. For up to a game year — thirty-six seconds at 10x, under four at 100x — four
+rivals were a point ahead of a player who had done nothing wrong, and over three centuries that is
+thirty decisions' worth of head start. `awaitingPlayer` now covers the growth point as well as the
+tech choice, so nobody advances until everyone has spent. Three consequences:
+
+- **The autospend grace period is gone**, and with it `GENERATION_AUTOSPEND_GRACE_DAYS`. It existed
+  to stop an idle player falling behind; stopping the clock does that better and without ever
+  spending a point on their behalf during live play.
+- **Offline catch-up is now an unattended run.** It had to become one: an absence of eight hours is
+  forty game years (AD-41), and an attended catch-up would have halted at the first decade boundary
+  and handed back ten of them. Unattended, the point is spent on the safe answer the same day a
+  rival spends theirs, so time away costs the player nothing and gains them nothing. M6's gate
+  holds *more* tightly than before — both sides of `offline catch-up matches live ticking exactly`
+  are now driven the same way, so the match no longer depends on a grace period's timing.
+- **The balance harness now measures a symmetric game.** It runs the player civ unattended, which
+  used to mean a player who banked every point for a year against rivals who spent immediately; the
+  sweep read the difference as difficulty. An unattended player now spends on the spot, exactly as a
+  rival does.
+
+**AD-60 — Walls are an obstacle, not a multiplier.** `WALL_DEFENCE_BONUS` made a wall worth 45% more
+defensive strength, which is a discount on losing rather than a defence. A completed wall now has
+`integrity` in the same units as its build cost, and an army that reaches it besieges: it takes the
+wall down at roughly what it cost to put up, takes `SIEGE_ATTACKER_ATTRITION_SCALE` of a battle's
+losses while it works, and cannot touch the town behind it — no farmers killed, no granary looted.
+A raiding party gives up after `SIEGE_MAX_DAYS`, which is precisely what walls are for; a war does
+not. The multiplier is kept and still applies once the fighting is in the town, because by then the
+wall is rubble and its `safetyBonus` has gone with it.
+
+**AD-61 — Health and Lifestyle reach the birth rate, from opposite directions.** Health was a
+metabolic trait (ration, HP, lifespan, disease) with nothing to say about whether a people grew;
+Lifestyle buildings raised morale and housed people but the *housing* did all the demographic work.
+Both are now multipliers on the documented conception rate — `1 + 0.07 x (Health - 3)` and
+`0.06 per completed Lifestyle building`, capped at +45% so nine plazas cannot double the population
+curve. Measured from the base value and capped rather than added, so a Health-3 town with no plazas
+conceives at exactly the rate AD-24 measured and every table above still reads true.
+
+**AD-62 — Citizens are named, and a name is two ints.** A late-run colony holds thousands of people
+and the save file is already dominated by two 16,384-element float arrays (AD-42); two strings per
+citizen would have been the largest thing in it. `CitizenNames` renders a given name from three
+syllable positions (several thousand combinations, so names are near-unique in a town) and a family
+name from a list of thirty (so surnames *repeat*, which is the whole point of a lineage). A child
+draws a new given name and inherits its father's family, or its mother's where there is none.
+`NameGenerator` is gone: a candidate for Premier is now a citizen the player can find on the map,
+under their own name, and the syllable tables are append-only because a name is an index into them.
+
+**AD-63 — The end-of-run breakdown is a record, not a score.** A run of three centuries is a few
+dozen real decisions — ten opening points, a point every decade, a tech at every tier, the
+categories chartered and petitioned — and when it ended none of that was visible anywhere, so a
+player could not tell a good run from a lucky one. `RunSummary` now carries the opening and final
+trait sheets, where every decade point went and how many of them the town spent unattended, the
+techs chosen, buildings and elections by category, deaths by cause, and the war record. Two things
+about it: it is computed at the end from state the simulation was already keeping, so it costs
+nothing per tick; and `deathsByCause` moved onto `Civilization` because the Chronicle is a ring
+buffer shared by five civs — it can answer "how did people die on this map" but never "how did *my*
+town die", which is the question being asked.
 
 **AD-16 — Map previews are exported as PNGs from the test source set.** `MapPreviewExporter`
 writes `sim/build/preview/map-seed-*.png` on every test run using `javax.imageio`, which lets the

@@ -30,6 +30,9 @@ enum class Archetype(val label: String, val blurb: String, val shape: MarkerShap
     /** Farming. Patient, rooted, and fed. */
     ROOTED("Rooted", "patient, rooted and fed", MarkerShape.SQUARE),
 
+    /** Logging. Timber, stone, and something built on every ridge. */
+    BUILDERS("Builders", "timber, stone, and always raising something", MarkerShape.CHEVRON_DOWN),
+
     /** No dominant trait at all: good at everything, best at nothing. */
     BALANCED("Balanced", "good at everything, best at nothing", MarkerShape.RING),
     ;
@@ -59,6 +62,7 @@ enum class Archetype(val label: String, val blurb: String, val shape: MarkerShap
                 Trait.HUNTING -> WILD
                 Trait.ELEMENTS -> WEATHERED
                 Trait.FARMING -> ROOTED
+                Trait.LOGGING -> BUILDERS
             }
         }
 
@@ -93,6 +97,9 @@ enum class MarkerShape {
 
     /** Two arrowheads pointing north. */
     CHEVRON,
+
+    /** Two arrowheads pointing south, so it cannot be mistaken for CHEVRON at a glance. */
+    CHEVRON_DOWN,
     ;
 
     /**
@@ -163,6 +170,13 @@ enum class MarkerShape {
                 cells += -o to (-radius + o)
                 cells += o to (o - 1)
                 cells += -o to (o - 1)
+            }
+
+            CHEVRON_DOWN -> for (o in 0..radius) {
+                cells += o to (radius - o)
+                cells += -o to (radius - o)
+                cells += o to (1 - o)
+                cells += -o to (1 - o)
             }
         }
         return cells.filterNot { it.first == 0 && it.second == 0 }.distinct()

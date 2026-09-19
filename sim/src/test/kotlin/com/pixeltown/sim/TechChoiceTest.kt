@@ -14,13 +14,24 @@ class TechChoiceTest {
     private fun newRun(seed: Long = 1_000L) =
         Simulation.newRun(RunConfig(seed = seed, traits = TraitAllocation.of(3, 4, 3, 4, 8)))
 
-    /** Runs until the player is offered a choice, or gives up. */
+    /**
+     * Runs until the player is offered a *tech* choice, or gives up.
+     *
+     * A decade's trait point also stops the clock (AD-59), and it arrives long before the first
+     * tier, so this spends those as it goes. Without that the helper returned at year ten with an
+     * empty option list and four tests failed on the wrong thing entirely.
+     */
     private fun runToChoice(sim: Simulation, maxYears: Int = 200): Boolean {
-        repeat(maxYears) {
-            if (sim.awaitingPlayer || sim.endState != null) return sim.awaitingPlayer
-            sim.run(Time.DAYS_PER_YEAR)
+        repeat(maxYears * Time.DAYS_PER_YEAR) {
+            if (sim.endState != null) return false
+            if (sim.civ(WorldConfig.PLAYER_CIV_ID).pendingTechTier != null) return true
+            while (sim.pendingTraitPoints(WorldConfig.PLAYER_CIV_ID) > 0) {
+                val trait = sim.needBasedGrowth(sim.civ(WorldConfig.PLAYER_CIV_ID)) ?: break
+                if (!sim.spendTraitPoint(WorldConfig.PLAYER_CIV_ID, trait)) break
+            }
+            if (!sim.step()) return sim.civ(WorldConfig.PLAYER_CIV_ID).pendingTechTier != null
         }
-        return sim.awaitingPlayer
+        return sim.civ(WorldConfig.PLAYER_CIV_ID).pendingTechTier != null
     }
 
     @Test

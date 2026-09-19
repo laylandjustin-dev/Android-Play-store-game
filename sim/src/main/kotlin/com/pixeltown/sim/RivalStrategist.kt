@@ -39,14 +39,15 @@ object RivalStrategist {
      * doubled-up in the design as military effectiveness, which is why militants want it.
      */
     private val PRIORS: Map<Personality, DoubleArray> = mapOf(
-        // Strength through arms: hunting is military effectiveness, speed gets them there first.
-        Personality.MILITANT to doubleArrayOf(2.0, 1.5, 4.0, 1.0, 1.5),
+        // Strength through arms: hunting is military effectiveness, speed gets them there first,
+        // and walls are the one military building nobody wins a siege without.
+        Personality.MILITANT to doubleArrayOf(2.0, 1.5, 4.0, 1.0, 1.5, 2.0),
         // Surplus is the point: farm hard, work fast, and weather the bad years to keep trading.
-        Personality.MERCANTILE to doubleArrayOf(2.0, 1.5, 1.0, 1.5, 3.0),
-        // Grow and spread: food and bodies, with the legs to claim ground.
-        Personality.EXPANSIONIST to doubleArrayOf(2.0, 2.5, 1.5, 1.0, 2.5),
+        Personality.MERCANTILE to doubleArrayOf(2.0, 1.5, 1.0, 1.5, 3.0, 2.5),
+        // Grow and spread: food and bodies, with the legs to claim ground and the timber to hold it.
+        Personality.EXPANSIONIST to doubleArrayOf(2.0, 2.5, 1.5, 1.0, 2.5, 2.5),
         // Endure alone: the seasons and disease are the enemy, not the neighbours.
-        Personality.ISOLATIONIST to doubleArrayOf(1.0, 2.5, 1.0, 3.0, 2.0),
+        Personality.ISOLATIONIST to doubleArrayOf(1.0, 2.5, 1.0, 3.0, 2.0, 1.5),
     )
 
     /**
@@ -73,7 +74,7 @@ object RivalStrategist {
         val weights = DoubleArray(prior.size) { prior[it].pow(focus) }
 
         while (remaining > 0) {
-            val pick = weightedPick(weights, values, rng) ?: break
+            val pick = weightedPick(weights, values, rng, TraitConfig.ALLOCATION_MAX_PER_TRAIT) ?: break
             values[pick]++
             remaining--
         }
@@ -116,21 +117,33 @@ object RivalStrategist {
         return Trait.entries[pick]
     }
 
-    /** Weighted draw over the traits that still have room, or null when every trait is capped. */
-    private fun weightedPick(weights: DoubleArray, values: IntArray, rng: SimRandom): Int? {
+    /**
+     * Weighted draw over the traits that still have room, or null when every trait is capped.
+     *
+     * [cap] is the ceiling that applies to *this* draw: the opening allocation is bound by the
+     * screen's `ALLOCATION_MAX_PER_TRAIT` (8) exactly as the player's is, while a decade's growth
+     * point may climb to the lifetime `MAX_PER_TRAIT` (20). Passing one number for both was how a
+     * rival could be born with 20 in a trait no player could open with.
+     */
+    private fun weightedPick(
+        weights: DoubleArray,
+        values: IntArray,
+        rng: SimRandom,
+        cap: Int = TraitConfig.MAX_PER_TRAIT,
+    ): Int? {
         var total = 0.0
         for (i in weights.indices) {
-            if (values[i] < TraitConfig.MAX_PER_TRAIT) total += weights[i]
+            if (values[i] < cap) total += weights[i]
         }
         if (total <= 0.0) return null
 
         var roll = rng.nextDouble(total)
         for (i in weights.indices) {
-            if (values[i] >= TraitConfig.MAX_PER_TRAIT) continue
+            if (values[i] >= cap) continue
             roll -= weights[i]
             if (roll <= 0.0) return i
         }
-        return weights.indices.lastOrNull { values[it] < TraitConfig.MAX_PER_TRAIT }
+        return weights.indices.lastOrNull { values[it] < cap }
     }
 
     private const val DIVERSITY_ATTEMPTS = 12

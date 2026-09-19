@@ -304,12 +304,28 @@
            padding: 16px; display: flex; flex-direction: column; gap: 9px; }
   .ended h2 { font-family: Silkscreen, monospace; color: var(--gold); margin: 0; font-size: 17px; letter-spacing: 0.04em; }
 
+  /* The end-of-run breakdown. Percentages read as bars; the raw counts sit beside them. */
+  .brk { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+  .brk section { display: flex; flex-direction: column; gap: 6px; }
+  .brk h3 { margin: 0; font: 10px/1 Silkscreen, monospace; letter-spacing: 0.10em;
+            text-transform: uppercase; color: var(--mute); }
+  .bar { display: grid; grid-template-columns: 78px 1fr 34px; align-items: center; gap: 8px;
+         font-size: 11px; }
+  .bar .bk { color: var(--ink); text-transform: capitalize; overflow: hidden; text-overflow: ellipsis; }
+  .bar .bt { position: relative; height: 7px; background: rgba(255,255,255,0.07); border-radius: 1px; }
+  .bar .bt i { position: absolute; inset: 0 auto 0 0; background: var(--gold); border-radius: 1px; }
+  .bar .bv { text-align: right; color: var(--mute); font-variant-numeric: tabular-nums; }
+  .sheetline { display: grid; grid-template-columns: 78px 1fr; gap: 8px; font-size: 11px; }
+  .sheetline .bk { color: var(--mute); text-transform: capitalize; }
+  .sheetline .bv { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .brk ul { margin: 0; padding-left: 16px; font-size: 11px; color: var(--ink); }
+
   /* ---------------------------------------------------------------- overlays */
-  #overlay, #tech {
+  #overlay, #tech, #growth-modal {
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
     padding: 20px; z-index: 30; background: rgba(4, 5, 9, 0.88); backdrop-filter: blur(4px);
   }
-  #tech { z-index: 40; }
+  #tech, #growth-modal { z-index: 40; }
   .sheet {
     background: var(--panel); border: 1px solid var(--line); border-radius: 2px; padding: 20px;
     display: flex; flex-direction: column; gap: 9px; width: min(340px, 100%);
@@ -468,11 +484,6 @@
 
     <div id="ended-box" hidden></div>
 
-    <section class="panel" id="growth-panel" hidden>
-      <h2>A generation comes of age</h2>
-      <div class="body" id="growth"></div>
-    </section>
-
     <div class="tabs" role="tablist">
       <button class="tab" data-tab="council" aria-selected="true">Council</button>
       <button class="tab" data-tab="feed-panel" aria-selected="false">Chronicle</button>
@@ -486,6 +497,18 @@
   </div>
 
   <!-- a tier reached: the clock is stopped until this is answered -->
+  <!-- a generation comes of age. A modal, because the clock really is stopped behind it. -->
+  <div id="growth-modal" hidden>
+    <div class="sheet wide">
+      <h2 id="growth-title">A generation comes of age</h2>
+      <p class="sub">
+        Your people have grown. Spend the point and the years start again — the rivals spend theirs
+        the day they earn it, so nothing moves until you have spent yours.
+      </p>
+      <div id="growth"></div>
+    </div>
+  </div>
+
   <div id="tech" hidden>
     <div class="sheet wide">
       <h2 id="tech-title">A new age</h2>
@@ -602,10 +625,23 @@
     ['health', 'Health', 'Max HP, disease resistance, lifespan'],
     ['hunting', 'Hunting', 'Yield from wild land — and military strength'],
     ['elements', 'Elements', 'Resistance to weather, seasons and disaster'],
-    ['farming', 'Farming', 'Yield from farmland, soil recovery, livestock']
+    ['farming', 'Farming', 'Yield from farmland, soil recovery, livestock'],
+    ['logging', 'Logging', 'Timber and stone gathered — and how fast you build']
   ];
+  // The lifetime ceiling, which a decade point may climb to; MAX below is only the opening cap.
+  const TRAIT_CEILING = 20;
+  const TRAIT_BLURB = {
+    speed: 'Work rate, movement, building, research',
+    health: 'Max HP, disease resistance, lifespan — and fertility',
+    hunting: 'Yield from wild land — and military strength',
+    elements: 'Resistance to weather, seasons and disaster',
+    farming: 'Yield from farmland, soil recovery, livestock',
+    logging: 'Timber and stone gathered — and how fast you build'
+  };
+  // MAX is the opening cap; a trait can still climb to the ceiling above, one decade point at a time.
   const BASE = 3, BUDGET = 10, MAX = 8, MIN = 1;
-  const alloc = { speed: BASE, health: BASE, hunting: BASE, elements: BASE, farming: BASE };
+  const alloc = { speed: BASE, health: BASE, hunting: BASE, elements: BASE, farming: BASE, logging: BASE };
+  const vals = () => TRAITS.map(([k]) => alloc[k]);
   let seed = Math.floor(Math.random() * 1e6) + 1;
 
   const traitsEl = document.getElementById('traits');
@@ -625,7 +661,7 @@
   // shows and the same one the marker on the map stands for. A second opinion in JavaScript
   // would be a second implementation, which is the thing this project does not do.
   function archetypeOf() {
-    const a = JSON.parse(api.describeBuild(alloc.speed, alloc.health, alloc.hunting, alloc.elements, alloc.farming));
+    const a = JSON.parse(api.describeBuild(...vals()));
     return [a.label, a.blurb];
   }
 
@@ -638,10 +674,12 @@
       b.disabled = d > 0 ? (left <= 0 || alloc[k] >= MAX) : (alloc[k] <= MIN || alloc[k] <= BASE - (BUDGET - 0));
       if (d < 0) b.disabled = alloc[k] <= MIN;
     });
-    const p = JSON.parse(api.previewTraits(alloc.speed, alloc.health, alloc.hunting, alloc.elements, alloc.farming));
+    const p = JSON.parse(api.previewTraits(...vals()));
     document.getElementById('preview').innerHTML = [
       ['Work rate', p.work + 'x'], ['Lifespan', p.lifespan + ' yrs'], ['Farm yield', p.farm],
-      ['Hunt yield', p.hunt], ['Weathered', p.shelter], ['Winter yield', p.winter + 'x']
+      ['Hunt yield', p.hunt], ['Gathering', p.gather + 'x'], ['Build rate', p.build + 'x'],
+      ['Fertility', p.fertility + 'x'], ['Rations eaten', p.ration + 'x'],
+      ['Weathered', p.shelter], ['Winter yield', p.winter + 'x']
     ].map(([k, v]) => `<div><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
     const [name, line] = archetypeOf();
     document.getElementById('archetype').innerHTML = `<b>${name}</b> — ${line}`;
@@ -774,7 +812,7 @@
 
   document.getElementById('begin').addEventListener('click', () => {
     game = new api.WebGame(
-      seed, alloc.speed, alloc.health, alloc.hunting, alloc.elements, alloc.farming,
+      seed, ...vals(),
       document.getElementById('colony').value, chosenCell, colourIndex);
     off.width = game.width; off.height = game.height;
     image = offCtx.createImageData(game.width, game.height);
@@ -869,19 +907,23 @@
       ['Tech', s.tier + '/6'], ['Buildings', s.buildings], ['Unrest', s.unrest], ['Influence', s.influence]
     ].map(([k, v]) => `<div class="stat"><span class="k">${k}</span><span class="v">${v}</span></div>`).join(''));
 
-    // A generation comes of age: the decade's trait point, and where it goes.
-    const growthPanel = document.getElementById('growth-panel');
-    growthPanel.hidden = !s.growthPoints;
-    if (s.growthPoints) {
+    // A generation comes of age: the decade's trait point, and where it goes. The simulation has
+    // already stopped itself (Simulation.awaitingPlayer), so this only has to put it on screen.
+    const growthModal = document.getElementById('growth-modal');
+    // Only when there is somewhere for the point to go. A people with every trait at the ceiling
+    // keeps earning points and the simulation does not stop for them, so neither does this — a
+    // modal of disabled buttons with no way out would be a soft lock.
+    const canGrow = Object.values(s.traits).some(v => v < TRAIT_CEILING);
+    growthModal.hidden = !(s.growthPoints && canGrow);
+    if (s.growthPoints && canGrow) {
       const plural = s.growthPoints === 1 ? '' : 's';
-      setHTML('growth',
-        `<p class="sub" style="margin:0">A generation has come of age: ${s.growthPoints} trait
-         point${plural} to spend, and they will wait as long as you like. While you are away the
-         town shores up its own weakest side instead.</p>
-         <div class="levers">` +
-        Object.entries(s.traits).map(([k, v]) => `
-          <button data-grow="${k}" ${v >= 8 ? 'disabled' : ''}>${k} ${v} &rarr; ${v + 1}</button>`).join('') +
-        '</div>');
+      document.getElementById('growth-title').textContent =
+        `A generation comes of age — ${s.growthPoints} point${plural} to spend`;
+      setHTML('growth', Object.entries(s.traits).map(([k, v]) => `
+        <button class="opt" data-grow="${k}" ${v >= TRAIT_CEILING ? 'disabled' : ''}>
+          <span class="t">${k} ${v} &rarr; ${v + 1}</span>
+          <span class="b">${TRAIT_BLURB[k] || ''}</span>
+        </button>`).join(''));
     }
 
     // Council
@@ -939,13 +981,88 @@
     if (s.end && s.summary) {
       box.hidden = false;
       box.className = 'ended';
-      box.innerHTML = `<h2>${s.end}</h2>
-        <div>Survived <b>${s.summary.years}</b> years · peak population <b>${s.summary.peak}</b> ·
-        tech tier <b>${s.summary.tier}</b></div>
-        <div>Chronicle points earned: <b>${s.summary.points}</b></div>
-        <div><button class="primary" onclick="location.reload()">Start a new run</button></div>`;
+      box.innerHTML = endedHtml(s);
       setSpeed(0);
     }
+  }
+
+  // ---------------- the end-of-run breakdown ----------------
+  // Everything here comes from RunSummary in `:sim`; nothing is recomputed in JavaScript. The
+  // point of it is that the score alone never told the player what they had actually decided.
+  function bars(rows, counts) {
+    if (!rows || !rows.length) return '<div class="bar"><span class="bk quiet">nothing</span></div>';
+    const by = {};
+    (counts || []).forEach(c => { by[c.k] = c.v; });
+    return rows.map(r => `
+      <div class="bar">
+        <span class="bk">${r.k}</span>
+        <span class="bt"><i style="width:${r.v}%"></i></span>
+        <span class="bv">${by[r.k] !== undefined ? by[r.k] : r.v + '%'}</span>
+      </div>`).join('');
+  }
+
+  function traitSheet(opening, final) {
+    return TRAITS.map(([k, name]) => {
+      const grew = final[k] - opening[k];
+      return `<div class="sheetline"><span class="bk">${name}</span>
+        <span class="bv">${opening[k]} &rarr; <b>${final[k]}</b>${grew > 0 ? ` (+${grew})` : ''}</span></div>`;
+    }).join('');
+  }
+
+  function endedHtml(s) {
+    const m = s.summary;
+    const grown = (m.growthCounts || []).reduce((n, c) => n + c.v, 0);
+    return `<h2>${s.end}</h2>
+      <div>Survived <b>${m.years}</b> years · peak population <b>${m.peak}</b> ·
+        tech tier <b>${m.tier}</b> · Chronicle points <b>${m.points}</b></div>
+      <div class="brk">
+        <section>
+          <h3>The trait sheet</h3>
+          ${traitSheet(m.opening, m.final)}
+          <div class="sheetline"><span class="bk">Chosen</span>
+            <span class="bv">${grown} decade point${grown === 1 ? '' : 's'}${
+              m.autoSpent ? `, ${m.autoSpent} spent while you were away (${m.attention}% yours)` : ''
+            }${m.unspent ? `, ${m.unspent} still unspent` : ''}</span></div>
+        </section>
+        <section>
+          <h3>Where the points went</h3>
+          ${bars(m.growth, m.growthCounts)}
+        </section>
+        <section>
+          <h3>What the town built</h3>
+          ${bars(m.built, m.builtCounts)}
+          <div class="sheetline"><span class="bk">Charter</span>
+            <span class="bv">${m.charter || 'none left standing'}</span></div>
+        </section>
+        <section>
+          <h3>What the town voted for</h3>
+          ${bars(m.platforms)}
+          <div class="sheetline"><span class="bk">Premiers</span>
+            <span class="bv">${m.terms} term${m.terms === 1 ? '' : 's'}${
+              m.coups ? `, ${m.coups} by coup` : ''
+            }</span></div>
+        </section>
+        <section>
+          <h3>What killed them</h3>
+          ${bars(m.deaths)}
+          <div class="sheetline"><span class="bk">Lives</span>
+            <span class="bv">${m.births} born, ${m.died} lost</span></div>
+        </section>
+        <section>
+          <h3>The neighbours</h3>
+          <div class="sheetline"><span class="bk">Wars</span><span class="bv">${m.wars}</span></div>
+          <div class="sheetline"><span class="bk">Raided</span><span class="bv">${m.raids} times</span></div>
+          <div class="sheetline"><span class="bk">Rivals</span>
+            <span class="bv">${m.rivalsLeft} standing, ${m.rivalsGone} gone</span></div>
+        </section>
+        <section>
+          <h3>What you learned</h3>
+          ${m.techs.length
+            ? `<ul>${m.techs.map(t => `<li>${t}</li>`).join('')}</ul>`
+            : '<div class="sheetline"><span class="bk quiet">nothing — no tier was reached</span></div>'}
+        </section>
+      </div>
+      <div><button class="primary" onclick="location.reload()">Start a new run</button></div>`;
   }
 
   document.getElementById('growth').addEventListener('click', e => {

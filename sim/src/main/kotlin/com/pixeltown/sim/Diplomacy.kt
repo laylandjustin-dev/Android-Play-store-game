@@ -154,6 +154,18 @@ class Army(
     /** Set when the force has taken what it came for and is heading home. */
     var returning: Boolean = false
 
+    /**
+     * The wall this force is currently breaking down, or null when nothing stands in its way.
+     *
+     * Held as a building id rather than a reference so the army does not outlive the rubble, and so
+     * it does not have to be saved: a siege re-forms on the first tick after a load, against
+     * whatever is actually still standing.
+     */
+    var besieging: Int? = null
+
+    /** Days spent in front of a wall. A raid gives up; a war does not. */
+    var siegeDays: Int = 0
+
     val size: Int get() = members.size
 
     fun isBroken(): Boolean =

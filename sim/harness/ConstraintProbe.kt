@@ -24,6 +24,44 @@ import com.pixeltown.sim.Trait
  */
 object ConstraintProbe {
 
+    /**
+     * Why do the AI civs outpace the player's own town?
+     *
+     * Reported from play, so this compares like with like: same map, same starting allocation for
+     * everyone, and then it prints what each civ ended up with. If the rivals are ahead on traits
+     * or tech rather than on population, the cause is the growth mechanic rather than the economy.
+     */
+    private fun npc() {
+        val farming = TraitAllocation.of(3, 4, 3, 4, 8)
+        for (seed in longArrayOf(1_000L, 8_919L)) {
+            val sim = Simulation.newRun(RunConfig(seed = seed, traits = farming))
+            // Attended, as a player's run is, and *answered*, as an attentive player's run is: the
+            // clock stops on a tech tier and on a decade's trait point, and this takes both the
+            // moment they appear — exactly what the shell does. A run left unanswered simply
+            // freezes now, which is the fix this probe was written to verify.
+            var days = 0
+            while (days < 120 * GameConfig.Time.DAYS_PER_YEAR && sim.endState == null) {
+                val player = GameConfig.World.PLAYER_CIV_ID
+                sim.pendingTechChoices(player).firstOrNull()?.let { sim.chooseTech(player, it) }
+                while (sim.pendingTraitPoints(player) > 0) {
+                    val trait = sim.needBasedGrowth(sim.civ(player)) ?: break
+                    if (!sim.spendTraitPoint(player, trait)) break
+                }
+                if (!sim.step()) break
+                days++
+            }
+            println("PROBE seed=$seed ran=${days / GameConfig.Time.DAYS_PER_YEAR}y awaiting=${sim.awaitingPlayer}")
+            for (civ in sim.civs) {
+                println(
+                    "PROBE   ${civ.name.padEnd(9)} pop=${civ.population.toString().padStart(4)} " +
+                        "traits=${civ.traits.values.joinToString("/")} spent=${civ.traits.pointsSpent} " +
+                        "banked=${civ.unspentTraitPoints} tier=${civ.techTier} techs=${civ.techChoices.size} " +
+                        "b=${sim.buildingsOf(civ.id).size}",
+                )
+            }
+        }
+    }
+
     /** Does sharing the island with four rivals still cost the player anything? */
     private fun rivals() {
         val farming = TraitAllocation.of(3, 4, 3, 4, 8)
@@ -89,6 +127,7 @@ object ConstraintProbe {
     fun main(args: Array<String>) {
         if (args.contains("--siting")) { siting(); return }
         if (args.contains("--rivals")) { rivals(); return }
+        if (args.contains("--npc")) { npc(); return }
         val years = args.firstOrNull { it.startsWith("--years=") }?.substringAfter('=')?.toInt() ?: YEARS
 
         println("Cause of death and limiting pressure, $years years, ${SEEDS.size} seeds per build.")

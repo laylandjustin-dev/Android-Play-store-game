@@ -34,7 +34,10 @@ internal object CouncilSystem {
         return eligible.map { citizen ->
             Candidate(
                 citizenId = citizen.id,
-                name = NameGenerator.name(rng),
+                // Their own name, not a fresh invention: a candidate is a citizen the player can
+                // find on the map, and the Chronicle's Premiers now belong to families the town
+                // has heard of.
+                name = citizen.fullName,
                 ageYears = citizen.ageYears,
                 job = citizen.job,
                 agenda = Agenda.random(rng, favours),
