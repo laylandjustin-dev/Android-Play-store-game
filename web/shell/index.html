@@ -15,7 +15,9 @@
     font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 13px; line-height: 1.5;
     -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 1120px; margin: 0 auto; padding-inline: 16px; padding-block: 18px 36px; display: flex; flex-direction: column; gap: 14px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding-inline: 16px; padding-block: 18px 28px; }
+  #screen-menu, #screen-setup, #screen-game { display: flex; flex-direction: column; gap: 12px; }
+  [hidden] { display: none !important; }
   h1 { font-family: Silkscreen, monospace; font-size: clamp(19px, 5.4vw, 28px); color: var(--ink-bright); margin: 0; letter-spacing: 0.02em; text-wrap: balance; }
   .eyebrow { font-family: Silkscreen, monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); margin: 0; }
   .sub { color: var(--ink-dim); font-size: 12px; max-width: 64ch; margin: 0; }
@@ -49,6 +51,41 @@
   }
   .naming input:focus-visible { outline: 2px solid var(--player); outline-offset: 1px; }
   .naming input::placeholder { color: var(--ink-dim); }
+  /* ---- screens, menu, chrome ---- */
+  .title { display: flex; flex-direction: column; gap: 8px; padding-block: 8vh 4px; }
+  .menu { display: flex; flex-direction: column; gap: 8px; max-width: 320px; }
+  button.big { padding: 13px 16px; font-size: 13px; }
+  button.ghost { border-color: transparent; padding: 7px 10px; }
+  .topbar { display: flex; align-items: center; gap: 10px; padding-bottom: 2px; }
+  .topbar .crumb { font-family: Silkscreen, monospace; font-size: 11px; letter-spacing: 0.08em;
+                   color: var(--ink-bright); flex: 1; min-width: 0; overflow: hidden;
+                   text-overflow: ellipsis; white-space: nowrap; }
+  .help p { margin: 0 0 9px; color: var(--ink-dim); font-size: 12px; }
+  .help p:last-child { margin-bottom: 0; }
+  .help b { color: var(--ink); font-weight: 500; }
+  .body.tight { gap: 0; padding: 0; }
+  .body.tight > .sub, .body.tight > .bar { padding: 11px 12px; }
+  .body.tight > canvas { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+
+  /* Sticky, so the one button that matters is always reachable on a long setup screen. */
+  .actionbar { position: sticky; bottom: 0; padding: 10px 0 2px; background:
+               linear-gradient(to top, var(--ground) 62%, transparent); }
+  .actionbar button { width: 100%; }
+
+  .tabs { display: flex; gap: 1px; background: var(--line); border: 1px solid var(--line);
+          border-bottom: 0; }
+  .tab { flex: 1; border: 0; background: var(--panel-2); color: var(--ink-dim); padding: 10px 6px; }
+  .tab[aria-selected="true"] { background: var(--panel); color: var(--ink-bright); }
+  .panel.tabbed { border-top: 0; }
+  .speeds { padding-top: 10px; }
+
+  #overlay { position: fixed; inset: 0; background: rgba(5,6,10,0.86); display: flex;
+             align-items: center; justify-content: center; padding: 20px; z-index: 10; }
+  #overlay .sheet { background: var(--panel); border: 1px solid var(--line); padding: 18px;
+                    display: flex; flex-direction: column; gap: 8px; width: min(320px, 100%); }
+  #overlay h2 { font-family: Silkscreen, monospace; font-size: 12px; letter-spacing: 0.12em;
+                text-transform: uppercase; color: var(--ink-dim); margin: 0 0 4px; font-weight: 400; }
+
   .swatches { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
   .swatch { width: 26px; height: 26px; padding: 0; border: 1px solid var(--line); cursor: pointer; }
   .swatch[aria-pressed="true"] { border-color: var(--ink-bright); box-shadow: inset 0 0 0 2px var(--ground); }
@@ -117,118 +154,222 @@
 </style>
 
 <div class="wrap">
-  <header>
-    <p class="eyebrow">Kotlin/JS build · the simulation itself</p>
-    <h1>Pixel Town</h1>
-  </header>
 
-  <!-- ---------- allocation ---------- -->
-  <div id="screen-alloc">
-    <p class="sub">
-      Spend <b>10 points</b> across five inherited traits. They are genetic to your people and
-      apply for the whole run. Then fifty settlers drop onto a procedurally generated island and
-      start living — working, eating, pairing, ageing and dying — alongside four rival
-      civilisations running the same simulation. These ten points are yours alone: each rival
-      picks its own traits to suit its character, so you never face four copies of your build.
-    </p>
-    <div class="alloc" style="margin-top:14px">
-      <label class="naming" for="colony">
-        <span class="nm">Name your colony</span>
-        <input id="colony" type="text" maxlength="24" placeholder="Aurelia"
-               autocomplete="off" spellcheck="false" enterkeyhint="done">
-      </label>
-      <div class="budget">
-        <span>Points remaining</span>
-        <span class="pts" id="points">10</span>
-      </div>
-      <div class="rows" id="traits"></div>
-      <div class="preview" id="preview"></div>
-      <div class="archetype" id="archetype"></div>
-      <div class="naming">
-        <span class="nm">Your colour</span>
-        <span class="swatches" id="swatches"></span>
-      </div>
+  <!-- ---------- 1. the menu ---------- -->
+  <div id="screen-menu">
+    <header class="title">
+      <p class="eyebrow">Kotlin/JS build · the simulation itself</p>
+      <h1>Pixel Town</h1>
+      <p class="sub">
+        Every person is one pixel. Fifty settlers land on a procedurally generated island and start
+        living — working, eating, pairing, ageing and dying — alongside four rival civilisations
+        running the same simulation, on the same map, under the same rules.
+      </p>
+    </header>
+
+    <div class="menu">
+      <button class="primary big" id="menu-new">New colony</button>
+      <button class="big" id="menu-help" aria-expanded="false">How to play</button>
     </div>
 
-    <section class="panel" style="margin-top:14px">
-      <h2>Where will you land?</h2>
-      <div class="body">
+    <section class="panel" id="help" hidden>
+      <h2>How to play</h2>
+      <div class="body help">
+        <p><b>Spend ten points.</b> Five traits, genetic to your people, for the whole run. They
+        pull in different directions: Farming and Speed decide how much food you grow, Health how
+        little you need and how well you survive a plague, Elements what winter costs you, Hunting
+        what the wild gives and what your soldiers are worth.</p>
+        <p><b>You do not give orders.</b> The town elects a Premier every year who decides what gets
+        built. You get influence: endorse a candidate, petition the sitting Premier, veto a build,
+        or call an early election.</p>
+        <p><b>Every decade a generation comes of age</b> and your people earn a trait point. It
+        waits until you spend it — except while you are away, when the town shores up its own
+        weakest side.</p>
+        <p><b>The run ends</b> in collapse, conquest, endurance at 300 years, or ascension — tech
+        tier six with four hundred people, which most runs never see.</p>
+      </div>
+    </section>
+
+    <footer>
+      <b>This is the game, not a mock-up.</b> Every tick, election and war comes from the same
+      <b>:sim</b> Kotlin module the Android app is built on, compiled to JavaScript — there is no
+      second implementation.
+    </footer>
+  </div>
+
+  <!-- ---------- 2. setting up ---------- -->
+  <div id="screen-setup" hidden>
+    <div class="topbar">
+      <button class="ghost" id="setup-back">&larr; Menu</button>
+      <span class="crumb">Found a colony</span>
+      <span class="quiet" id="seedlabel"></span>
+    </div>
+
+    <section class="panel">
+      <h2>Your people</h2>
+      <div class="body tight">
+        <label class="naming" for="colony">
+          <span class="nm">Name</span>
+          <input id="colony" type="text" maxlength="24" placeholder="Aurelia"
+                 autocomplete="off" spellcheck="false" enterkeyhint="done">
+        </label>
+        <div class="naming">
+          <span class="nm">Colour</span>
+          <span class="swatches" id="swatches"></span>
+        </div>
+        <div class="budget">
+          <span>Points remaining</span>
+          <span class="pts" id="points">10</span>
+        </div>
+        <div class="rows" id="traits"></div>
+        <div class="preview" id="preview"></div>
+        <div class="archetype" id="archetype"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Where you land</h2>
+      <div class="body tight">
         <p class="sub" style="margin:0">
-          Tap the island to choose your site. Dark ground is out of reach — open water, mountains,
-          or an offshore islet no army could ever walk to. The rivals settle around you.
+          Tap the island to choose. Dark ground is out of reach — water, mountains, or an islet no
+          army could walk to. The rivals settle around you.
         </p>
         <canvas id="sitemap" width="384" height="384"></canvas>
         <div class="bar">
           <button id="site-auto">Let the scouts choose</button>
+          <button id="reroll">New island</button>
           <span class="quiet" id="sitelabel"></span>
         </div>
       </div>
     </section>
-    <div class="bar" style="margin-top:12px">
-      <button class="primary" id="begin">Found the colony</button>
-      <button id="reroll">New island</button>
-      <span class="quiet" id="seedlabel"></span>
+
+    <div class="actionbar">
+      <button class="primary big" id="begin">Found the colony</button>
     </div>
   </div>
 
-  <!-- ---------- the game ---------- -->
+  <!-- ---------- 3. the game ---------- -->
   <div id="screen-game" hidden>
+    <div class="topbar">
+      <button class="ghost" id="game-menu">&#9776;</button>
+      <span class="crumb" id="hud-title">Aurelia</span>
+      <span class="quiet" id="hud-pop">50 people</span>
+    </div>
+
     <div class="stage">
       <canvas id="map" width="512" height="512"></canvas>
       <div class="hud">
         <span id="hud-date">Year 0</span>
-        <span class="r" id="hud-pop">50 people</span>
       </div>
       <div class="rate" id="rate">paused</div>
     </div>
 
-    <div class="bar" style="margin-top:12px">
+    <div class="bar speeds">
       <button class="sp" data-speed="0" aria-pressed="true">Pause</button>
-      <button class="sp" data-speed="1" aria-pressed="false">1x</button>
-      <button class="sp" data-speed="10" aria-pressed="false">10x</button>
-      <button class="sp" data-speed="100" aria-pressed="false">100x</button>
-      <button id="recentre">Recentre</button>
-      <button id="focus" aria-pressed="false">Highlight my people</button>
+      <button class="sp" data-speed="1" aria-pressed="false">1&times;</button>
+      <button class="sp" data-speed="10" aria-pressed="false">10&times;</button>
+      <button class="sp" data-speed="100" aria-pressed="false">100&times;</button>
+      <button id="recentre" title="Reset the camera">Recentre</button>
+      <button id="focus" aria-pressed="false">Highlight</button>
     </div>
 
-    <div class="stats" id="stats" style="margin-top:12px"></div>
+    <div class="stats" id="stats"></div>
 
-    <div id="ended-box" hidden style="margin-top:12px"></div>
+    <div id="ended-box" hidden></div>
 
-    <section class="panel" id="growth-panel" hidden style="margin-top:14px">
+    <section class="panel" id="growth-panel" hidden>
       <h2>A generation comes of age</h2>
       <div class="body" id="growth"></div>
     </section>
 
-    <div class="cols" style="margin-top:14px">
-      <section class="panel">
-        <h2>Council</h2>
-        <div class="body" id="council"></div>
-      </section>
-      <section class="panel">
-        <h2>Chronicle</h2>
-        <div class="body"><div class="feed" id="feed"></div></div>
-      </section>
+    <!-- One panel at a time: three stacked panels is a long scroll on a phone. -->
+    <div class="tabs" role="tablist">
+      <button class="tab" data-tab="council" aria-selected="true">Council</button>
+      <button class="tab" data-tab="feed-panel" aria-selected="false">Chronicle</button>
+      <button class="tab" data-tab="rivals" aria-selected="false">Rivals</button>
     </div>
-
-    <section class="panel" style="margin-top:14px">
-      <h2>Rivals</h2>
-      <div class="body" id="rivals"></div>
+    <section class="panel tabbed">
+      <div class="body" id="council"></div>
+      <div class="body" id="feed-panel" hidden><div class="feed" id="feed"></div></div>
+      <div class="body" id="rivals" hidden></div>
     </section>
   </div>
 
-  <footer>
-    <b>This is the game, not a mock-up.</b> Every tick, election and war comes from the same
-    <b>:sim</b> Kotlin module the Android app is built on, compiled to JavaScript — there is no
-    second implementation. The Android build itself has never been compiled, because this
-    environment cannot reach Google's Maven.
-  </footer>
+  <!-- the in-game menu -->
+  <div id="overlay" hidden>
+    <div class="sheet">
+      <h2>Paused</h2>
+      <button class="primary big" id="ov-resume">Resume</button>
+      <button class="big" id="ov-restart">New colony</button>
+      <button class="big" id="ov-title">Back to title</button>
+      <p class="quiet" id="ov-note"></p>
+    </div>
+  </div>
 </div>
 
 <script src="pixeltown.js"></script>
 <script>
 (function () {
   const api = (window.pixeltown || globalThis.pixeltown).com.pixeltown.web;
+
+  // ---------------- screens ----------------
+  // Three of them: the title, setting a colony up, and playing it. One function owns which is
+  // visible so a screen can never be left half-shown.
+  const SCREENS = ['screen-menu', 'screen-setup', 'screen-game'];
+  function show(id) {
+    for (const s of SCREENS) document.getElementById(s).hidden = s !== id;
+    window.scrollTo(0, 0);
+  }
+
+  document.getElementById('menu-new').addEventListener('click', () => {
+    show('screen-setup');
+    if (!preview) buildPreview();
+  });
+  const helpBtn = document.getElementById('menu-help');
+  helpBtn.addEventListener('click', () => {
+    const help = document.getElementById('help');
+    help.hidden = !help.hidden;
+    helpBtn.setAttribute('aria-expanded', String(!help.hidden));
+  });
+  document.getElementById('setup-back').addEventListener('click', () => show('screen-menu'));
+
+  // ---------------- the panel tabs ----------------
+  // Council, Chronicle and Rivals stacked is a long scroll on a phone, so only one shows.
+  const TABS = ['council', 'feed-panel', 'rivals'];
+  document.querySelector('.tabs').addEventListener('click', e => {
+    const tab = e.target.closest('.tab'); if (!tab) return;
+    for (const id of TABS) document.getElementById(id).hidden = id !== tab.dataset.tab;
+    document.querySelectorAll('.tab').forEach(t =>
+      t.setAttribute('aria-selected', String(t === tab)));
+  });
+
+  // ---------------- the pause menu ----------------
+  const overlay = document.getElementById('overlay');
+  overlay.hidden = true;
+  let speedBeforePause = 0;
+  function openMenu() {
+    speedBeforePause = speed;
+    setSpeed(0);
+    document.getElementById('ov-note').textContent = state
+      ? `${state.colony} · year ${state.year} · ${state.pop} people`
+      : '';
+    overlay.hidden = false;
+  }
+  function closeMenu() {
+    overlay.hidden = true;
+    setSpeed(speedBeforePause);
+  }
+  document.getElementById('game-menu').addEventListener('click', openMenu);
+  document.getElementById('ov-resume').addEventListener('click', closeMenu);
+  // A run lives in one WebGame and there is no save in the web build, so starting over is a
+  // reload — which is honest about what it does rather than pretending to tear the run down.
+  document.getElementById('ov-restart').addEventListener('click', () => location.reload());
+  document.getElementById('ov-title').addEventListener('click', () => location.reload());
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeMenu(); });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || document.getElementById('screen-game').hidden) return;
+    overlay.hidden ? openMenu() : closeMenu();
+  });
 
   const TRAITS = [
     ['speed', 'Speed', 'Work rate, movement, building, research'],
@@ -373,7 +514,6 @@
   document.getElementById('site-auto').addEventListener('click', () => { chosenCell = -1; drawSite(); });
 
   renderAlloc();
-  buildPreview();
 
   // ---------------- the run ----------------
   let game = null, speed = 0, zoom = 1, panX = 0, panY = 0, state = null;
@@ -395,8 +535,7 @@
     off.width = game.width; off.height = game.height;
     image = offCtx.createImageData(game.width, game.height);
     view32 = new Uint32Array(image.data.buffer);
-    document.getElementById('screen-alloc').hidden = true;
-    document.getElementById('screen-game').hidden = false;
+    show('screen-game');
     setSpeed(1);
     pull();
     setInterval(stepChunk, 40);
@@ -465,8 +604,8 @@
 
   function renderGame() {
     const s = state;
-    document.getElementById('hud-date').textContent =
-      `${s.colony} · ${s.archetype} · Year ${s.year} · ${s.season}`;
+    document.getElementById('hud-title').textContent = `${s.colony} · ${s.archetype}`;
+    document.getElementById('hud-date').textContent = `Year ${s.year} · ${s.season}`;
     document.getElementById('hud-pop').textContent =
       s.epidemic ? `${s.pop} people · sickness` : `${s.pop} people`;
     document.getElementById('rate').textContent =
