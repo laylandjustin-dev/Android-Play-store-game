@@ -1,177 +1,337 @@
 <title>Pixel Town</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Oxanium:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
 <style>
+  /*
+   * One committed visual world — this is a game, not a document, so there is no light theme to
+   * design. The palette is the simulation's own (Palette.kt): the ground is the ocean at night and
+   * the accent is the gold the player's people are drawn in, so the chrome and the map are lit by
+   * the same source. Neutrals are biased rather than grey: panels cool toward blue, text warm
+   * toward the gold, which is what keeps a dim UI from reading as muddy.
+   */
   :root {
-    /* From the game's own Palette.kt and MainActivity chrome. */
-    --ground: #0B0B0D; --panel: #121317; --panel-2: #16171C; --line: #24252C;
-    --ink: #BFAE7A; --ink-bright: #E8DCB8; --ink-dim: #6C685C;
-    --player: #F2C14E; --war: #D4443C; --calm: #3FA8A0;
+    --void: #07080B;
+    --panel: #0F1118;
+    --raise: #171A24;
+    --line: #222736;
+    --line-soft: #191D28;
+
+    --gold: #F2C14E;
+    --gold-dim: #8A6F2C;
+    --ink: #D2C7A6;
+    --ink-bright: #F0E7CC;
+    --mute: #707689;
+
+    --war: #E05A4F;
+    --calm: #3FD9B0;
+    --warn: #E8A33D;
+
+    --rhythm: 12px;
     color-scheme: dark;
   }
+
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body {
-    margin: 0; background: var(--ground); color: var(--ink);
-    font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 13px; line-height: 1.5;
+    margin: 0;
+    background: var(--void);
+    color: var(--ink);
+    font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
   }
-  .wrap { max-width: 1120px; margin: 0 auto; padding-inline: 16px; padding-block: 18px 28px; }
-  #screen-menu, #screen-setup, #screen-game { display: flex; flex-direction: column; gap: 12px; }
   [hidden] { display: none !important; }
-  h1 { font-family: Silkscreen, monospace; font-size: clamp(19px, 5.4vw, 28px); color: var(--ink-bright); margin: 0; letter-spacing: 0.02em; text-wrap: balance; }
-  .eyebrow { font-family: Silkscreen, monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); margin: 0; }
-  .sub { color: var(--ink-dim); font-size: 12px; max-width: 64ch; margin: 0; }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding-inline: 16px;
+    padding-block: 0 28px;
+    position: relative;
+    z-index: 1;
+  }
+  #screen-menu, #screen-setup, #screen-game {
+    display: flex;
+    flex-direction: column;
+    gap: var(--rhythm);
+  }
+
+  /* ---------------------------------------------------------------- type */
+  h1 {
+    font-family: Silkscreen, monospace;
+    font-size: clamp(30px, 9vw, 58px);
+    line-height: 1;
+    color: var(--ink-bright);
+    margin: 0;
+    letter-spacing: 0.01em;
+    text-wrap: balance;
+    text-shadow: 0 0 28px rgba(242, 193, 78, 0.22);
+  }
+  .eyebrow {
+    font-family: Silkscreen, monospace;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--gold-dim);
+    margin: 0;
+  }
+  .sub { color: var(--mute); font-size: 12.5px; max-width: min(62ch, 100%); margin: 0; }
   .sub b { color: var(--ink); font-weight: 500; }
+  .quiet { color: var(--mute); font-size: 11.5px; }
 
+  /* Oxanium carries every label and control: it is the one face here with a machine-cut
+     character, which is what separates chrome from the data set in the mono. */
+  button, .tab, .crumb, .panel h2, .stat .k, .preview .k, .trait .nm, .naming .nm {
+    font-family: Oxanium, "JetBrains Mono", sans-serif;
+  }
+
+  /* ---------------------------------------------------------------- controls */
   button {
-    font: inherit; font-size: 12px; background: var(--panel); color: var(--ink);
-    border: 1px solid var(--line); border-radius: 0; padding: 8px 12px; cursor: pointer; letter-spacing: 0.04em;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    background: var(--raise);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 9px 14px;
+    cursor: pointer;
+    transition: border-color 120ms ease, color 120ms ease, background 120ms ease, transform 60ms ease;
   }
-  button:hover:not(:disabled) { border-color: var(--ink-dim); color: var(--ink-bright); }
-  button[aria-pressed="true"] { background: var(--ink); color: #0B0B0D; border-color: var(--ink); }
-  button:disabled { opacity: 0.35; cursor: not-allowed; }
-  button:focus-visible { outline: 2px solid var(--player); outline-offset: 2px; }
-  button.primary { background: var(--player); color: #0B0B0D; border-color: var(--player); font-weight: 700; }
+  button:hover:not(:disabled) { border-color: var(--gold-dim); color: var(--ink-bright); }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:disabled { opacity: 0.3; cursor: not-allowed; }
+  button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  button[aria-pressed="true"] {
+    background: var(--gold); color: #0A0B0F; border-color: var(--gold);
+  }
+  button.primary {
+    background: var(--gold); color: #0A0B0F; border-color: var(--gold); font-weight: 700;
+  }
+  button.primary:hover:not(:disabled) { background: var(--ink-bright); border-color: var(--ink-bright); }
+  button.big { padding: 14px 18px; font-size: 13px; }
+  button.ghost { background: transparent; border-color: transparent; color: var(--mute); padding: 8px 10px; }
+  button.ghost:hover { color: var(--ink-bright); }
 
-  /* allocation */
-  .alloc { border: 1px solid var(--line); background: var(--panel); }
-  .alloc .rows { display: flex; flex-direction: column; }
-  .trait { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 11px 12px; border-bottom: 1px solid var(--line); align-items: center; }
-  .trait .what { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-  .trait .nm { color: var(--ink-bright); font-weight: 500; }
-  .trait .desc { font-size: 11px; color: var(--ink-dim); }
-  .stepper { display: flex; align-items: center; gap: 6px; }
-  .stepper .val { width: 22px; text-align: center; font-weight: 700; color: var(--ink-bright); font-variant-numeric: tabular-nums; }
-  .stepper button { padding: 4px 10px; }
-  .naming { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 11px 12px; border-bottom: 1px solid var(--line); }
-  .naming .nm { color: var(--ink-bright); font-weight: 500; }
-  .naming input {
-    font: inherit; font-size: 13px; background: var(--panel-2); color: var(--ink-bright);
-    border: 1px solid var(--line); padding: 7px 9px; width: 11em; max-width: 46vw; text-align: right;
+  /* ---------------------------------------------------------------- title screen */
+  /* The island behind the wordmark is a real generated map, not art: the first thing the game
+     shows is the thing the game is. */
+  #menu-bg {
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    object-fit: cover; image-rendering: pixelated;
+    opacity: 0.55; z-index: 0; pointer-events: none;
+    animation: drift 64s ease-in-out infinite alternate;
   }
-  .naming input:focus-visible { outline: 2px solid var(--player); outline-offset: 1px; }
-  .naming input::placeholder { color: var(--ink-dim); }
-  /* ---- screens, menu, chrome ---- */
-  .title { display: flex; flex-direction: column; gap: 8px; padding-block: 8vh 4px; }
-  .menu { display: flex; flex-direction: column; gap: 8px; max-width: 320px; }
-  button.big { padding: 13px 16px; font-size: 13px; }
-  button.ghost { border-color: transparent; padding: 7px 10px; }
-  .topbar { display: flex; align-items: center; gap: 10px; padding-bottom: 2px; }
-  .topbar .crumb { font-family: Silkscreen, monospace; font-size: 11px; letter-spacing: 0.08em;
-                   color: var(--ink-bright); flex: 1; min-width: 0; overflow: hidden;
-                   text-overflow: ellipsis; white-space: nowrap; }
-  .help p { margin: 0 0 9px; color: var(--ink-dim); font-size: 12px; }
+  #menu-veil {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(135% 95% at 50% 8%, rgba(7,8,11,0.05) 0%, rgba(7,8,11,0.62) 58%, var(--void) 100%),
+      linear-gradient(to bottom, rgba(7,8,11,0.30) 0%, rgba(7,8,11,0.55) 55%, var(--void) 100%);
+  }
+  @keyframes drift {
+    from { transform: scale(1.06) translate3d(-1.5%, -1%, 0); }
+    to   { transform: scale(1.16) translate3d(1.5%, 1.5%, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #menu-bg { animation: none; transform: scale(1.08); }
+    * { transition: none !important; }
+  }
+
+  .title { display: flex; flex-direction: column; gap: 10px; padding-block: 11vh 6px; }
+  .menu { display: flex; flex-direction: column; gap: 9px; max-width: 320px; margin-top: 6px; }
+
+  /* ---------------------------------------------------------------- panels */
+  .panel { border: 1px solid var(--line); background: var(--panel); border-radius: 2px; }
+  .panel > h2 {
+    margin: 0; padding: 10px 13px;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--mute); border-bottom: 1px solid var(--line-soft);
+  }
+  .panel > .body { padding: 13px; display: flex; flex-direction: column; gap: 11px; }
+  .body.tight { gap: 0; padding: 0; }
+  .body.tight > .sub, .body.tight > .bar { padding: 12px 13px; }
+  .body.tight > canvas { border-block: 1px solid var(--line-soft); }
+
+  .topbar { display: flex; align-items: center; gap: 10px; padding-top: 14px; }
+  .topbar .crumb {
+    font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-bright); flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  .help p { margin: 0 0 10px; color: var(--mute); font-size: 12.5px; }
   .help p:last-child { margin-bottom: 0; }
   .help b { color: var(--ink); font-weight: 500; }
-  .body.tight { gap: 0; padding: 0; }
-  .body.tight > .sub, .body.tight > .bar { padding: 11px 12px; }
-  .body.tight > canvas { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 
-  /* Sticky, so the one button that matters is always reachable on a long setup screen. */
-  .actionbar { position: sticky; bottom: 0; padding: 10px 0 2px; background:
-               linear-gradient(to top, var(--ground) 62%, transparent); }
-  .actionbar button { width: 100%; }
-
-  .tabs { display: flex; gap: 1px; background: var(--line); border: 1px solid var(--line);
-          border-bottom: 0; }
-  .tab { flex: 1; border: 0; background: var(--panel-2); color: var(--ink-dim); padding: 10px 6px; }
-  .tab[aria-selected="true"] { background: var(--panel); color: var(--ink-bright); }
-  .panel.tabbed { border-top: 0; }
-  .speeds { padding-top: 10px; }
-
-  #tech { position: fixed; inset: 0; background: rgba(5,6,10,0.92); display: flex;
-          align-items: center; justify-content: center; padding: 20px; z-index: 20; }
-  #tech .sheet { width: min(520px, 100%); }
-  .sheet.wide .opt { display: block; width: 100%; text-align: left; padding: 12px; }
-  .sheet.wide .opt .t { color: var(--ink-bright); font-weight: 500; display: block; }
-  .sheet.wide .opt .b { color: var(--ink-dim); font-size: 11px; display: block; margin-top: 2px; }
-  #tech-options { display: flex; flex-direction: column; gap: 7px; margin-top: 4px; }
-
-  #overlay { position: fixed; inset: 0; background: rgba(5,6,10,0.86); display: flex;
-             align-items: center; justify-content: center; padding: 20px; z-index: 10; }
-  #overlay .sheet { background: var(--panel); border: 1px solid var(--line); padding: 18px;
-                    display: flex; flex-direction: column; gap: 8px; width: min(320px, 100%); }
-  #overlay h2 { font-family: Silkscreen, monospace; font-size: 12px; letter-spacing: 0.12em;
-                text-transform: uppercase; color: var(--ink-dim); margin: 0 0 4px; font-weight: 400; }
+  /* ---------------------------------------------------------------- setup */
+  .trait, .naming, .budget {
+    display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center;
+    padding: 11px 13px; border-bottom: 1px solid var(--line-soft);
+  }
+  .trait .what { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .trait .nm, .naming .nm { color: var(--ink-bright); font-weight: 600; letter-spacing: 0.04em; }
+  .trait .desc { font-size: 11px; color: var(--mute); font-family: "JetBrains Mono", monospace; }
+  .stepper { display: flex; align-items: center; gap: 4px; }
+  .stepper .val {
+    width: 26px; text-align: center; font-weight: 700; font-size: 15px; color: var(--gold);
+  }
+  .stepper button { padding: 5px 11px; font-size: 14px; line-height: 1; }
+  .budget .pts { color: var(--gold); font-weight: 700; font-size: 15px; }
+  .naming input {
+    font: inherit; font-size: 13px; background: var(--void); color: var(--ink-bright);
+    border: 1px solid var(--line); border-radius: 2px; padding: 8px 10px;
+    width: 12em; max-width: 46vw; text-align: right;
+  }
+  .naming input:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+  .naming input::placeholder { color: var(--mute); }
 
   .swatches { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-  .swatch { width: 26px; height: 26px; padding: 0; border: 1px solid var(--line); cursor: pointer; }
-  .swatch[aria-pressed="true"] { border-color: var(--ink-bright); box-shadow: inset 0 0 0 2px var(--ground); }
-  #sitemap { display: block; width: 100%; aspect-ratio: 1; image-rendering: pixelated; touch-action: manipulation;
-             background: #05060A; border: 1px solid var(--line); cursor: crosshair; }
-  .budget { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 11px 12px; border-bottom: 1px solid var(--line); }
-  .budget .pts { color: var(--player); font-weight: 700; }
-  .preview { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 1px; background: var(--line); }
-  .preview div { background: var(--panel-2); padding: 9px 11px; display: flex; flex-direction: column; gap: 1px; }
-  .preview .k { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-dim); }
-  .preview .v { font-size: 15px; font-weight: 700; color: var(--ink-bright); font-variant-numeric: tabular-nums; }
-  .archetype { padding: 11px 12px; border-top: 1px solid var(--line); color: var(--ink); }
-  .archetype b { color: var(--player); }
+  .swatch {
+    width: 28px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 2px;
+  }
+  .swatch[aria-pressed="true"] {
+    border-color: var(--ink-bright); box-shadow: inset 0 0 0 2px var(--void);
+  }
 
-  /* world */
-  .stage { position: relative; background: #05060A; border: 1px solid var(--line); }
-  canvas { display: block; width: 100%; aspect-ratio: 1; touch-action: none; image-rendering: pixelated; }
-  .hud { position: absolute; inset: 0; pointer-events: none; padding: 9px; display: flex; justify-content: space-between; align-items: flex-start; font-size: 11px; }
-  .hud span { background: rgba(5,6,10,0.74); padding: 3px 7px; }
-  .hud .r { color: var(--ink-dim); }
-  .rate { position: absolute; left: 9px; bottom: 9px; background: rgba(5,6,10,0.74); padding: 3px 7px; font-size: 10px; color: var(--ink-dim); pointer-events: none; }
+  .preview { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 1px; background: var(--line-soft); }
+  .preview div { background: var(--panel); padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+  .preview .k, .stat .k {
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mute); font-weight: 600;
+  }
+  .preview .v, .stat .v { font-size: 16px; font-weight: 700; color: var(--ink-bright); }
+  .archetype { padding: 12px 13px; color: var(--ink); border-top: 1px solid var(--line-soft); }
+  .archetype b { color: var(--gold); }
 
-  .bar { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
-  .stat { background: var(--panel); padding: 8px 10px; display: flex; flex-direction: column; gap: 1px; }
-  .stat .k { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-dim); }
-  .stat .v { font-size: 16px; font-weight: 700; color: var(--ink-bright); font-variant-numeric: tabular-nums; }
+  #sitemap {
+    display: block; width: 100%; aspect-ratio: 1; image-rendering: pixelated;
+    touch-action: manipulation; background: #04050A; cursor: crosshair;
+  }
 
-  .cols { display: grid; gap: 14px; }
-  @media (min-width: 880px) { .cols { grid-template-columns: 1fr 1fr; } }
-  section.panel { border: 1px solid var(--line); background: var(--panel); }
-  .panel h2 { margin: 0; padding: 9px 12px; font-family: Silkscreen, monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); border-bottom: 1px solid var(--line); font-weight: 400; }
-  .panel .body { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .actionbar {
+    position: sticky; bottom: 0; padding: 12px 0 calc(6px + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(to top, var(--void) 58%, transparent);
+  }
+  .actionbar button { width: 100%; }
 
+  /* ---------------------------------------------------------------- the world */
+  .stage {
+    position: relative; background: #04050A; border: 1px solid var(--line); border-radius: 2px;
+    overflow: hidden;
+  }
+  #map { display: block; width: 100%; aspect-ratio: 1; touch-action: none; image-rendering: pixelated; }
+
+  /* The rail sits over the map rather than above it: the world is the screen, and the readout
+     belongs to it. */
+  .hud {
+    position: absolute; inset: 0; pointer-events: none; padding: 10px;
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .hud .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .hud .row.bottom { justify-content: space-between; align-items: flex-end; }
+  .chip {
+    background: rgba(7, 8, 11, 0.78);
+    border: 1px solid var(--line);
+    padding: 4px 9px; font-size: 11px; border-radius: 2px;
+    backdrop-filter: blur(3px);
+  }
+  .chip.state { color: var(--warn); border-color: rgba(232, 163, 61, 0.4); }
+  .chip.danger { color: var(--war); border-color: rgba(224, 90, 79, 0.45); }
+  #rate { color: var(--mute); font-size: 10px; letter-spacing: 0.08em; }
+
+  /* A segmented control reads as one instrument; four loose buttons read as four decisions. */
+  .speeds { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .segment { display: flex; border: 1px solid var(--line); border-radius: 2px; overflow: hidden; }
+  .segment button { border: 0; border-right: 1px solid var(--line); border-radius: 0; min-width: 52px; }
+  .segment button:last-child { border-right: 0; }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 1px;
+           background: var(--line-soft); border: 1px solid var(--line); border-radius: 2px; }
+  .stat { background: var(--panel); padding: 9px 11px; display: flex; flex-direction: column; gap: 1px; }
+
+  .tabs { display: flex; gap: 1px; background: var(--line); border: 1px solid var(--line);
+          border-bottom: 0; border-radius: 2px 2px 0 0; overflow: hidden; }
+  .tab {
+    flex: 1; border: 0; border-radius: 0; background: var(--panel); color: var(--mute);
+    padding: 11px 6px; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .tab[aria-selected="true"] { background: var(--raise); color: var(--gold); }
+  .panel.tabbed { border-top: 0; border-radius: 0 0 2px 2px; }
+
+  /* ---------------------------------------------------------------- council & feed */
   .premier .nm { color: var(--ink-bright); font-weight: 500; }
-  .premier .meta { font-size: 11px; color: var(--ink-dim); }
-  .cand { border: 1px solid var(--line); padding: 9px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .premier .meta { font-size: 11px; color: var(--mute); }
+  .cand { border: 1px solid var(--line); border-radius: 2px; padding: 10px 11px;
+          display: flex; flex-direction: column; gap: 7px; }
   .cand .who { color: var(--ink-bright); }
-  .cand .pitch { font-size: 11px; color: var(--ink-dim); }
+  .cand .pitch { font-size: 11px; color: var(--mute); }
   .levers { display: flex; flex-wrap: wrap; gap: 6px; }
-  .levers button { padding: 6px 9px; font-size: 11px; }
+  .levers button { padding: 7px 10px; font-size: 11px; }
 
-  .feed { display: flex; flex-direction: column; gap: 6px; min-height: 120px; max-height: 210px; overflow-y: auto; }
-  .ev { display: grid; grid-template-columns: 8px 1fr; gap: 8px; align-items: start; font-size: 12px; }
-  .ev i { width: 8px; height: 8px; margin-top: 5px; background: var(--ink-dim); }
-  .ev em { font-style: normal; color: var(--ink-dim); }
-  .quiet { color: var(--ink-dim); font-size: 12px; }
+  .feed { display: flex; flex-direction: column; gap: 7px; min-height: 140px; max-height: 260px; overflow-y: auto; }
+  .ev { display: grid; grid-template-columns: 3px 1fr; gap: 9px; align-items: stretch; font-size: 12px; }
+  .ev i { background: var(--mute); border-radius: 1px; }
+  .ev em { font-style: normal; color: var(--mute); }
 
-  .rival { display: flex; flex-direction: column; gap: 5px; padding-bottom: 9px; border-bottom: 1px solid var(--line); }
+  .rival { display: flex; flex-direction: column; gap: 6px; padding-bottom: 10px;
+           border-bottom: 1px solid var(--line-soft); }
   .rival:last-child { border-bottom: 0; padding-bottom: 0; }
   .rival .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-  .rival .who { display: flex; align-items: center; gap: 7px; }
-  .rival .dot { width: 9px; height: 9px; flex: none; }
-  .rival .trait2 { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-dim); }
+  .rival .who { display: flex; align-items: center; gap: 8px; }
+  .rival .dot { width: 10px; height: 10px; flex: none; border-radius: 1px; }
+  .rival .trait2 { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mute); }
   .rival.at-war .trait2 { color: var(--war); }
-  .tension { height: 5px; background: var(--panel-2); position: relative; }
+  .tension { height: 4px; background: var(--void); position: relative; border-radius: 2px; overflow: hidden; }
   .tension i { position: absolute; inset: 0 auto 0 0; background: var(--calm); }
   .rival.at-war .tension i { background: var(--war); }
 
-  .ended { border: 1px solid var(--player); background: var(--panel); padding: 14px; display: flex; flex-direction: column; gap: 8px; }
-  .ended h2 { font-family: Silkscreen, monospace; color: var(--player); margin: 0; font-size: 15px; letter-spacing: 0.06em; }
+  .ended { border: 1px solid var(--gold); background: var(--panel); border-radius: 2px;
+           padding: 16px; display: flex; flex-direction: column; gap: 9px; }
+  .ended h2 { font-family: Silkscreen, monospace; color: var(--gold); margin: 0; font-size: 17px; letter-spacing: 0.04em; }
 
-  footer { color: var(--ink-dim); font-size: 11px; border-top: 1px solid var(--line); padding-top: 11px; }
+  /* ---------------------------------------------------------------- overlays */
+  #overlay, #tech {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    padding: 20px; z-index: 30; background: rgba(4, 5, 9, 0.88); backdrop-filter: blur(4px);
+  }
+  #tech { z-index: 40; }
+  .sheet {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 2px; padding: 20px;
+    display: flex; flex-direction: column; gap: 9px; width: min(340px, 100%);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  }
+  .sheet.wide { width: min(520px, 100%); }
+  .sheet h2 {
+    font-family: Oxanium, sans-serif; font-size: 11px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--mute); margin: 0 0 3px; font-weight: 600;
+  }
+  #tech-options { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+  .opt { display: block; width: 100%; text-align: left; padding: 13px; background: var(--raise); }
+  .opt .t { color: var(--ink-bright); font-weight: 600; display: block; letter-spacing: 0.03em; }
+  .opt .b { color: var(--mute); font-size: 11px; display: block; margin-top: 3px;
+            font-family: "JetBrains Mono", monospace; letter-spacing: 0; }
+  .opt:hover { border-color: var(--gold); }
+
+  footer { color: var(--mute); font-size: 11px; border-top: 1px solid var(--line-soft);
+           padding-top: 12px; margin-top: 6px; }
   footer b { color: var(--ink); font-weight: 500; }
-  [hidden] { display: none !important; }
 </style>
+
+<canvas id="menu-bg" width="128" height="128" aria-hidden="true"></canvas>
+<div id="menu-veil" aria-hidden="true"></div>
 
 <div class="wrap">
 
-  <!-- ---------- 1. the menu ---------- -->
+  <!-- ---------- 1. the title ---------- -->
   <div id="screen-menu">
     <header class="title">
-      <p class="eyebrow">Kotlin/JS build · the simulation itself</p>
+      <p class="eyebrow">A civilisation of pixels</p>
       <h1>Pixel Town</h1>
       <p class="sub">
-        Every person is one pixel. Fifty settlers land on a procedurally generated island and start
-        living — working, eating, pairing, ageing and dying — alongside four rival civilisations
-        running the same simulation, on the same map, under the same rules.
+        Every person is one pixel. Fifty settlers land on an island and start living — working,
+        eating, pairing, ageing and dying — beside four rival civilisations running the same
+        simulation, on the same map, under the same rules.
       </p>
     </header>
 
@@ -183,29 +343,27 @@
     <section class="panel" id="help" hidden>
       <h2>How to play</h2>
       <div class="body help">
-        <p><b>Spend ten points.</b> Five traits, genetic to your people, for the whole run. They
-        pull in different directions: Farming and Speed decide how much food you grow, Health how
-        little you need and how well you survive a plague, Elements what winter costs you, Hunting
-        what the wild gives and what your soldiers are worth.</p>
-        <p><b>You do not give orders.</b> The town elects a Premier every year who decides what gets
-        built. You get influence: endorse a candidate, petition the sitting Premier, veto a build,
+        <p><b>Spend ten points.</b> Five traits, genetic to your people, for the whole run. Farming
+        and Speed decide how much food you grow; Health how little you need and how well you
+        survive a plague; Elements what winter costs you; Hunting what the wild gives and what
+        your soldiers are worth.</p>
+        <p><b>You do not give orders.</b> The town elects a Premier each year who decides what gets
+        built. You get influence — endorse a candidate, petition the sitting Premier, veto a build,
         or call an early election.</p>
-        <p><b>Every decade a generation comes of age</b> and your people earn a trait point. It
-        waits until you spend it — except while you are away, when the town shores up its own
-        weakest side.</p>
-        <p><b>The run ends</b> in collapse, conquest, endurance at 300 years, or ascension — tech
+        <p><b>Every decade a generation comes of age</b> and earns a trait point. It waits until you
+        spend it. Reaching a tech tier stops the world until you choose what your scholars learned.</p>
+        <p><b>The run ends</b> in collapse, conquest, endurance at three centuries, or ascension —
         tier six with four hundred people, which most runs never see.</p>
       </div>
     </section>
 
     <footer>
       <b>This is the game, not a mock-up.</b> Every tick, election and war comes from the same
-      <b>:sim</b> Kotlin module the Android app is built on, compiled to JavaScript — there is no
-      second implementation.
+      <b>:sim</b> Kotlin module the Android app is built on, compiled to JavaScript.
     </footer>
   </div>
 
-  <!-- ---------- 2. setting up ---------- -->
+  <!-- ---------- 2. founding ---------- -->
   <div id="screen-setup" hidden>
     <div class="topbar">
       <button class="ghost" id="setup-back">&larr; Menu</button>
@@ -226,7 +384,7 @@
           <span class="swatches" id="swatches"></span>
         </div>
         <div class="budget">
-          <span>Points remaining</span>
+          <span class="nm">Points remaining</span>
           <span class="pts" id="points">10</span>
         </div>
         <div class="rows" id="traits"></div>
@@ -238,12 +396,12 @@
     <section class="panel">
       <h2>Where you land</h2>
       <div class="body tight">
-        <p class="sub" style="margin:0">
+        <p class="sub">
           Tap the island to choose. Dark ground is out of reach — water, mountains, or an islet no
           army could walk to. The rivals settle around you.
         </p>
         <canvas id="sitemap" width="384" height="384"></canvas>
-        <div class="bar">
+        <div class="bar speeds">
           <button id="site-auto">Let the scouts choose</button>
           <button id="reroll">New island</button>
           <span class="quiet" id="sitelabel"></span>
@@ -256,10 +414,10 @@
     </div>
   </div>
 
-  <!-- ---------- 3. the game ---------- -->
+  <!-- ---------- 3. the world ---------- -->
   <div id="screen-game" hidden>
     <div class="topbar">
-      <button class="ghost" id="game-menu">&#9776;</button>
+      <button class="ghost" id="game-menu" aria-label="Menu">&#9776;</button>
       <span class="crumb" id="hud-title">Aurelia</span>
       <span class="quiet" id="hud-pop">50 people</span>
     </div>
@@ -267,17 +425,23 @@
     <div class="stage">
       <canvas id="map" width="512" height="512"></canvas>
       <div class="hud">
-        <span id="hud-date">Year 0</span>
+        <div class="row" id="hud-chips">
+          <span class="chip" id="hud-date">Year 0</span>
+        </div>
+        <div class="row bottom">
+          <span class="chip" id="rate">paused</span>
+        </div>
       </div>
-      <div class="rate" id="rate">paused</div>
     </div>
 
-    <div class="bar speeds">
-      <button class="sp" data-speed="0" aria-pressed="true">Pause</button>
-      <button class="sp" data-speed="1" aria-pressed="false">1&times;</button>
-      <button class="sp" data-speed="10" aria-pressed="false">10&times;</button>
-      <button class="sp" data-speed="100" aria-pressed="false">100&times;</button>
-      <button id="recentre" title="Reset the camera">Recentre</button>
+    <div class="speeds">
+      <div class="segment">
+        <button class="sp" data-speed="0" aria-pressed="true">Pause</button>
+        <button class="sp" data-speed="1" aria-pressed="false">1&times;</button>
+        <button class="sp" data-speed="10" aria-pressed="false">10&times;</button>
+        <button class="sp" data-speed="100" aria-pressed="false">100&times;</button>
+      </div>
+      <button id="recentre">Recentre</button>
       <button id="focus" aria-pressed="false">Highlight</button>
     </div>
 
@@ -290,7 +454,6 @@
       <div class="body" id="growth"></div>
     </section>
 
-    <!-- One panel at a time: three stacked panels is a long scroll on a phone. -->
     <div class="tabs" role="tablist">
       <button class="tab" data-tab="council" aria-selected="true">Council</button>
       <button class="tab" data-tab="feed-panel" aria-selected="false">Chronicle</button>
@@ -307,14 +470,14 @@
   <div id="tech" hidden>
     <div class="sheet wide">
       <h2 id="tech-title">A new age</h2>
-      <p class="sub" style="margin:0">
+      <p class="sub">
         Your scholars have learned enough for something new. This choice is permanent.
       </p>
       <div id="tech-options"></div>
     </div>
   </div>
 
-  <!-- the in-game menu -->
+  <!-- the pause menu -->
   <div id="overlay" hidden>
     <div class="sheet">
       <h2>Paused</h2>
@@ -337,6 +500,9 @@
   const SCREENS = ['screen-menu', 'screen-setup', 'screen-game'];
   function show(id) {
     for (const s of SCREENS) document.getElementById(s).hidden = s !== id;
+    const title = id === 'screen-menu';
+    document.getElementById('menu-bg').hidden = !title;
+    document.getElementById('menu-veil').hidden = !title;
     window.scrollTo(0, 0);
   }
 
@@ -509,8 +675,25 @@
   const siteOffCtx = siteOff.getContext('2d', { alpha: false });
   let preview = null, siteImage = null, siteView32 = null, chosenCell = -1;
 
+  // The island behind the title is the same generator the run uses — the first thing the game
+  // shows is the thing the game is, not a painting of it.
+  const bgCanvas = document.getElementById('menu-bg');
+  const bgCtx = bgCanvas.getContext('2d', { alpha: false });
+  function paintTitleIsland(p) {
+    bgCanvas.width = p.width; bgCanvas.height = p.height;
+    const image = bgCtx.createImageData(p.width, p.height);
+    const view = new Uint32Array(image.data.buffer);
+    const px = p.pixels(-1);
+    for (let i = 0; i < px.length; i++) {
+      const c = px[i];
+      view[i] = 0xFF000000 | ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);
+    }
+    bgCtx.putImageData(image, 0, 0);
+  }
+
   function buildPreview() {
     preview = new api.WebPreview(seed, colourIndex);
+    paintTitleIsland(preview);
     siteOff.width = preview.width; siteOff.height = preview.height;
     siteImage = siteOffCtx.createImageData(preview.width, preview.height);
     siteView32 = new Uint32Array(siteImage.data.buffer);
@@ -555,6 +738,7 @@
   document.getElementById('site-auto').addEventListener('click', () => { chosenCell = -1; drawSite(); });
 
   renderAlloc();
+  paintTitleIsland(new api.WebPreview(seed, 0));
 
   // ---------------- the run ----------------
   let game = null, speed = 0, zoom = 1, panX = 0, panY = 0, state = null;
@@ -647,9 +831,16 @@
   function renderGame() {
     const s = state;
     document.getElementById('hud-title').textContent = `${s.colony} · ${s.archetype}`;
-    document.getElementById('hud-date').textContent = `Year ${s.year} · ${s.season}`;
-    document.getElementById('hud-pop').textContent =
-      s.epidemic ? `${s.pop} people · sickness` : `${s.pop} people`;
+    document.getElementById('hud-pop').textContent = `${s.pop} people`;
+
+    // Conditions read as chips rather than as text appended to a number: a plague and a war are
+    // states, and a state should look different from a statistic.
+    const chips = [`<span class="chip" id="hud-date">Year ${s.year} · ${s.season}</span>`];
+    if (s.epidemic) chips.push('<span class="chip danger">Sickness</span>');
+    if (s.growthPoints) chips.push(`<span class="chip state">${s.growthPoints} trait point${s.growthPoints === 1 ? '' : 's'}</span>`);
+    const atWar = s.rivals.filter(r => r.war).map(r => r.name);
+    if (atWar.length) chips.push(`<span class="chip danger">At war: ${atWar.join(', ')}</span>`);
+    setHTML('hud-chips', chips.join(''));
     document.getElementById('rate').textContent = s.awaiting
       ? 'stopped — a decision is waiting'
       : (speed === 0 ? 'paused' : `${speed}x · ${shownRate} ticks/s`);

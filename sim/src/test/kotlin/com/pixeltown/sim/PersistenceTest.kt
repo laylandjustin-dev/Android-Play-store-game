@@ -151,7 +151,11 @@ class PersistenceTest {
         val away = roundTrip(sim)
 
         val ticks = OfflineCatchUp.ticksFor(8 * 3600L, Meta.OFFLINE_CAP_HOURS_FREE)
-        watched.runUnattended(ticks.toInt())
+        // Both sides must advance the *same* way or this proves nothing. OfflineCatchUp.advance
+        // runs attended — it has to, or catch-up could resolve decisions live play leaves open —
+        // so the watched side does too. A blanket rewrite to runUnattended broke exactly this
+        // symmetry and the test caught it.
+        watched.run(ticks.toInt())
         OfflineCatchUp.advance(away, ticks)
 
         assertEquals(watched.stateHash(), away.stateHash())

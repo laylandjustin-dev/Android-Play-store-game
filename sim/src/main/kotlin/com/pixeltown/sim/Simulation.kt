@@ -484,6 +484,11 @@ class Simulation(
         val grown = civ.traits.withPointIn(trait) ?: return false
         civ.traits = grown
         civ.unspentTraitPoints--
+        // Anything derived from the traits has to be recomputed now. Food storage scales with
+        // Elements, and it was only ever refreshed when a building completed — so a civ that grew
+        // an Elements point kept a stale capacity until its next build, while a reload recomputed
+        // it correctly. The save round-trip test caught the mismatch, which is what it is for.
+        refreshEffects(civ.id)
         if (civ.isPlayer) {
             chronicle.record(
                 ChronicleEvent(
