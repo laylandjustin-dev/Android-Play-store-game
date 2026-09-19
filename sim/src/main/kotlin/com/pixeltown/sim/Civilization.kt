@@ -42,6 +42,15 @@ class Civilization(
     /** The day the oldest unspent point was earned, for the player's auto-spend grace period. */
     var oldestUnspentPointDay: Long = 0L
 
+    /**
+     * The standing instruction the player has left their town, or null.
+     *
+     * Unlike a petition this survives the Premier who was in office when it was made: every future
+     * agenda is weighted toward it until the player says otherwise. See
+     * `GameConfig.Politics.CHARTER_WEIGHT`.
+     */
+    var charter: BuildingCategory? = null
+
     /** Techs this civ has chosen, one per tier reached. Permanent for the run. */
     val techChoices: MutableList<TechOption> = mutableListOf()
 

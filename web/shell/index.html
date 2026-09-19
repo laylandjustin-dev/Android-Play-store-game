@@ -267,6 +267,20 @@
   .cand .who { color: var(--ink-bright); }
   .cand .pitch { font-size: 11px; color: var(--mute); }
   .levers { display: flex; flex-wrap: wrap; gap: 6px; }
+  .lever-group { display: flex; flex-direction: column; gap: 6px; }
+  .lever-label { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--mute);
+                 font-family: Oxanium, sans-serif; font-weight: 600; }
+
+  .who-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .who-head b { color: var(--ink-bright); font-weight: 600; }
+  .who-head .dot { width: 10px; height: 10px; border-radius: 1px; flex: none; }
+  .statlines { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 1px;
+               background: var(--line-soft); border: 1px solid var(--line); border-radius: 2px; }
+  .statlines .s { background: var(--panel); padding: 7px 10px; display: flex;
+                  justify-content: space-between; align-items: baseline; gap: 8px; }
+  .statlines .k { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mute);
+                  font-family: Oxanium, sans-serif; font-weight: 600; }
+  .statlines .v { font-size: 14px; font-weight: 700; color: var(--ink-bright); }
   .levers button { padding: 7px 10px; font-size: 11px; }
 
   .feed { display: flex; flex-direction: column; gap: 7px; min-height: 140px; max-height: 260px; overflow-y: auto; }
@@ -446,6 +460,11 @@
     </div>
 
     <div class="stats" id="stats"></div>
+
+    <section class="panel" id="who" hidden>
+      <h2>Who is that?</h2>
+      <div class="body" id="who-body"></div>
+    </section>
 
     <div id="ended-box" hidden></div>
 
@@ -882,11 +901,18 @@
           <span><button data-endorse="${k.id}">Endorse (20)</button></span>
         </div>`).join('');
     }
-    html += `<div class="levers">
-      <button data-petition="FARMS">Petition: farms (35)</button>
-      <button data-petition="MILITARY">Petition: military (35)</button>
-      <button data-veto="1">Veto next build (45)</button>
-    </div>`;
+    // Every category, not the two that happened to be wired up. A petition moves the sitting
+    // Premier for a year; a charter is the standing instruction every future one inherits.
+    const CATEGORIES = ['FARMS', 'HEALTH', 'MILITARY', 'TECH', 'LIFESTYLE'];
+    html += '<div class="lever-group"><span class="lever-label">Petition the Premier (35)</span><div class="levers">' +
+      CATEGORIES.map(c => `<button data-petition="${c}">${c.toLowerCase()}</button>`).join('') +
+      '</div></div>';
+    html += '<div class="lever-group"><span class="lever-label">Standing charter (60) &mdash; every Premier after this one</span><div class="levers">' +
+      CATEGORIES.map(c => `
+        <button data-charter="${c}" aria-pressed="${s.charter === c.toLowerCase()}">${c.toLowerCase()}</button>`).join('') +
+      (s.charter ? '<button data-charter="">Revoke</button>' : '') +
+      '</div></div>';
+    html += `<div class="levers"><button data-veto="1">Veto next build (45)</button></div>`;
     setHTML('council', html);
 
     // Chronicle
@@ -931,6 +957,7 @@
     const b = e.target.closest('button'); if (!b || !game) return;
     if (b.dataset.endorse) game.endorse(Number(b.dataset.endorse));
     else if (b.dataset.petition) game.petition(b.dataset.petition, 0.35);
+    else if (b.dataset.charter !== undefined) game.setCharter(b.dataset.charter);
     else if (b.dataset.veto) game.veto();
     pull();
   });
@@ -1007,7 +1034,40 @@
     panX = wx - fx * after; panY = wy - fy * after;
     clampPan(); paint();
   }
-  canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); pointers.set(e.pointerId, e);
+  // A tap that did not drag is a question about whoever is standing there. The premise of the
+  // game is that every person is one pixel; this is how you look at one.
+  let pressedAt = null;
+  function cellUnder(e) {
+    const rect = canvas.getBoundingClientRect();
+    const span = game.width / zoom;
+    const wx = Math.floor(panX + ((e.clientX - rect.left) / rect.width) * span);
+    const wy = Math.floor(panY + ((e.clientY - rect.top) / rect.height) * span);
+    if (wx < 0 || wy < 0 || wx >= game.width || wy >= game.height) return -1;
+    return wy * game.width + wx;
+  }
+  function showCitizen(e) {
+    if (!game) return;
+    const found = game.inspect(cellUnder(e), false);
+    const panel = document.getElementById('who');
+    if (found === 'null') { panel.hidden = true; return; }
+    const c = JSON.parse(found);
+    const line = (k, v) => `<div class="s"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+    setHTML('who-body',
+      `<div class="who-head"><i class="dot" style="background:${c.colour}"></i>
+        <b>${c.mine ? 'One of yours' : c.civ}</b>
+        <span class="quiet">${c.sex}, ${c.age} &middot; ${c.job}${c.enlisted ? ' (under arms)' : ''}</span></div>
+       <div class="statlines">` +
+      line('Strength', c.strength) + line('Vigour', c.vigour) + line('Skill', c.skill + '%') +
+      line('Output', c.effectiveness + '%') + line('Health', c.health + '%') + line('Fed', c.fed + '%') +
+      line('Morale', c.morale + '%') + line('Survival', c.survival) +
+      '</div>' +
+      `<p class="quiet" style="margin:0">${c.housed ? 'Has a roof' : 'No roof'} &middot; ` +
+      `${c.partner !== null ? 'partnered' : 'unpartnered'}${c.pregnant ? ' &middot; expecting' : ''} &middot; ` +
+      `leans ${c.leaning}</p>`);
+    panel.hidden = false;
+  }
+
+  canvas.addEventListener('pointerdown', e => { pressedAt = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); pointers.set(e.pointerId, e);
     if (pointers.size === 2) { const [a, b] = [...pointers.values()];
       pinchStart = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); zoomStart = zoom; } });
   canvas.addEventListener('pointermove', e => {
@@ -1025,7 +1085,16 @@
       clampPan(); paint();
     }
   });
-  const drop = e => { pointers.delete(e.pointerId); if (pointers.size < 2) pinchStart = 0; };
+  const drop = e => {
+    // A press that moved less than a few pixels was a tap, not a drag.
+    if (pressedAt && pointers.size === 1) {
+      const moved = Math.hypot(e.clientX - pressedAt.x, e.clientY - pressedAt.y);
+      if (moved < 6) showCitizen(e);
+    }
+    pressedAt = null;
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinchStart = 0;
+  };
   canvas.addEventListener('pointerup', drop);
   canvas.addEventListener('pointercancel', drop);
   canvas.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY); }, { passive: false });

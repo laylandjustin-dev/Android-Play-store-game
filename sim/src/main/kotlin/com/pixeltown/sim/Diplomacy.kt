@@ -196,12 +196,11 @@ internal object DiplomacySystem {
         techMultiplier: Double,
         effects: CivEffects,
     ): Double {
+        // Each soldier counts for what they are individually, not for an average: a levy of the
+        // old and the hungry is worth less than the same number of prime, fed, trained people,
+        // which is the whole reason a citizen carries a strength score.
         var sum = 0.0
-        for (soldier in soldiers) {
-            val competence = GameConfig.Economy.SKILL_OUTPUT_FLOOR +
-                (1.0 - GameConfig.Economy.SKILL_OUTPUT_FLOOR) * soldier.skill
-            sum += traits.huntYield * competence
-        }
+        for (soldier in soldiers) sum += soldier.strength(traits)
         return sum * techMultiplier + effects.militaryStrength
     }
 

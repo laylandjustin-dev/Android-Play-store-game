@@ -5,6 +5,7 @@ package com.pixeltown.web
 import com.pixeltown.sim.Agenda
 import com.pixeltown.sim.Archetype
 import com.pixeltown.sim.BuildingCategory
+import com.pixeltown.sim.Citizen
 import com.pixeltown.sim.ChronicleEventKind
 import com.pixeltown.sim.CivColors
 import com.pixeltown.sim.ColonyName
@@ -18,6 +19,7 @@ import com.pixeltown.sim.Simulation
 import com.pixeltown.sim.Trait
 import com.pixeltown.sim.TechOption
 import com.pixeltown.sim.TraitAllocation
+import com.pixeltown.sim.World
 import com.pixeltown.sim.WorldGenerator
 import com.pixeltown.sim.WorldRenderer
 import kotlin.js.ExperimentalJsExport
@@ -121,6 +123,71 @@ class WebGame(
         }
     }
 
+    /**
+     * The person standing on a cell, as JSON, or `null`.
+     *
+     * The game's premise is that every person is one pixel; until now there was no way to look at
+     * one. Search widens by a ring or two because a finger on a phone is wider than a world cell.
+     */
+    fun inspect(cell: Int, civOnly: Boolean = false): String {
+        val world = simulation.world
+        if (cell < 0 || cell >= world.cellCount) return "null"
+        val x0 = cell % world.width
+        val y0 = cell / world.width
+
+        for (radius in 0..2) {
+            for (dy in -radius..radius) {
+                for (dx in -radius..radius) {
+                    if (radius > 0 && kotlin.math.max(kotlin.math.abs(dx), kotlin.math.abs(dy)) != radius) continue
+                    val x = x0 + dx
+                    val y = y0 + dy
+                    if (!world.inBounds(x, y)) continue
+                    val id = world.occupantId[world.index(x, y)]
+                    if (id == World.NONE) continue
+                    val citizen = simulation.citizenOrNull(id) ?: continue
+                    if (civOnly && citizen.civId != GameConfig.World.PLAYER_CIV_ID) continue
+                    return describe(citizen)
+                }
+            }
+        }
+        return "null"
+    }
+
+    private fun describe(citizen: Citizen): String {
+        val civ = simulation.civ(citizen.civId)
+        val traits = civ.traits
+        val partner = citizen.partnerId?.let { simulation.citizenOrNull(it) }
+        return buildString {
+            append("{\"id\":").append(citizen.id)
+            append(",\"civ\":\"").append(escape(civ.name)).append('"')
+            append(",\"mine\":").append(citizen.civId == GameConfig.World.PLAYER_CIV_ID)
+            append(",\"colour\":\"").append(hex(simulation.colors[citizen.civId])).append('"')
+            append(",\"age\":").append(citizen.ageYears)
+            append(",\"sex\":\"").append(citizen.sex.name.lowercase()).append('"')
+            append(",\"job\":\"").append(citizen.job.name.lowercase()).append('"')
+            append(",\"skill\":").append((citizen.skill * 100).toInt())
+            append(",\"vigour\":").append((citizen.vigour * 100).toInt())
+            append(",\"strength\":").append((citizen.strength(traits) * 100).toInt())
+            append(",\"effectiveness\":").append((citizen.effectiveness() * 100).toInt())
+            append(",\"health\":").append((citizen.hp / traits.maxHp * 100).toInt())
+            append(",\"fed\":").append((citizen.nutrition * 100).toInt())
+            append(",\"morale\":").append((citizen.morale * 100).toInt())
+            append(",\"survival\":").append(citizen.survival.toInt())
+            append(",\"housed\":").append(citizen.homeBuildingId != null)
+            append(",\"enlisted\":").append(citizen.enlisted)
+            append(",\"pregnant\":").append(citizen.isPregnant)
+            append(",\"partner\":").append(partner?.let { "${it.id}" } ?: "null")
+            append(",\"leaning\":\"").append(citizen.politicalBias.name.lowercase()).append('"')
+            append('}')
+        }
+    }
+
+    /** Leaves a standing instruction every future Premier weights toward. Empty string clears it. */
+    fun setCharter(category: String): Boolean {
+        val target = BuildingCategory.entries.firstOrNull { it.name.equals(category, ignoreCase = true) }
+        return simulation.setCharter(GameConfig.World.PLAYER_CIV_ID, target)
+    }
+
     /** Takes one of them. False if it was not on offer. */
     fun chooseTech(id: String): Boolean {
         val option = TechOption.entries.firstOrNull { it.name == id } ?: return false
@@ -155,6 +222,7 @@ class WebGame(
         sb.append(",\"growthPoints\":").append(player.unspentTraitPoints)
         sb.append(",\"epidemic\":").append(player.epidemicDaysLeft > 0)
         sb.append(",\"awaiting\":").append(simulation.awaitingPlayer)
+        sb.append(",\"charter\":").append(player.charter?.let { "\"${it.name.lowercase()}\"" } ?: "null")
         sb.append(",\"techs\":[")
         for ((i, choice) in player.techChoices.withIndex()) {
             if (i > 0) sb.append(',')

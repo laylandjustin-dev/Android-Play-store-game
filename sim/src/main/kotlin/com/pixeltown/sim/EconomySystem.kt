@@ -349,9 +349,11 @@ internal object EconomySystem {
         civ.add(Resource.WEALTH, wealth)
     }
 
-    /** A beginner works at [Economy.SKILL_OUTPUT_FLOOR] of a master's rate. */
-    private fun competence(citizen: Citizen): Double =
-        Economy.SKILL_OUTPUT_FLOOR + (1.0 - Economy.SKILL_OUTPUT_FLOOR) * citizen.skill
+    /**
+     * What one worker gets done: what they have learned, what they are, and how their body is
+     * doing today. See `Citizen.effectiveness`.
+     */
+    private fun competence(citizen: Citizen): Double = citizen.effectiveness()
 
     private fun growSkill(citizen: Citizen, growthMultiplier: Double) {
         val perDay = growthMultiplier / (Life.SKILL_YEARS_TO_MASTERY * GameConfig.Time.DAYS_PER_YEAR)

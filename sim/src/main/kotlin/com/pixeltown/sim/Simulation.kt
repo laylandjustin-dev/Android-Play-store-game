@@ -225,6 +225,7 @@ class Simulation(
             // WorldConfig.SETTLER_STARTING_SKILL for why starting them at zero was the founding
             // cliff rather than a detail.
             citizen.skill = WorldConfig.SETTLER_STARTING_SKILL
+            citizen.vigour = rng.nextDouble(TraitConfig.VIGOUR_MIN, TraitConfig.VIGOUR_MAX).toFloat()
             placed.add(citizen)
         }
 
@@ -553,8 +554,45 @@ class Simulation(
     }
 
     private fun installPremier(civ: Civilization, premier: Premier) {
+        // A charter outlives the Premier who was in office when it was written: every incoming
+        // agenda is weighted toward it. This is the one instruction a player can leave that lasts
+        // longer than a term, which is what makes the building layer something you steer rather
+        // than something you watch.
+        civ.charter?.let { premier.applyCharter(it, Politics.CHARTER_WEIGHT) }
         premiers[civ.id] = premier
         electedAgendas[civ.id] = premier.agenda
+    }
+
+    /**
+     * Leaves a standing instruction that every future Premier weights toward, or clears it.
+     *
+     * Costs influence to set or change; clearing is free. Applies to the sitting Premier at once,
+     * so the player sees it take effect rather than waiting for an election.
+     */
+    fun setCharter(civId: Int, category: BuildingCategory?): Boolean {
+        val civ = civ(civId)
+        if (category == civ.charter) return false
+        if (category != null && !spendInfluence(civId, Politics.COST_CHARTER)) return false
+
+        val previous = civ.charter
+        civ.charter = category
+        premiers[civId]?.let { premier ->
+            // Take the old charter back out before adding the new one, or they compound.
+            previous?.let { premier.applyCharter(it, -Politics.CHARTER_WEIGHT) }
+            category?.let { premier.applyCharter(it, Politics.CHARTER_WEIGHT) }
+            electedAgendas[civId] = premier.agenda
+        }
+        chronicle.record(
+            ChronicleEvent(
+                day, ChronicleEventKind.ELECTION, civId,
+                detail = if (category == null) {
+                    "${civ.name} sets its charter aside"
+                } else {
+                    "${civ.name} is chartered for ${category.name.lowercase()}"
+                },
+            ),
+        )
+        return true
     }
 
     /**
@@ -1655,6 +1693,18 @@ class Simulation(
             ageDays = 0,
             traits = civ.traits,
         )
+        // Heredity: the child starts from its parents' average and gets a fresh draw on top, so a
+        // people's constitution drifts across generations instead of being resampled every birth.
+        val father = mother.partnerId?.let { citizenOrNull(it) }
+        val inherited = if (father != null) (mother.vigour + father.vigour) / 2.0 else mother.vigour.toDouble()
+        val mutation = rng.nextDouble(-TraitConfig.VIGOUR_MUTATION, TraitConfig.VIGOUR_MUTATION)
+        // Pulled part of the way back toward the average, so a lineage improves without running
+        // away: regression to the mean, which is what keeps one lucky founder from producing a
+        // town of supermen three centuries later.
+        val drawn = inherited * TraitConfig.VIGOUR_INHERITANCE +
+            1.0 * (1.0 - TraitConfig.VIGOUR_INHERITANCE) + mutation
+        child.vigour = drawn.coerceIn(TraitConfig.VIGOUR_MIN, TraitConfig.VIGOUR_MAX).toFloat()
+
         civ.totalBirths++
         chronicle.record(ChronicleEvent(day, ChronicleEventKind.BIRTH, civ.id, child.id, value = mother.id))
         return child
@@ -1867,6 +1917,7 @@ class Simulation(
                 oldestUnspentPointDay = civ.oldestUnspentPointDay,
                 epidemicDaysLeft = civ.epidemicDaysLeft,
                 epidemicCount = civ.epidemicCount,
+                charter = civ.charter,
                 techChoices = civ.techChoices.map { it.name },
                 pendingTechTier = civ.pendingTechTier,
                 influencePoints = civ.influencePoints,
@@ -1882,7 +1933,8 @@ class Simulation(
             CitizenSave(
                 id = c.id, x = c.x, y = c.y, civId = c.civId, sex = c.sex, ageDays = c.ageDays,
                 hp = c.hp, nutrition = c.nutrition, morale = c.morale, survival = c.survival,
-                job = c.job, skill = c.skill, influence = c.influence, partnerId = c.partnerId,
+                job = c.job, skill = c.skill, vigour = c.vigour, influence = c.influence,
+                partnerId = c.partnerId,
                 pregnantUntilDay = c.pregnantUntilDay, homeBuildingId = c.homeBuildingId,
                 workCell = c.workCell, enlisted = c.enlisted, starvingDays = c.starvingDays,
                 widowedOnDay = c.widowedOnDay, politicalBias = c.politicalBias,
@@ -2097,6 +2149,7 @@ class Simulation(
                         TechOption.entries.firstOrNull { it.name == name }?.let { civ.techChoices.add(it) }
                     }
                     civ.pendingTechTier = c.pendingTechTier
+                    civ.charter = c.charter
                     civ.influencePoints = c.influencePoints
                     civ.unpaidUpkeepDays = c.unpaidUpkeepDays
                     civ.vetoesUsedThisYear = c.vetoesUsedThisYear
@@ -2144,6 +2197,7 @@ class Simulation(
                     job = c.job, skill = c.skill, influence = c.influence, partnerId = c.partnerId,
                     pregnantUntilDay = c.pregnantUntilDay, homeBuildingId = c.homeBuildingId,
                 ).apply {
+                    vigour = c.vigour
                     workCell = c.workCell
                     enlisted = c.enlisted
                     starvingDays = c.starvingDays

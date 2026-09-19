@@ -108,6 +108,24 @@ object GameConfig {
         const val LIFESPAN_YEARS_BASE = 48.0
         const val LIFESPAN_YEARS_PER_HEALTH = 3.0
 
+        /**
+         * Individual variation, on top of the traits a whole people share.
+         *
+         * A civ's traits say what its people are like; [Citizen.vigour] says how this one turned
+         * out. It is drawn around 1.0 at birth and it moves work output, hit points, disease
+         * resistance and fighting strength together, so a strong citizen is a better farmer *and*
+         * a better soldier — one constitution, not five unrelated numbers.
+         *
+         * Children inherit the average of their parents' vigour plus a fresh draw, so a town's
+         * people drift over generations rather than being resampled from scratch each birth. The
+         * spread is deliberately modest: this is meant to make individuals legible, not to swamp
+         * the trait allocation the player spent ten points on.
+         */
+        const val VIGOUR_MIN = 0.80
+        const val VIGOUR_MAX = 1.20
+        const val VIGOUR_INHERITANCE = 0.65
+        const val VIGOUR_MUTATION = 0.14
+
         // diseaseResist = 0.06 * Health
         const val DISEASE_RESIST_PER_HEALTH = 0.06
 
@@ -210,7 +228,7 @@ object GameConfig {
         const val WIDTH = 128
         const val HEIGHT = 128
 
-        const val STARTING_SETTLERS = 50
+        const val STARTING_SETTLERS = 55
 
         /** Settlers are founded as adults of working age, spread across this range. */
         const val SETTLER_MIN_AGE_YEARS = 17
@@ -471,7 +489,7 @@ object GameConfig {
          * 230-310 — which puts the 400-population Ascension condition back in reach as a
          * stretch rather than a formality.
          */
-        const val CONCEIVE_BASE = 0.0012
+        const val CONCEIVE_BASE = 0.0019
 
         /**
          * Housing slack for a town with no housing at all. Not zero: a colony has to be able to
@@ -480,6 +498,9 @@ object GameConfig {
         const val HOUSING_SLACK_WITHOUT_HOUSING = 0.5
         const val GESTATION_DAYS = 270
         const val CHILD_UNTIL_YEARS = 14
+
+        /** What a child contributes when they help in the fields. They are not idle, but they are children. */
+        const val CHILD_WORK_FRACTION = 0.30
 
         // Pairing
         const val PAIR_SEARCH_RADIUS_CELLS = 12
@@ -965,6 +986,21 @@ object GameConfig {
         const val INFLUENCE_POINTS_MORALE_SCALE = 0.6
 
         const val COST_ENDORSE = 20
+        /**
+         * A standing charter: the one lasting instruction the player can leave their town.
+         *
+         * A petition moves the sitting Premier and reverts within the year; an election replaces
+         * them entirely. Neither lets a player pursue anything across a century, which made the
+         * whole building layer something you watched. A charter names a category every future
+         * Premier weights more heavily, and it holds until the player changes it.
+         *
+         * Deliberately a nudge and not a command — the design's point is that the town governs
+         * itself and the player has influence over it. At this weight a charter reliably shows up
+         * in what gets built without turning the Premier into a puppet.
+         */
+        const val CHARTER_WEIGHT = 0.30
+        const val COST_CHARTER = 60
+
         const val COST_PETITION = 35
         const val COST_VETO = 45
         const val COST_REFERENDUM = 120

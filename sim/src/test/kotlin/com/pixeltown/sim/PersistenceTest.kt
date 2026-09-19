@@ -203,11 +203,25 @@ class PersistenceTest {
 
         val report = OfflineCatchUp.advance(sim, ticks = 12L * Time.DAYS_PER_YEAR, realSecondsAway = 8 * 3600L)
 
-        assertEquals(12, report.yearsElapsed)
-        assertEquals(12L * Time.DAYS_PER_YEAR, report.daysElapsed)
+        // Catch-up can stop short: reaching a tech tier holds the world until the player chooses,
+        // and it must do so while they are away too, or coming back would mean finding the
+        // decision already taken. So the report describes what *happened*, which is at most the
+        // time asked for, and it has to be self-consistent about it.
+        // It can also stop mid-year, so the days are not a whole number of years: what has to hold
+        // is that it ran at most what was asked, and that the years and the days agree.
+        assertTrue(report.daysElapsed in 1..12L * Time.DAYS_PER_YEAR, "ran ${report.daysElapsed} days")
+        assertEquals(
+            (report.daysElapsed / Time.DAYS_PER_YEAR).toInt(),
+            report.yearsElapsed,
+            "the report's years and days disagree",
+        )
         assertEquals(populationBefore, report.populationBefore)
         assertEquals(sim.populationOf(0), report.populationAfter)
-        assertEquals(12, report.elections.size, "twelve years should hold twelve elections")
+        assertEquals(
+            report.yearsElapsed,
+            report.elections.size,
+            "a year passed without an election, or an election happened outside the report's span",
+        )
         assertTrue(report.births > 0, "twelve years without a birth")
         assertTrue(report.highlights.size <= Meta.RETURN_REPORT_HIGHLIGHTS)
         assertTrue(

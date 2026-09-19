@@ -143,9 +143,7 @@ internal object BuildingSystem {
 
         var points = 0.0
         for (builder in builders) {
-            val competence = GameConfig.Economy.SKILL_OUTPUT_FLOOR +
-                (1.0 - GameConfig.Economy.SKILL_OUTPUT_FLOOR) * builder.skill
-            points += GameConfig.Economy.BUILDER_OUTPUT * competence * traits.workMultiplier *
+            points += GameConfig.Economy.BUILDER_OUTPUT * builder.effectiveness() * traits.workMultiplier *
                 techMultiplier * effects.buildSpeedBonus
         }
 

@@ -24,6 +24,27 @@ import com.pixeltown.sim.Trait
  */
 object ConstraintProbe {
 
+    /** Does sharing the island with four rivals still cost the player anything? */
+    private fun rivals() {
+        val farming = TraitAllocation.of(3, 4, 3, 4, 8)
+        for (seed in longArrayOf(1L, 1_000L, 8_919L)) {
+            val alone = Simulation.newRun(seed, farming, civCount = 1)
+            val crowded = Simulation.newRun(seed, farming)
+            val days = 150 * GameConfig.Time.DAYS_PER_YEAR
+            alone.runUnattended(days)
+            crowded.runUnattended(days)
+            val combat = crowded.chronicle.deathsBy(DeathCause.COMBAT)
+            val trades = crowded.relations.let { r ->
+                (1 until crowded.civs.size).sumOf { r.tradeCount(0, it) }
+            }
+            println(
+                "PROBE seed=$seed alone=${alone.populationOf(0)} crowded=${crowded.populationOf(0)} " +
+                    "combatDeaths=$combat trades=$trades peakAlone=${alone.civ(0).peakPopulation} " +
+                    "peakCrowded=${crowded.civ(0).peakPopulation}",
+            )
+        }
+    }
+
     /** Are buildings actually clustered, and do ruins explain the outliers? */
     private fun siting() {
         val sim = Simulation.newRun(
@@ -67,6 +88,7 @@ object ConstraintProbe {
     @JvmStatic
     fun main(args: Array<String>) {
         if (args.contains("--siting")) { siting(); return }
+        if (args.contains("--rivals")) { rivals(); return }
         val years = args.firstOrNull { it.startsWith("--years=") }?.substringAfter('=')?.toInt() ?: YEARS
 
         println("Cause of death and limiting pressure, $years years, ${SEEDS.size} seeds per build.")

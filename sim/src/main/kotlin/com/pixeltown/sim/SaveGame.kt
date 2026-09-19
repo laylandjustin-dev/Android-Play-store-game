@@ -112,6 +112,8 @@ data class CivSave(
     val epidemicDaysLeft: Int = 0,
     val epidemicCount: Int = 0,
     /** Techs chosen, by name, and a tier whose choice is still open. Both part of the run. */
+    /** The standing instruction the player left, if any. Defaulted for older saves. */
+    val charter: BuildingCategory? = null,
     val techChoices: List<String> = emptyList(),
     val pendingTechTier: Int? = null,
     val influencePoints: Double,
@@ -140,6 +142,8 @@ data class CitizenSave(
     val survival: Float,
     val job: Job,
     val skill: Float,
+    /** Individual constitution. Defaulted so a save from before people were individuals loads. */
+    val vigour: Float = 1f,
     val influence: Float,
     val partnerId: Int? = null,
     val pregnantUntilDay: Int? = null,

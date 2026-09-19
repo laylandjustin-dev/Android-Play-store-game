@@ -181,6 +181,17 @@ class Premier(
         petitionActive = true
     }
 
+    /**
+     * Weights this Premier's platform toward a standing charter.
+     *
+     * Deliberately not [applyPetition]: that marks the shift as a petition, which the council
+     * reverts within the year. A charter is the player's lasting instruction and must survive both
+     * the year and the Premier.
+     */
+    fun applyCharter(category: BuildingCategory, delta: Double) {
+        agenda = agenda.shifted(category, delta)
+    }
+
     fun clearPetition(original: Agenda) {
         agenda = original
         petitionActive = false
