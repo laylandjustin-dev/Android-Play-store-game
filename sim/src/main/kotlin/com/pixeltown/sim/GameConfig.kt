@@ -114,6 +114,44 @@ object GameConfig {
         const val MAX_HP_BASE = 60.0
         const val MAX_HP_PER_HEALTH = 8.0
 
+        /**
+         * The demand side of the food balance, and the piece the five traits were missing.
+         *
+         * Every trait fed *production*: farm yield, hunt yield, work rate, movement. Liebig's law
+         * says a population is limited by its scarcest resource, so with only one side of the
+         * ledger represented, the two traits best at producing food were the only two that could
+         * matter — measured as Farming-8 lasting 246 years against Health-8's 21, and Sugarscape
+         * found exactly the same convergence in its own agents. Its two traits are vision and
+         * *metabolism*: how far an agent can see, and how much it has to eat. The second was the
+         * one with no counterpart here.
+         *
+         * Health is now metabolism. A hardy people eat less per head, which is a contribution to
+         * the same balance sheet as farming better and is orthogonal to it — supply against demand
+         * (Will Wright's orthogonal differentiation, rather than five traits varying along one
+         * axis). Elements is the same idea against the season: a cold people eat more to stay warm,
+         * and a weathered one does not, so Elements removes the winter surcharge rather than
+         * lowering the baseline.
+         */
+        const val RATION_REDUCTION_PER_HEALTH = 0.035
+        /**
+         * A surcharge is a tax on *everybody*, and only its avoidance belongs to Elements, so it
+         * cannot be sized freely: at 0.85 — the figure that would have matched Health's discount —
+         * the winter bill collapsed four of the six probe builds, taking the Hunting build from 38
+         * years to zero. It stays where a town can pay it, and Elements is made worth its points on
+         * the other side of the ledger instead, through [ELEMENTS_FOOD_STORAGE_BONUS].
+         */
+        const val WINTER_RATION_SURCHARGE = 0.40
+
+        /**
+         * Extra food storage per point of Elements, as a fraction of the base capacity.
+         *
+         * A benefit that taxes nobody: a weathered people keep their harvest through the winter
+         * rather than watching it spoil, which is the same trait doing the same job from the supply
+         * side. It matters precisely when the seasonal trough is deepest, which is when an Elements
+         * people should be visibly better off than their neighbours.
+         */
+        const val ELEMENTS_FOOD_STORAGE_BONUS = 0.14
+
         // huntYield = 0.4 + 0.18 * Hunting  (also the base military effectiveness term)
         const val HUNT_YIELD_BASE = 0.4
         const val HUNT_YIELD_PER_HUNTING = 0.18

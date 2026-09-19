@@ -43,7 +43,7 @@ internal object EconomySystem {
         val workers = members.filter { it.isAdult && !it.enlisted }
         if (workers.isEmpty()) return
 
-        val dailyConsumption = members.sumOf { it.dailyFoodNeed() }
+        val dailyConsumption = members.sumOf { it.dailyFoodNeed(civ.traits) }
         val quotas = quotasFor(workers.size, foodWeighted(weights, civ.daysOfFood(dailyConsumption)))
 
         // Keep people in the job they already hold wherever the quota allows it: skill is
@@ -333,7 +333,7 @@ internal object EconomySystem {
 
         // Mills turn surplus grain into money.
         if (effects.foodToWealth > 0.0) {
-            val dailyNeed = members.sumOf { it.dailyFoodNeed() }
+            val dailyNeed = members.sumOf { it.dailyFoodNeed(civ.traits) }
             val surplus = max(0.0, civ[Resource.FOOD] - dailyNeed * 30)
             // Capped at a day's consumption: a mill is a building, not a money printer. Without
             // this a fifty-year run banked 1.6 million wealth.

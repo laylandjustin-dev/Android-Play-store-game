@@ -696,8 +696,11 @@ class Simulation(
 
     internal fun refreshEffects(civId: Int) {
         effects[civId] = BuildingSystem.aggregate(buildingsOf(civId))
+        // Elements keeps a harvest through the winter rather than watching it spoil, so it adds to
+        // capacity the same way a granary does.
+        val weathered = 1.0 + TraitConfig.ELEMENTS_FOOD_STORAGE_BONUS * civs[civId].traits[Trait.ELEMENTS]
         civs[civId].foodStorageCapacity =
-            Economy.BASE_FOOD_STORAGE_CAPACITY + effects[civId].foodStorageBonus
+            (Economy.BASE_FOOD_STORAGE_CAPACITY + effects[civId].foodStorageBonus) * weathered
     }
 
     // ------------------------------------------------------------------ tech and unrest
@@ -1236,7 +1239,11 @@ class Simulation(
             val members = living.filter { it.civId == civ.id }
             if (members.isEmpty()) continue
 
-            val demand = members.sumOf { it.dailyFoodNeed() }
+            // The real ration: Health lowers it and Elements removes the winter surcharge, which
+            // is what puts those two traits on the food balance sheet at all. Job assignment reads
+            // the same figure, or the feedback loop would be aiming at a demand that is not real.
+            val severity = normalisedSeasonSeverity()
+            val demand = members.sumOf { it.dailyFoodNeed(civ.traits, severity) }
             val available = civ.take(Resource.FOOD, demand)
             val fedFraction = if (demand <= 0.0) 1.0 else available / demand
 

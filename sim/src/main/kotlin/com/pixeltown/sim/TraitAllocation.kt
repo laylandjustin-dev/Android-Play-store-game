@@ -77,6 +77,23 @@ data class TraitAllocation(
 
     val farmYield: Double = TraitConfig.FARM_YIELD_BASE + TraitConfig.FARM_YIELD_PER_FARMING * farming
 
+    /**
+     * Food a citizen of this people needs per day, relative to the baseline — their metabolism.
+     *
+     * Measured against the base value rather than zero, so a Health-3 people eats exactly the
+     * standard ration and the trait reads as a change from the default in both directions.
+     */
+    val rationMultiplier: Double = (
+        1.0 - TraitConfig.RATION_REDUCTION_PER_HEALTH * (health - TraitConfig.BASE_VALUE)
+        ).coerceAtLeast(0.5)
+
+    /**
+     * The extra food this people needs in the harshest season, as a fraction of their ration. A
+     * cold people eats more to stay warm; a weathered one barely notices the winter.
+     */
+    val winterRationSurcharge: Double =
+        (TraitConfig.WINTER_RATION_SURCHARGE * (1.0 - elementsShelterOf(elements))).coerceAtLeast(0.0)
+
     /** Fraction by which weather, season and disaster penalties are reduced. */
     val elementsShelter: Double = TraitConfig.ELEMENTS_PENALTY_REDUCTION_PER_POINT * elements
 
@@ -98,6 +115,10 @@ data class TraitAllocation(
     }
 
     companion object {
+        /** Shared with [elementsShelter], which is declared after these two need it. */
+        private fun elementsShelterOf(elements: Int): Double =
+            TraitConfig.ELEMENTS_PENALTY_REDUCTION_PER_POINT * elements
+
         /** All five traits at base, before any points are spent. */
         val BASE = TraitAllocation(
             TraitConfig.BASE_VALUE,

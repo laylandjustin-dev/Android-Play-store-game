@@ -63,8 +63,23 @@ class Citizen(
 
     val isPregnant: Boolean get() = pregnantUntilDay != null
 
-    fun dailyFoodNeed(): Double =
-        if (isChild) GameConfig.Economy.FOOD_PER_CHILD_PER_DAY else GameConfig.Economy.FOOD_PER_ADULT_PER_DAY
+    /**
+     * Food this citizen needs today.
+     *
+     * [traits] and [seasonSeverity] are optional so the many call sites that only want a rough
+     * demand figure — trade reserves, job quotas — keep working unchanged, while feeding uses the
+     * real numbers. Health lowers the ration and Elements removes the winter surcharge: see
+     * `GameConfig.Traits.RATION_REDUCTION_PER_HEALTH`.
+     */
+    fun dailyFoodNeed(traits: TraitAllocation? = null, seasonSeverity: Double = 0.0): Double {
+        val base = if (isChild) {
+            GameConfig.Economy.FOOD_PER_CHILD_PER_DAY
+        } else {
+            GameConfig.Economy.FOOD_PER_ADULT_PER_DAY
+        }
+        if (traits == null) return base
+        return base * traits.rationMultiplier * (1.0 + traits.winterRationSurcharge * seasonSeverity)
+    }
 
     override fun toString(): String = "Citizen($id civ=$civId age=${ageYears}y survival=$survival)"
 }

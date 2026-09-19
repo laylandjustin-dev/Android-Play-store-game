@@ -279,7 +279,15 @@ class ColonyLifeCycleTest {
         val sim = barrenColony(42L)
         sim.step()
         val wellFed = sim.citizens.filter { it.civId == 0 }.map { it.survival }.average()
-        sim.run(30)
+
+        // Run until the stores are actually gone rather than for a fixed number of days: how long
+        // the founding food lasts depends on the people's ration, and Health now changes that.
+        var days = 0
+        while (sim.civ(0)[Resource.FOOD] > 0.0 && days < 200) {
+            sim.step()
+            days++
+        }
+        sim.run(5)
         val hungry = sim.citizens.filter { it.civId == 0 }.map { it.survival }.average()
         assertTrue(hungry < wellFed, "survival did not fall during a famine: $wellFed -> $hungry")
     }
