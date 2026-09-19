@@ -410,12 +410,19 @@ class Simulation(
      * Runs every tick rather than only on an anniversary, because the grace period is what matters
      * and a run can be reloaded at any point in it.
      */
+    /**
+     * Spends a banked point on the player's behalf — but only when there is no player.
+     *
+     * AD-50 had this run during live play, where it is exactly wrong: at 10x a game year is 36
+     * seconds and at 100x under four, so the decision the mechanic exists for was taken away before
+     * the player could reach it. Reported as "the new stat every 10 doesn't work", and it didn't.
+     *
+     * It does not run during offline catch-up either, because catch-up has to match live ticking
+     * exactly (M6). Points earned while away bank up and wait. What is left is the headless
+     * harness, which has no player at all and would otherwise measure a civ that never once spent
+     * a point — not how anybody plays.
+     */
     private fun autoSpendStaleGrowth() {
-        // Only while nobody is watching. AD-50 introduced this so a player who is away does not
-        // fall behind four rivals who spend on the spot, and then applied it during live play too —
-        // where it is exactly wrong. At 10x a game year is 36 seconds and at 100x under four, so
-        // the decision the mechanic exists for was taken away from the player before they could
-        // reach it. Reported as "the new stat every 10 doesn't work", and it didn't.
         if (!unattended) return
         for (civ in civs) {
             if (!civ.isPlayer || civ.unspentTraitPoints <= 0) continue

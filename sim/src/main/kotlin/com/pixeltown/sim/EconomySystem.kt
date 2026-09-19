@@ -44,8 +44,7 @@ internal object EconomySystem {
         if (workers.isEmpty()) return
 
         val dailyConsumption = members.sumOf { it.dailyFoodNeed() }
-        val inCrisis = civ.daysOfFood(dailyConsumption) < Economy.FOOD_CRISIS_DAYS_OF_STOCK
-        val quotas = quotasFor(workers.size, if (inCrisis) crisisWeights(weights) else weights)
+        val quotas = quotasFor(workers.size, foodWeighted(weights, civ.daysOfFood(dailyConsumption)))
 
         // Keep people in the job they already hold wherever the quota allows it: skill is
         // expensive to rebuild, so churn is only worth it where the quota actually demands it.
@@ -102,9 +101,27 @@ internal object EconomySystem {
         return quotas
     }
 
-    /** Hunger overrides politics: nearly everyone goes to food production. */
-    private fun crisisWeights(weights: Map<Job, Double>): Map<Job, Double> {
-        val foodShare = Economy.CRISIS_FOOD_WORKER_SHARE
+    /**
+     * How much of the workforce goes to food, as a continuous response to how much food there is.
+     *
+     * This was a threshold: below ten days of stock the town threw 85% of its people at food, and
+     * above it behaved as though nothing were wrong. Both halves were bad. Ten days is already a
+     * death spiral — the town is rationing and the reassignment itself costs skill — and a people
+     * whose farming cannot support the standard split simply never got there in time. Raising the
+     * threshold instead made emergency the permanent state, which starved the town of builders and
+     * gatherers and was worse again.
+     *
+     * A village does not have a crisis mode. It reads its stores and decides how many people it can
+     * spare, every season, and that is a feedback loop rather than a switch. Full stores free
+     * people for building and scholarship; empty ones put them back in the fields. What this buys
+     * is build variety: a people with poor farming now lives permanently at a high food share —
+     * small, slow and short of everything else, but *alive* — where before they were simply dead.
+     */
+    private fun foodWeighted(weights: Map<Job, Double>, daysOfStock: Double): Map<Job, Double> {
+        val comfort = Economy.FOOD_COMFORTABLE_DAYS_OF_STOCK
+        val ease = (daysOfStock / comfort).coerceIn(0.0, 1.0)
+        val foodShare = Economy.CRISIS_FOOD_WORKER_SHARE +
+            (Economy.MIN_FOOD_WORKER_SHARE - Economy.CRISIS_FOOD_WORKER_SHARE) * ease
         val farmBias = (weights[Job.FARMER] ?: 1.0) + 0.001
         val huntBias = (weights[Job.HUNTER] ?: 1.0) + 0.001
         val foodTotal = farmBias + huntBias

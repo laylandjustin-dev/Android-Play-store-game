@@ -89,9 +89,11 @@ object OfflineCatchUp {
         val techBefore = player.techTier
         val electionsBefore = simulation.elections.size
 
-        // Nobody is watching a catch-up, so the decisions the game holds open during live play —
-        // the decade's trait point above all — are taken on the player's behalf for its duration.
-        simulation.runUnattended(ticks.toInt())
+        // Deliberately an ordinary run, not an unattended one. Catch-up has to match live ticking
+        // exactly — M6's gate, and the thing that makes a resumed save trustworthy — so it cannot
+        // take decisions that live play leaves open. Trait points earned while away simply bank up
+        // and are waiting when the player gets back, which is the friendlier reading anyway.
+        simulation.run(ticks.toInt())
 
         val events = simulation.chronicle.since(startDay)
         val deathEvents = events.filter { it.kind == ChronicleEventKind.DEATH && it.civId == player.id }

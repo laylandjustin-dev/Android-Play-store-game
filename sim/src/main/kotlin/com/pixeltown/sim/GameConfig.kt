@@ -491,7 +491,7 @@ object GameConfig {
          * while a Health-8 people roughly breaks even and comes through it. An epidemic should thin
          * a town, not erase it.
          */
-        const val EPIDEMIC_DAILY_INFECTION_CHANCE = 0.18
+        const val EPIDEMIC_DAILY_INFECTION_CHANCE = 0.13
         const val EPIDEMIC_HP_DAMAGE = 12.0
 
         /** Care — healers and hospitals — removes up to this much of the infection chance. */
@@ -509,7 +509,7 @@ object GameConfig {
          * A roof matters as much as the trait does, which is what ties Elements to the building
          * layer rather than leaving it a private stat.
          */
-        const val EXPOSURE_DAILY_DEATH_CHANCE = 0.00012
+        const val EXPOSURE_DAILY_DEATH_CHANCE = 0.00006
         const val EXPOSURE_HOUSED_MULTIPLIER = 0.25
 
         /** Morale drifts toward this baseline; buildings and events push it around. */
@@ -567,10 +567,18 @@ object GameConfig {
          * 95% of every workforce stood in the fields forever, and with no gatherers or builders the
          * towns never housed anyone and never grew. Health-8 went from 6.2 years to 0.8.
          *
-         * The threshold has to stay well below what a working town holds, or emergency mode is just
-         * mode. Left at the design's 10.
+         * Both of those were symptoms of it being a *threshold* at all. It is now the bottom of a
+         * continuous ramp: see `EconomySystem.foodWeighted`. Kept as the point at which the food
+         * share is at its maximum.
          */
         const val FOOD_CRISIS_DAYS_OF_STOCK = 10
+
+        /**
+         * Stores at which a town stops worrying and spares people for everything else. Between this
+         * and zero the food share slides smoothly from [MIN_FOOD_WORKER_SHARE] up to
+         * [CRISIS_FOOD_WORKER_SHARE].
+         */
+        const val FOOD_COMFORTABLE_DAYS_OF_STOCK = 55.0
 
         /** Jobs are reassigned once per week. */
         const val JOB_REASSIGN_INTERVAL_DAYS = 7

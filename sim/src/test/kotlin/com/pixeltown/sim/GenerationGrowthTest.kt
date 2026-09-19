@@ -3,7 +3,6 @@ package com.pixeltown.sim
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import com.pixeltown.sim.GameConfig.Time
@@ -66,10 +65,24 @@ class GenerationGrowthTest {
     }
 
     @Test
-    fun `an idle player does not fall behind - the town spends for them`() {
+    fun `a watched run never spends the point for the player`() {
+        // The decision is the mechanic. At 10x a game year is 36 seconds, so a game that spent the
+        // point on a timer would take it away before the player could reach it — which is what was
+        // reported as the feature not working.
+        val sim = newRun()
+        sim.run(
+            TraitConfig.GENERATION_INTERVAL_YEARS * Time.DAYS_PER_YEAR +
+                TraitConfig.GENERATION_AUTOSPEND_GRACE_DAYS * 3,
+        )
+        assertEquals(1, player(sim).unspentTraitPoints, "the game spent the player's point for them")
+        assertEquals(START.pointsSpent, player(sim).traits.pointsSpent)
+    }
+
+    @Test
+    fun `an unwatched run does spend it, after the grace period`() {
         val sim = newRun()
         val grace = TraitConfig.GENERATION_AUTOSPEND_GRACE_DAYS
-        sim.run(TraitConfig.GENERATION_INTERVAL_YEARS * Time.DAYS_PER_YEAR + grace)
+        sim.runUnattended(TraitConfig.GENERATION_INTERVAL_YEARS * Time.DAYS_PER_YEAR + grace)
 
         assertEquals(0, player(sim).unspentTraitPoints, "the point was never spent")
         assertEquals(
@@ -104,10 +117,10 @@ class GenerationGrowthTest {
     }
 
     @Test
-    fun `an idle player's point always lands somewhere`() {
+    fun `an unwatched point always lands somewhere`() {
         val sim = newRun(traits = TraitAllocation.of(1, 4, 3, 5, 7))
         val before = sim.civ(0).traits
-        sim.run(
+        sim.runUnattended(
             TraitConfig.GENERATION_INTERVAL_YEARS * Time.DAYS_PER_YEAR +
                 TraitConfig.GENERATION_AUTOSPEND_GRACE_DAYS,
         )
@@ -206,7 +219,12 @@ class GenerationGrowthTest {
             b.run(10 * Time.DAYS_PER_YEAR)
             assertEquals(a.stateHash(), b.stateHash(), "diverged by year ${a.year}")
         }
-        // Sanity: the run really did grow over sixty years, so the hashes above mean something.
-        assertNotEquals(START.pointsSpent, a.civ(0).traits.pointsSpent)
+        // Sanity: the rivals really did grow over sixty years, so the hashes above mean something.
+        // The player's own points bank rather than being spent, which is the point of the mechanic.
+        assertTrue(
+            (1 until a.civs.size).any { a.civ(it).traits.pointsSpent > TraitConfig.ALLOCATION_POINTS },
+            "no rival grew in sixty years",
+        )
+        assertTrue(a.civ(0).unspentTraitPoints > 0, "the player banked nothing in sixty years")
     }
 }
