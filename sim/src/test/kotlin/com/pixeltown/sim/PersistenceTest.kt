@@ -22,7 +22,7 @@ class PersistenceTest {
     @Test
     fun `save then load reproduces the state exactly`() {
         val sim = newRun()
-        sim.run(30 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(30 * Time.DAYS_PER_YEAR)
         val loaded = roundTrip(sim)
 
         assertEquals(sim.stateHash(), loaded.stateHash())
@@ -37,12 +37,12 @@ class PersistenceTest {
     fun `save, load and tick is identical to ticking without the save`() {
         // The guarantee the whole architecture exists to provide.
         val sim = newRun()
-        sim.run(30 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(30 * Time.DAYS_PER_YEAR)
         val loaded = roundTrip(sim)
 
         repeat(6) {
-            sim.run(500)
-            loaded.run(500)
+            sim.runUnattended(500)
+            loaded.runUnattended(500)
             assertEquals(sim.stateHash(), loaded.stateHash(), "diverged by day ${sim.day}")
         }
         assertEquals(
@@ -57,7 +57,7 @@ class PersistenceTest {
         // Saving during the thirty-day campaign window used to lose the candidates, so the
         // reloaded run generated a different slate and elected a different Premier.
         val sim = newRun()
-        sim.run(Time.DAYS_PER_YEAR * 2 - Politics.CAMPAIGN_DAYS + 5)
+        sim.runUnattended(Time.DAYS_PER_YEAR * 2 - Politics.CAMPAIGN_DAYS + 5)
         assertNotNull(sim.campaignFor(0), "the test did not actually land inside a campaign")
 
         val loaded = roundTrip(sim)
@@ -67,8 +67,8 @@ class PersistenceTest {
             "the campaign did not survive the save",
         )
 
-        sim.run(Politics.CAMPAIGN_DAYS + 10)
-        loaded.run(Politics.CAMPAIGN_DAYS + 10)
+        sim.runUnattended(Politics.CAMPAIGN_DAYS + 10)
+        loaded.runUnattended(Politics.CAMPAIGN_DAYS + 10)
         assertEquals(sim.stateHash(), loaded.stateHash())
         assertEquals(
             sim.elections.last().winnerName,
@@ -81,10 +81,10 @@ class PersistenceTest {
     fun `every phase of the year round-trips`() {
         for (offset in listOf(0, 45, 90, 180, 270, 330, 355, 359)) {
             val sim = newRun()
-            sim.run(5 * Time.DAYS_PER_YEAR + offset)
+            sim.runUnattended(5 * Time.DAYS_PER_YEAR + offset)
             val loaded = roundTrip(sim)
-            sim.run(400)
-            loaded.run(400)
+            sim.runUnattended(400)
+            loaded.runUnattended(400)
             assertEquals(sim.stateHash(), loaded.stateHash(), "a save on day $offset of the year diverged")
         }
     }
@@ -94,7 +94,7 @@ class PersistenceTest {
         val sim = newRun()
         var found = false
         repeat(120 * Time.DAYS_PER_YEAR) {
-            sim.step()
+            sim.runUnattended(1)
             if (!found && sim.armiesInField.any { it.size > 2 }) found = true
         }
         if (!found) return
@@ -109,7 +109,7 @@ class PersistenceTest {
     @Test
     fun `the compressed save round-trips and is much smaller`() {
         val sim = newRun()
-        sim.run(20 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(20 * Time.DAYS_PER_YEAR)
         val save = sim.snapshot()
         val raw = SaveFormat.encode(save).toByteArray()
         val compressed = SaveFormat.encodeCompressed(save)
@@ -124,7 +124,7 @@ class PersistenceTest {
     @Test
     fun `a save from a newer build is refused rather than half-read`() {
         val sim = newRun()
-        sim.run(100)
+        sim.runUnattended(100)
         val text = SaveFormat.encode(sim.snapshot().copy(version = SaveFormat.VERSION + 1))
         assertThrows<IncompatibleSaveException> { SaveFormat.decode(text) }
     }
@@ -134,7 +134,7 @@ class PersistenceTest {
         // If world generation ever changes, an old save must fail loudly rather than quietly drop
         // the player's town onto different terrain.
         val sim = newRun()
-        sim.run(100)
+        sim.runUnattended(100)
         val tampered = sim.snapshot().copy(terrainHash = 12345)
         assertThrows<IncompatibleSaveException> { Simulation.restore(tampered) }
     }
@@ -145,13 +145,13 @@ class PersistenceTest {
     fun `offline catch-up matches live ticking exactly`() {
         // The design's own test: eight hours away must equal eight hours watched.
         val sim = newRun()
-        sim.run(20 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(20 * Time.DAYS_PER_YEAR)
 
         val watched = roundTrip(sim)
         val away = roundTrip(sim)
 
         val ticks = OfflineCatchUp.ticksFor(8 * 3600L, Meta.OFFLINE_CAP_HOURS_FREE)
-        watched.run(ticks.toInt())
+        watched.runUnattended(ticks.toInt())
         OfflineCatchUp.advance(away, ticks)
 
         assertEquals(watched.stateHash(), away.stateHash())
@@ -184,7 +184,7 @@ class PersistenceTest {
         assertEquals(0L, OfflineCatchUp.ticksFor(0L, 8))
 
         val sim = newRun()
-        sim.run(500)
+        sim.runUnattended(500)
         val before = sim.day
         val report = OfflineCatchUp.resume(sim, savedAtEpochMillis = 10_000_000L, nowEpochMillis = 1_000L)
         assertEquals(before, sim.day, "a backwards clock moved the world")
@@ -194,7 +194,7 @@ class PersistenceTest {
     @Test
     fun `the return report describes what happened`() {
         val sim = newRun()
-        sim.run(25 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(25 * Time.DAYS_PER_YEAR)
         val populationBefore = sim.populationOf(0)
 
         val report = OfflineCatchUp.advance(sim, ticks = 12L * Time.DAYS_PER_YEAR, realSecondsAway = 8 * 3600L)
@@ -216,7 +216,7 @@ class PersistenceTest {
     @Test
     fun `the report says when the player lost time to the cap`() {
         val sim = newRun()
-        sim.run(1000)
+        sim.runUnattended(1000)
         val capped = OfflineCatchUp.advance(sim, 100L, realSecondsAway = 100 * 3600L, capHours = 8)
         assertEquals(8, capped.cappedAt)
 

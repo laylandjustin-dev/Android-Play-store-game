@@ -89,7 +89,7 @@ class ColonyLifeCycleTest {
         // zero, then the starvation window. Extinction lands in the 40s and 50s.
         for (seed in seeds) {
             val sim = barrenColony(seed)
-            val days = sim.runUntilEnd(maxDays = 2_000)
+            val days = sim.runUnattendedUntilEnd(maxDays = 2_000)
             assertEquals(0, sim.populationOf(0), "seed $seed still had people after $days days")
             assertTrue(days in 40..70, "seed $seed wiped out on day $days, expected 40..70")
         }
@@ -98,8 +98,8 @@ class ColonyLifeCycleTest {
     @Test
     fun `the same seed always collapses on exactly the same day`() {
         for (seed in seeds) {
-            val first = barrenColony(seed).runUntilEnd(2_000)
-            val second = barrenColony(seed).runUntilEnd(2_000)
+            val first = barrenColony(seed).runUnattendedUntilEnd(2_000)
+            val second = barrenColony(seed).runUnattendedUntilEnd(2_000)
             assertEquals(first, second, "seed $seed collapsed on different days across runs")
         }
     }
@@ -107,7 +107,7 @@ class ColonyLifeCycleTest {
     @Test
     fun `collapse ends the run and is recorded`() {
         val sim = barrenColony(42L)
-        sim.runUntilEnd(2_000)
+        sim.runUnattendedUntilEnd(2_000)
         assertEquals(EndState.COLLAPSE, sim.endState)
         assertTrue(sim.chronicle.totalOf(ChronicleEventKind.RUN_ENDED) == 1)
     }
@@ -119,7 +119,7 @@ class ColonyLifeCycleTest {
         var firstEmptyBellyDay = -1L
         while (sim.endState == null && sim.day < 2_000) {
             val before = sim.chronicle.deathsBy(DeathCause.STARVATION)
-            sim.step()
+            sim.runUnattended(1)
             if (firstEmptyBellyDay < 0 && sim.citizens.any { it.nutrition <= 0f }) {
                 firstEmptyBellyDay = sim.day
             }
@@ -150,7 +150,7 @@ class ColonyLifeCycleTest {
         val deathsPerDay = HashMap<Long, Int>()
         while (sim.endState == null && sim.day < 2_000) {
             val before = sim.chronicle.totalOf(ChronicleEventKind.DEATH)
-            sim.step()
+            sim.runUnattended(1)
             val died = sim.chronicle.totalOf(ChronicleEventKind.DEATH) - before
             if (died > 0) deathsPerDay[sim.day] = died
         }
@@ -165,8 +165,8 @@ class ColonyLifeCycleTest {
             val a = newRun(seed)
             val b = newRun(seed)
             repeat(20) {
-                a.run(100)
-                b.run(100)
+                a.runUnattended(100)
+                b.runUnattended(100)
                 assertEquals(a.stateHash(), b.stateHash(), "seed $seed diverged by day ${a.day}")
             }
         }
@@ -174,8 +174,8 @@ class ColonyLifeCycleTest {
 
     @Test
     fun `different seeds produce different histories`() {
-        val a = newRun(1L).also { it.run(30) }
-        val b = newRun(2L).also { it.run(30) }
+        val a = newRun(1L).also { it.runUnattended(30) }
+        val b = newRun(2L).also { it.runUnattended(30) }
         assertTrue(a.stateHash() != b.stateHash())
     }
 
@@ -190,7 +190,7 @@ class ColonyLifeCycleTest {
         var maxAgeSeen = 0
         repeat(80 * Time.DAYS_PER_YEAR) {
             civ[Resource.FOOD] = 5_000.0
-            sim.step()
+            sim.runUnattended(1)
             maxAgeSeen = maxOf(maxAgeSeen, sim.citizens.filter { it.civId == 0 }.maxOfOrNull { it.ageDays } ?: 0)
         }
 
@@ -213,7 +213,7 @@ class ColonyLifeCycleTest {
         val civ = sim.civ(0)
         repeat(Life.GESTATION_DAYS + 5 * Time.DAYS_PER_YEAR) {
             civ[Resource.FOOD] = 5_000.0
-            sim.step()
+            sim.runUnattended(1)
         }
         val children = sim.citizens.filter { it.civId == 0 && it.isChild }
         assertTrue(children.isNotEmpty(), "no children after five well-fed years")
@@ -232,7 +232,7 @@ class ColonyLifeCycleTest {
         var conceivedOn = 0L
         while (mother == null && sim.day < 3 * Time.DAYS_PER_YEAR) {
             civ[Resource.FOOD] = 5_000.0
-            sim.step()
+            sim.runUnattended(1)
             // Only the player's civ is being hand-fed, so only look for a mother there: a
             // pregnant woman in a starving rival civ may not live to term.
             mother = sim.citizens.firstOrNull { it.isPregnant && it.civId == 0 }
@@ -246,7 +246,7 @@ class ColonyLifeCycleTest {
         val birthsBefore = civ.totalBirths
         while (sim.day < conceivedOn + Life.GESTATION_DAYS) {
             civ[Resource.FOOD] = 5_000.0
-            sim.step()
+            sim.runUnattended(1)
         }
         assertNotNull(sim.citizenOrNull(mother.id), "the mother did not live to term")
         assertNull(sim.citizenOrNull(mother.id)?.pregnantUntilDay, "the pregnancy did not resolve")
@@ -259,7 +259,7 @@ class ColonyLifeCycleTest {
         val civ = sim.civ(0)
         repeat(3 * Time.DAYS_PER_YEAR) {
             civ[Resource.FOOD] = 5_000.0
-            sim.step()
+            sim.runUnattended(1)
             if (sim.day % 60 == 0L) assertOneOccupantPerCell(sim)
         }
     }
@@ -267,7 +267,7 @@ class ColonyLifeCycleTest {
     @Test
     fun `the occupancy grid stays in step with the citizen list`() {
         val sim = barrenColony(42L)
-        sim.run(45) // through the famine, so deaths have to clear their cells
+        sim.runUnattended(45) // through the famine, so deaths have to clear their cells
         val occupied = (0 until sim.world.cellCount).count { sim.world.occupantId[it] != World.NONE }
         assertEquals(sim.population, occupied, "the grid and the population disagree")
     }
@@ -277,17 +277,17 @@ class ColonyLifeCycleTest {
     @Test
     fun `survival falls as a colony runs out of food`() {
         val sim = barrenColony(42L)
-        sim.step()
+        sim.runUnattended(1)
         val wellFed = sim.citizens.filter { it.civId == 0 }.map { it.survival }.average()
 
         // Run until the stores are actually gone rather than for a fixed number of days: how long
         // the founding food lasts depends on the people's ration, and Health now changes that.
         var days = 0
         while (sim.civ(0)[Resource.FOOD] > 0.0 && days < 200) {
-            sim.step()
+            sim.runUnattended(1)
             days++
         }
-        sim.run(5)
+        sim.runUnattended(5)
         val hungry = sim.citizens.filter { it.civId == 0 }.map { it.survival }.average()
         assertTrue(hungry < wellFed, "survival did not fall during a famine: $wellFed -> $hungry")
     }
@@ -296,7 +296,7 @@ class ColonyLifeCycleTest {
     fun `survival stays inside its documented range`() {
         val sim = barrenColony(42L)
         repeat(200) {
-            sim.step()
+            sim.runUnattended(1)
             for (citizen in sim.citizens) {
                 assertTrue(
                     citizen.survival >= GameConfig.Survival.MIN && citizen.survival <= GameConfig.Survival.MAX,
@@ -310,8 +310,8 @@ class ColonyLifeCycleTest {
     fun `a hardier people survive the same famine longer`() {
         // Health raises max HP and Elements blunts the season penalty; both should show up as a
         // later collapse under identical conditions.
-        val frail = barrenColony(42L, TraitAllocation.of(6, 1, 6, 1, 6)).runUntilEnd(2_000)
-        val hardy = barrenColony(42L, TraitAllocation.of(1, 8, 1, 5, 5)).runUntilEnd(2_000)
+        val frail = barrenColony(42L, TraitAllocation.of(6, 1, 6, 1, 6)).runUnattendedUntilEnd(2_000)
+        val hardy = barrenColony(42L, TraitAllocation.of(1, 8, 1, 5, 5)).runUnattendedUntilEnd(2_000)
         assertTrue(hardy > frail, "the hardy colony ($hardy days) did not outlast the frail one ($frail days)")
     }
 
@@ -329,14 +329,14 @@ class ColonyLifeCycleTest {
         // resolved, which is the correct order for the simulation.
         partner.ageDays = (civ.traits.lifespanDays * Life.MAX_AGE_LIFESPAN_MULTIPLE).toInt() + 1
         civ[Resource.FOOD] = 5_000.0
-        sim.step()
+        sim.runUnattended(1)
 
         assertNull(widow.partnerId, "the partnership survived the partner's death")
         assertEquals(sim.day.toInt(), widow.widowedOnDay)
 
         repeat(Life.WIDOW_REPAIR_DELAY_DAYS - 2) {
             civ[Resource.FOOD] = 5_000.0
-            sim.step()
+            sim.runUnattended(1)
             assertNull(widow.partnerId, "a widow re-paired after only ${sim.day - widow.widowedOnDay!!} days")
         }
     }

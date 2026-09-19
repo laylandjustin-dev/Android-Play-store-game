@@ -293,12 +293,18 @@ class Simulation(
     // ------------------------------------------------------------------ the tick
 
     /** Advances one day. Systems run in this order every tick, for everyone. */
-    fun step() {
-        // A tier reached is a decision, and the world waits for it. Nothing below runs — not even
-        // the clock — so a run held at a choice is genuinely paused rather than quietly ticking on
-        // underneath a dialog. Offline catch-up stops here too, which keeps it identical to live
-        // play (M6); the player comes back to the decision rather than to a fait accompli.
-        if (awaitingPlayer) return
+    /**
+     * Advances one day. Returns false if it did nothing because the world is waiting on a decision
+     * only the player can make.
+     *
+     * The return value is not decoration. A tier reached stops the world — nothing below runs, not
+     * even the clock — and a caller looping `while (day < target) step()` would otherwise spin
+     * forever, which is exactly what happened to the balance tests the first time this landed. A
+     * caller that ignores the result and bounds its own loop by day count is writing an infinite
+     * loop; [run] and [runUntilEnd] already stop, and [runUnattended] resolves the decision instead.
+     */
+    fun step(): Boolean {
+        if (awaitingPlayer) return false
 
         clock.runTicks(1) { /* the clock only counts days; the systems below are the tick */ }
 
@@ -332,6 +338,7 @@ class Simulation(
         fightBattles()
         updateCivStatistics()
         checkEndState()
+        return true
     }
 
     /** Runs [days] whole days. The only entry point offline catch-up and the harness need. */

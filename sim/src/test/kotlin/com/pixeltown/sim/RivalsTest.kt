@@ -178,7 +178,7 @@ class RivalsTest {
     @Test
     fun `civs trade, raid and go to war over a long run`() {
         val sim = newRun()
-        sim.run(120 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(120 * Time.DAYS_PER_YEAR)
         val chronicle = sim.chronicle
         assertTrue(chronicle.totalOf(ChronicleEventKind.TRADE) > 0, "nobody ever traded")
         assertTrue(chronicle.totalOf(ChronicleEventKind.RAID) > 0, "nobody was ever raided")
@@ -190,7 +190,7 @@ class RivalsTest {
     @Test
     fun `rivals grow and decline independently`() {
         val sim = newRun()
-        sim.run(120 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(120 * Time.DAYS_PER_YEAR)
         val populations = sim.civs.map { it.population }
         assertTrue(populations.distinct().size > 1, "every civ ended up the same size")
         assertTrue(populations.any { it > 100 }, "no civ ever prospered: $populations")
@@ -206,7 +206,7 @@ class RivalsTest {
         // Across a few seeds, at least one civilisation should be wiped out inside 150 years.
         val extinctions = longArrayOf(1L, 42L, 555L).sumOf { seed ->
             val sim = newRun(seed)
-            sim.run(150 * Time.DAYS_PER_YEAR)
+            sim.runUnattended(150 * Time.DAYS_PER_YEAR)
             sim.civs.count { it.isExtinct }
         }
         assertTrue(extinctions > 0, "no civilisation was destroyed in three 150-year runs")
@@ -217,7 +217,7 @@ class RivalsTest {
         val sim = newRun()
         var sawArmy = false
         repeat(120 * Time.DAYS_PER_YEAR) {
-            sim.step()
+            sim.runUnattended(1)
             val army = sim.armiesInField.firstOrNull { it.size > 0 } ?: return@repeat
             sawArmy = true
             for (id in army.members) {
@@ -272,7 +272,7 @@ class RivalsTest {
     @Test
     fun `the rivals screen reports every rival`() {
         val sim = newRun()
-        sim.run(40 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(40 * Time.DAYS_PER_YEAR)
         val reports = sim.rivalReports()
         assertEquals(GameConfig.World.RIVAL_CIV_COUNT, reports.size)
         assertTrue(reports.none { it.civId == GameConfig.World.PLAYER_CIV_ID }, "the player was listed as a rival")
@@ -288,8 +288,8 @@ class RivalsTest {
         val a = newRun(42L)
         val b = newRun(42L)
         repeat(12) {
-            a.run(10 * Time.DAYS_PER_YEAR)
-            b.run(10 * Time.DAYS_PER_YEAR)
+            a.runUnattended(10 * Time.DAYS_PER_YEAR)
+            b.runUnattended(10 * Time.DAYS_PER_YEAR)
             assertEquals(a.stateHash(), b.stateHash(), "diverged by year ${a.year}")
             assertEquals(
                 a.chronicle.deathsBy(DeathCause.COMBAT),

@@ -38,7 +38,7 @@ class MapPreviewExporter {
         // A founded world, ten days in: five colonies of fifty, each a cluster of civ-coloured
         // pixels. This is what the app draws every frame.
         val sim = Simulation.newRun(20260913L, TraitAllocation.EVEN_SPREAD)
-        sim.run(10)
+        sim.runUnattended(10)
         val frame = IntArray(sim.world.cellCount)
         val renderer = FrameRenderer(sim.world)
         renderer.render(sim, frame)
@@ -47,7 +47,7 @@ class MapPreviewExporter {
         // A working economy, sixty years on: towns have spread out across their farmland and the
         // territory tint shows which civ works which cells.
         val mature = Simulation.newRun(1L, TraitAllocation.of(3, 4, 3, 4, 8))
-        mature.run(60 * GameConfig.Time.DAYS_PER_YEAR)
+        mature.runUnattended(60 * GameConfig.Time.DAYS_PER_YEAR)
         val matureFrame = IntArray(mature.world.cellCount)
         FrameRenderer(mature.world).render(mature, matureFrame, ownershipTint = 0.18f)
         writePng(File(outputDir, "colony-year-60.png"), mature.world, matureFrame, scale)
@@ -59,7 +59,7 @@ class MapPreviewExporter {
         val warFrame = IntArray(war.world.cellCount)
         var best = 0
         while (war.endState == null && war.year < 120) {
-            war.step()
+            war.runUnattended(1)
             val marching = war.armiesInField.sumOf { it.size }
             if (marching > best && war.armiesInField.any { it.kind == Army.Kind.WAR }) {
                 best = marching

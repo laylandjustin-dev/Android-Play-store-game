@@ -84,7 +84,7 @@ class ColonyNameTest {
         val traits = TraitAllocation.of(3, 4, 3, 4, 8)
         val named = Simulation.newRun(RunConfig(seed = 11L, traits = traits, colonyName = "Greenhollow"))
         val unnamed = Simulation.newRun(RunConfig(seed = 11L, traits = traits))
-        repeat(400) { named.step(); unnamed.step() }
+        repeat(400) { named.runUnattended(1); unnamed.runUnattended(1) }
 
         // The name is presentation only: an identically seeded run must not diverge because of it.
         assertEquals(unnamed.rng.snapshot(), named.rng.snapshot())
@@ -98,7 +98,7 @@ class ColonyNameTest {
     @Test
     fun `a save written before colonies could be named still loads`() {
         val sim = Simulation.newRun(RunConfig(seed = 5L, traits = TraitAllocation.of(3, 4, 3, 4, 8)))
-        repeat(30) { sim.step() }
+        repeat(30) { sim.runUnattended(1) }
         // The field is defaulted, so an old file simply has no "colonyName" key in its config.
         val text = SaveFormat.encode(sim.snapshot())
         val stripped = text.replace("\"colonyName\":\"${ColonyName.DEFAULT}\",", "")

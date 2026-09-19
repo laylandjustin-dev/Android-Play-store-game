@@ -19,7 +19,7 @@ class EconomyTest {
     @Test
     fun `every adult is given a job within the first week`() {
         val sim = newRun()
-        sim.run(Economy.JOB_REASSIGN_INTERVAL_DAYS + 1)
+        sim.runUnattended(Economy.JOB_REASSIGN_INTERVAL_DAYS + 1)
         val adults = mine(sim).filter { it.isAdult }
         assertTrue(adults.isNotEmpty())
         assertTrue(adults.none { it.job == Job.CHILD }, "an adult was left as a child")
@@ -30,7 +30,7 @@ class EconomyTest {
     @Test
     fun `the workforce is split roughly along the configured weights`() {
         val sim = newRun()
-        sim.run(14)
+        sim.runUnattended(14)
         val adults = mine(sim).filter { it.isAdult }
         val farmers = adults.count { it.job == Job.FARMER }
         val expected = adults.size * Economy.DEFAULT_JOB_WEIGHTS.getValue(Job.FARMER)
@@ -44,7 +44,7 @@ class EconomyTest {
     @Test
     fun `field workers hold distinct work cells`() {
         val sim = newRun()
-        sim.run(30)
+        sim.runUnattended(30)
         val cells = sim.citizens.mapNotNull { if (it.workCell == World.NONE) null else it.workCell }
         assertEquals(cells.size, cells.distinct().size, "two workers claimed the same cell")
     }
@@ -54,10 +54,10 @@ class EconomyTest {
         // Strip the colony's stores and confirm the next reassignment pushes nearly everyone onto
         // food, regardless of the standing job weights.
         val sim = newRun()
-        sim.run(30)
+        sim.runUnattended(30)
         val civ = sim.civ(0)
         civ[Resource.FOOD] = 0.0
-        sim.run(Economy.JOB_REASSIGN_INTERVAL_DAYS + 1)
+        sim.runUnattended(Economy.JOB_REASSIGN_INTERVAL_DAYS + 1)
 
         val adults = mine(sim).filter { it.isAdult }
         val onFood = adults.count { it.job == Job.FARMER || it.job == Job.HUNTER }
@@ -70,7 +70,7 @@ class EconomyTest {
     @Test
     fun `reassignment costs skill`() {
         val sim = newRun()
-        sim.run(3 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(3 * Time.DAYS_PER_YEAR)
         val worker = mine(sim).first { it.job == Job.FARMER && it.skill > 0.2f }
         val before = worker.skill
         val claims = HashMap<Int, Int>()
@@ -88,9 +88,9 @@ class EconomyTest {
     @Test
     fun `skill grows toward mastery over about six years`() {
         val sim = newRun()
-        sim.run(Time.DAYS_PER_YEAR)
+        sim.runUnattended(Time.DAYS_PER_YEAR)
         val afterOneYear = mine(sim).filter { it.job == Job.FARMER }.map { it.skill }.average()
-        sim.run(5 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(5 * Time.DAYS_PER_YEAR)
         val afterSix = mine(sim).filter { it.job == Job.FARMER }.map { it.skill }.average()
         assertTrue(afterSix > afterOneYear, "skill did not grow")
         assertTrue(afterSix > 0.7, "after six years average farming skill was only $afterSix")
@@ -101,7 +101,7 @@ class EconomyTest {
     @Test
     fun `farmers produce food and the colony stops starving`() {
         val sim = newRun()
-        sim.run(60)
+        sim.runUnattended(60)
         assertTrue(sim.civ(0)[Resource.FOOD] > 0.0, "the colony produced no food at all")
         assertTrue(sim.populationOf(0) >= 45, "the colony lost people in its first two months")
     }
@@ -109,7 +109,7 @@ class EconomyTest {
     @Test
     fun `gatherers bring in wood and stone`() {
         val sim = newRun()
-        sim.run(90)
+        sim.runUnattended(90)
         val civ = sim.civ(0)
         assertTrue(civ[Resource.WOOD] > 0.0 || civ[Resource.STONE] > 0.0, "gatherers produced nothing")
     }
@@ -119,7 +119,7 @@ class EconomyTest {
         // Artisans are 2% of the workforce, so a colony of fifty may round to none of them. Run
         // until the town is large enough to staff the trade.
         val sim = newRun()
-        sim.run(5 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(5 * Time.DAYS_PER_YEAR)
         val civ = sim.civ(0)
         assertTrue(civ[Resource.KNOWLEDGE] > 0.0, "no knowledge was produced in five years")
     }
@@ -162,11 +162,11 @@ class EconomyTest {
         // A Farming-8 people restore soil faster than they drain it, by design, so exhaustion has
         // to be measured on a people who are careless with the land.
         val sim = newRun(traits = TraitAllocation.of(5, 5, 5, 5, 3))
-        sim.run(30)
+        sim.runUnattended(30)
         val farmer = mine(sim).first { it.job == Job.FARMER && it.workCell != World.NONE }
         val cell = farmer.workCell
         val before = sim.world.fertility[cell]
-        sim.run(120)
+        sim.runUnattended(120)
         assertTrue(
             sim.world.fertility[cell] < before || before >= 0.99f,
             "a worked field lost no fertility in four months",
@@ -188,11 +188,11 @@ class EconomyTest {
     @Test
     fun `hunting depletes game and the land regrows it`() {
         val sim = newRun()
-        sim.run(30)
+        sim.runUnattended(30)
         val hunter = mine(sim).firstOrNull { it.job == Job.HUNTER && it.workCell != World.NONE }
             ?: return // a colony with no hunters this week is not a failure
         val cell = hunter.workCell
-        sim.run(60)
+        sim.runUnattended(60)
         val depleted = sim.world.wildGame[cell]
         val cap = GameConfig.Terrain.WILD_GAME.getValue(sim.world.terrainAt(cell)).toFloat()
         assertTrue(depleted <= cap, "game exceeded the terrain's carrying capacity")
@@ -201,7 +201,7 @@ class EconomyTest {
     @Test
     fun `worked land is claimed as territory`() {
         val sim = newRun()
-        sim.run(30)
+        sim.runUnattended(30)
         val owned = (0 until sim.world.cellCount).count { sim.world.ownerCivId[it].toInt() == 0 }
         assertTrue(owned > 10, "the colony claimed only $owned cells after a month of work")
     }
@@ -209,7 +209,7 @@ class EconomyTest {
     @Test
     fun `workers walk to their fields and stay near them`() {
         val sim = newRun()
-        sim.run(60)
+        sim.runUnattended(60)
         val fieldWorkers = mine(sim).filter { it.workCell != World.NONE }
         assertTrue(fieldWorkers.isNotEmpty())
         val atWork = fieldWorkers.count { worker ->

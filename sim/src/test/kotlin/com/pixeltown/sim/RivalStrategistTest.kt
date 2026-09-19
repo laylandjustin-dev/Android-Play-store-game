@@ -120,7 +120,7 @@ class RivalStrategistTest {
         var total = 0
         for (seed in longArrayOf(1L, 42L, 555L)) {
             val sim = Simulation.newRun(seed, TraitAllocation.of(3, 4, 3, 4, 8))
-            sim.run(150 * GameConfig.Time.DAYS_PER_YEAR)
+            sim.runUnattended(150 * GameConfig.Time.DAYS_PER_YEAR)
             alive += sim.civs.drop(1).count { !it.isExtinct }
             total += sim.civs.size - 1
         }

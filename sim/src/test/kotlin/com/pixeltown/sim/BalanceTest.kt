@@ -39,8 +39,10 @@ class BalanceTest {
         val target = 200 * Time.DAYS_PER_YEAR
 
         var populationAtFifty = 0
+        // Unattended: this is a headless economy check with no player in it, so the tech choices
+        // a tier offers are taken automatically rather than stopping the world forever.
         while (sim.endState == null && sim.day < target) {
-            sim.step()
+            sim.runUnattended(1)
             if (sim.day == 50L * Time.DAYS_PER_YEAR) populationAtFifty = sim.populationOf(0)
         }
 
@@ -64,7 +66,7 @@ class BalanceTest {
     fun `a colony that cannot farm collapses quickly`() {
         for (seed in longArrayOf(1L, 42L)) {
             val sim = Simulation.newRun(seed, badAllocation, civCount = 1)
-            sim.runUntilEnd(maxDays = 60 * Time.DAYS_PER_YEAR)
+            sim.runUnattendedUntilEnd(maxDays = 60 * Time.DAYS_PER_YEAR)
             assertTrue(sim.endState == EndState.COLLAPSE, "seed $seed survived on Farming 1")
             assertTrue(sim.year < 30, "seed $seed took ${sim.year} years to fail")
         }
@@ -75,8 +77,8 @@ class BalanceTest {
         val good = Simulation.newRun(42L, farmingAllocation, civCount = 1)
         val bad = Simulation.newRun(42L, badAllocation, civCount = 1)
         val days = 40 * Time.DAYS_PER_YEAR
-        good.run(days)
-        bad.run(days)
+        good.runUnattended(days)
+        bad.runUnattended(days)
         assertTrue(
             good.populationOf(0) > bad.populationOf(0),
             "a farming people (${good.populationOf(0)}) did not out-grow a careless one (${bad.populationOf(0)})",
@@ -90,8 +92,8 @@ class BalanceTest {
         val alone = Simulation.newRun(1L, farmingAllocation, civCount = 1)
         val crowded = Simulation.newRun(1L, farmingAllocation)
         val days = 150 * Time.DAYS_PER_YEAR
-        alone.run(days)
-        crowded.run(days)
+        alone.runUnattended(days)
+        crowded.runUnattended(days)
 
         assertTrue(
             crowded.populationOf(0) < alone.populationOf(0),
@@ -108,7 +110,7 @@ class BalanceTest {
         // A 14-year childhood means the birth rate decides the dependency ratio. Too high and the
         // workforce cannot feed the dependants; too low and nothing ever grows.
         val sim = Simulation.newRun(1L, farmingAllocation, civCount = 1)
-        sim.run(60 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(60 * Time.DAYS_PER_YEAR)
         val mine = sim.citizens.filter { it.civId == 0 }
         assertTrue(mine.isNotEmpty(), "the colony died before the measurement")
         val childShare = mine.count { it.isChild }.toDouble() / mine.size
@@ -124,7 +126,7 @@ class BalanceTest {
             "a Farming-3 people recover soil faster than they drain it, so land never exhausts",
         )
         val sim = Simulation.newRun(1L, careless, civCount = 1)
-        sim.run(30 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(30 * Time.DAYS_PER_YEAR)
         if (sim.endState != null) return // collapsing is also an acceptable outcome here
 
         val owned = (0 until sim.world.cellCount).filter { sim.world.ownerCivId[it].toInt() == 0 }

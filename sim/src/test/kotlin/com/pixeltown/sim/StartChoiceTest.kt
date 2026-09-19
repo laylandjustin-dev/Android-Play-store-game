@@ -97,7 +97,7 @@ class StartChoiceTest {
         val chosen = legal.indices.first { legal[it] && it !in preview.civStartSites.toSet() }
 
         val sim = Simulation.newRun(RunConfig(seed = 42L, traits = traits, startCell = chosen))
-        sim.run(200)
+        sim.runUnattended(200)
         val reloaded = Simulation.restore(SaveFormat.decode(SaveFormat.encode(sim.snapshot())))
         assertEquals(chosen, reloaded.civ(0).homeSite)
         assertEquals(sim.stateHash(), reloaded.stateHash())
@@ -112,8 +112,8 @@ class StartChoiceTest {
 
         val a = Simulation.newRun(config)
         val b = Simulation.newRun(config)
-        a.run(500)
-        b.run(500)
+        a.runUnattended(500)
+        b.runUnattended(500)
         assertEquals(a.stateHash(), b.stateHash())
     }
 
@@ -166,8 +166,8 @@ class StartChoiceTest {
     fun `the colour survives a save and does not touch determinism`() {
         val plain = Simulation.newRun(RunConfig(seed = 9L, traits = traits))
         val coloured = Simulation.newRun(RunConfig(seed = 9L, traits = traits, colorIndex = 3))
-        plain.run(300)
-        coloured.run(300)
+        plain.runUnattended(300)
+        coloured.runUnattended(300)
         assertEquals(plain.stateHash(), coloured.stateHash(), "a colour changed the course of a run")
 
         val reloaded = Simulation.restore(SaveFormat.decode(SaveFormat.encode(coloured.snapshot())))
@@ -178,7 +178,7 @@ class StartChoiceTest {
     @Test
     fun `a save from before these choices still loads`() {
         val sim = Simulation.newRun(RunConfig(seed = 5L, traits = traits))
-        sim.run(30)
+        sim.runUnattended(30)
         val text = SaveFormat.encode(sim.snapshot())
         val stripped = text.replace("\"startCell\":null,", "").replace("\"colorIndex\":0,", "")
         assertTrue(stripped.length < text.length, "the keys should have been present to remove")

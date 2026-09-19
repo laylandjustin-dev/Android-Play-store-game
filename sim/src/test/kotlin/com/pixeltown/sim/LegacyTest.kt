@@ -25,7 +25,7 @@ class LegacyTest {
         val civ = Civilization(0, "Doomed", TraitAllocation.EVEN_SPREAD, Personality.ISOLATIONIST, world.index(24, 24))
         val sim = Simulation(world, listOf(civ), SimRandom(1L))
         sim.found(civ)
-        sim.runUntilEnd(2_000)
+        sim.runUnattendedUntilEnd(2_000)
 
         assertEquals(EndState.COLLAPSE, sim.endState)
         val summary = sim.summary()
@@ -40,7 +40,7 @@ class LegacyTest {
         // ascends. Ascension outranks Endurance, which is the intended ordering: the better
         // ending wins when a run qualifies for both.
         val sim = Simulation.newRun(1L, TraitAllocation.of(3, 4, 3, 4, 8), civCount = 1)
-        sim.runUntilEnd(310 * Time.DAYS_PER_YEAR)
+        sim.runUnattendedUntilEnd(310 * Time.DAYS_PER_YEAR)
         assertTrue(
             sim.endState == EndState.ASCENSION || sim.endState == EndState.ENDURANCE,
             "a prospering solo civ ended in ${sim.endState}",
@@ -52,7 +52,7 @@ class LegacyTest {
     fun `endurance ends a run that never ascends`() {
         // A civ that cannot reach tier 6 has only the calendar to end its run.
         val sim = Simulation.newRun(1L, TraitAllocation.of(3, 6, 3, 5, 5), civCount = 1)
-        sim.runUntilEnd(320 * Time.DAYS_PER_YEAR)
+        sim.runUnattendedUntilEnd(320 * Time.DAYS_PER_YEAR)
         assertTrue(sim.endState != null, "the run never ended at all")
         if (sim.endState == EndState.ENDURANCE) {
             assertEquals(Meta.ENDURANCE_YEARS, sim.year, "Endurance fired on the wrong year")
@@ -62,9 +62,9 @@ class LegacyTest {
     @Test
     fun `a run ends only once and is recorded once`() {
         val sim = Simulation.newRun(1L, TraitAllocation.of(3, 4, 3, 4, 8), civCount = 1)
-        sim.runUntilEnd(310 * Time.DAYS_PER_YEAR)
+        sim.runUnattendedUntilEnd(310 * Time.DAYS_PER_YEAR)
         val ending = sim.endState
-        sim.run(500) // further ticks must not change or re-record the ending
+        sim.runUnattended(500) // further ticks must not change or re-record the ending
         assertEquals(ending, sim.endState)
         assertEquals(1, sim.chronicle.totalOf(ChronicleEventKind.RUN_ENDED))
     }
@@ -72,7 +72,7 @@ class LegacyTest {
     @Test
     fun `the end state is preserved across a save`() {
         val sim = Simulation.newRun(1L, TraitAllocation.of(3, 4, 3, 4, 8), civCount = 1)
-        sim.runUntilEnd(310 * Time.DAYS_PER_YEAR)
+        sim.runUnattendedUntilEnd(310 * Time.DAYS_PER_YEAR)
         val loaded = Simulation.restore(SaveFormat.decode(SaveFormat.encode(sim.snapshot())))
         assertEquals(sim.endState, loaded.endState)
         assertEquals(sim.summary(), loaded.summary())
@@ -219,8 +219,8 @@ class LegacyTest {
         val connected = Simulation.newRun(RunConfig.from(1L, TraitAllocation.EVEN_SPREAD, legacy))
 
         // Tension starts at zero, so relief shows up once friction has had time to build.
-        plain.run(20 * Time.DAYS_PER_YEAR)
-        connected.run(20 * Time.DAYS_PER_YEAR)
+        plain.runUnattended(20 * Time.DAYS_PER_YEAR)
+        connected.runUnattended(20 * Time.DAYS_PER_YEAR)
         val plainTension = (1 until plain.civs.size).sumOf { plain.relations.tensionBetween(0, it) }
         val easedTension = (1 until connected.civs.size).sumOf { connected.relations.tensionBetween(0, it) }
         assertTrue(easedTension <= plainTension, "diplomacy made relations worse: $easedTension vs $plainTension")
@@ -232,7 +232,7 @@ class LegacyTest {
         // configuration once and never consults the legacy again.
         val legacy = Legacy()
         val sim = Simulation.newRun(RunConfig.from(1L, TraitAllocation.EVEN_SPREAD, legacy))
-        sim.run(2 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(2 * Time.DAYS_PER_YEAR)
         val before = sim.stateHash()
         val settlersAtStart = sim.config.settlers
 
@@ -243,7 +243,7 @@ class LegacyTest {
         assertEquals(settlersAtStart, sim.config.settlers, "an in-flight run saw a purchase")
         assertEquals(before, sim.stateHash(), "buying an upgrade changed a run already under way")
 
-        sim.run(360)
+        sim.runUnattended(360)
         val fresh = Simulation.newRun(RunConfig.from(1L, TraitAllocation.EVEN_SPREAD, legacy))
         assertTrue(fresh.config.settlers > settlersAtStart, "the next run did not benefit")
     }
@@ -253,7 +253,7 @@ class LegacyTest {
         val sim = Simulation.newRun(1L, TraitAllocation.EVEN_SPREAD)
         sim.legacy.grant(900)
         sim.legacy.buy(LegacyUpgrade.ALLOCATION_POINT)
-        sim.run(500)
+        sim.runUnattended(500)
 
         val loaded = Simulation.restore(SaveFormat.decode(SaveFormat.encode(sim.snapshot())))
         assertEquals(sim.legacy.chroniclePoints, loaded.legacy.chroniclePoints)

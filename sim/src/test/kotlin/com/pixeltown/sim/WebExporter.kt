@@ -47,7 +47,7 @@ class WebExporter {
         timeline.append("""],"frames":[""")
 
         for (year in 0 until years) {
-            if (sim.endState == null) sim.run(GameConfig.Time.DAYS_PER_YEAR)
+            if (sim.endState == null) sim.runUnattended(GameConfig.Time.DAYS_PER_YEAR)
             renderer.render(sim, pixels, ownershipTint = 0.18f)
 
             val col = year % columns

@@ -19,16 +19,16 @@ class SimulationPerformanceTest {
         fun feed() = sim.civs.forEach { it[Resource.FOOD] = 20_000.0 }
         fun msPerTick(samples: Int): Double {
             val start = System.nanoTime()
-            repeat(samples) { feed(); sim.step() }
+            repeat(samples) { feed(); sim.runUnattended(1) }
             return (System.nanoTime() - start) / 1_000_000.0 / samples
         }
 
-        while (sim.population < 800) { feed(); sim.step() }
+        while (sim.population < 800) { feed(); sim.runUnattended(1) }
         msPerTick(50) // warm up
         val small = sim.population
         val smallCost = msPerTick(100)
 
-        while (sim.population < 3_000) { feed(); sim.step() }
+        while (sim.population < 3_000) { feed(); sim.runUnattended(1) }
         val large = sim.population
         val largeCost = msPerTick(100)
 
@@ -51,7 +51,7 @@ class SimulationPerformanceTest {
         val start = System.nanoTime()
         repeat(100 * GameConfig.Time.DAYS_PER_YEAR) {
             sim.civs.forEach { it[Resource.FOOD] = 20_000.0 }
-            sim.step()
+            sim.runUnattended(1)
         }
         val seconds = (System.nanoTime() - start) / 1_000_000_000.0
         assertTrue(seconds < 60.0, "100 simulated years took ${seconds}s")

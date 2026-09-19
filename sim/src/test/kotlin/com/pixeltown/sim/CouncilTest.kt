@@ -20,7 +20,7 @@ class CouncilTest {
     @Test
     fun `an election is held every year`() {
         val sim = newRun()
-        sim.run(10 * Time.DAYS_PER_YEAR + 1)
+        sim.runUnattended(10 * Time.DAYS_PER_YEAR + 1)
         assertEquals(10, playerElections(sim).size, "expected one election per year")
         assertNotNull(sim.premierOf(0), "no Premier was ever installed")
     }
@@ -28,7 +28,7 @@ class CouncilTest {
     @Test
     fun `candidates are announced before the vote so the player can campaign`() {
         val sim = newRun()
-        sim.run(Time.DAYS_PER_YEAR - Politics.CAMPAIGN_DAYS)
+        sim.runUnattended(Time.DAYS_PER_YEAR - Politics.CAMPAIGN_DAYS)
         val candidates = sim.campaignFor(0)
         assertNotNull(candidates, "no campaign was open before the election")
         assertEquals(Politics.CANDIDATE_COUNT, candidates.size)
@@ -39,7 +39,7 @@ class CouncilTest {
     @Test
     fun `candidates are the highest-influence citizens`() {
         val sim = newRun()
-        sim.run(Time.DAYS_PER_YEAR - Politics.CAMPAIGN_DAYS)
+        sim.runUnattended(Time.DAYS_PER_YEAR - Politics.CAMPAIGN_DAYS)
         val candidates = sim.campaignFor(0)!!
         val mostInfluential = sim.citizens
             .filter { it.civId == 0 && it.ageYears >= Politics.VOTING_AGE_YEARS }
@@ -53,7 +53,7 @@ class CouncilTest {
     @Test
     fun `every vote is counted and the tally matches the turnout`() {
         val sim = newRun()
-        sim.run(6 * Time.DAYS_PER_YEAR + 1)
+        sim.runUnattended(6 * Time.DAYS_PER_YEAR + 1)
         for (election in playerElections(sim)) {
             assertEquals(
                 election.turnout,
@@ -68,7 +68,7 @@ class CouncilTest {
         // A hive-mind electorate makes the council screen pointless: citizens in one town are in
         // near-identical condition, so without a personal leaning every election came back 95-0.
         val sim = newRun()
-        sim.run(60 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(60 * Time.DAYS_PER_YEAR)
         val shares = playerElections(sim)
             .filter { it.totalVotes >= 20 }
             .map { e -> e.voteCounts.maxOf { it.second }.toDouble() / e.totalVotes }
@@ -87,7 +87,7 @@ class CouncilTest {
     fun `a hungry town votes for farms`() {
         // The electorate is a feedback loop on the state of the town — that is the whole point.
         val sim = newRun()
-        sim.run(3 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(3 * Time.DAYS_PER_YEAR)
         val civ = sim.civ(0)
         val voter = sim.citizens.first { it.civId == 0 }
 
@@ -105,7 +105,7 @@ class CouncilTest {
     @Test
     fun `a homeless citizen wants housing`() {
         val sim = newRun()
-        sim.run(Time.DAYS_PER_YEAR)
+        sim.runUnattended(Time.DAYS_PER_YEAR)
         val civ = sim.civ(0)
         val voter = sim.citizens.first { it.civId == 0 }
 
@@ -123,7 +123,7 @@ class CouncilTest {
     @Test
     fun `agendas are normalised and every temperament can be elected`() {
         val sim = newRun()
-        sim.run(80 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(80 * Time.DAYS_PER_YEAR)
         val elections = playerElections(sim)
         for (election in elections) {
             val total = BuildingCategory.entries.sumOf { election.agenda[it] }
@@ -140,7 +140,7 @@ class CouncilTest {
     @Test
     fun `the Premier orders buildings and builders finish them`() {
         val sim = newRun()
-        sim.run(20 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(20 * Time.DAYS_PER_YEAR)
         val built = sim.buildingsOf(0)
         assertTrue(built.isNotEmpty(), "nothing was ever ordered in twenty years")
         assertTrue(built.any { it.isComplete }, "nothing was ever finished")
@@ -149,7 +149,7 @@ class CouncilTest {
     @Test
     fun `a half-built building does nothing`() {
         val sim = newRun()
-        sim.run(20 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(20 * Time.DAYS_PER_YEAR)
         val unfinished = sim.buildingsOf(0).firstOrNull { !it.isComplete } ?: return
         val effects = BuildingSystem.aggregate(listOf(unfinished))
         assertEquals(0, effects.completedCount)
@@ -161,7 +161,7 @@ class CouncilTest {
     @Test
     fun `buildings occupy the map and never overlap`() {
         val sim = newRun()
-        sim.run(40 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(40 * Time.DAYS_PER_YEAR)
         val claimed = HashMap<Int, Int>()
         for (building in sim.buildings) {
             val footprint = building.spec.footprint
@@ -178,7 +178,7 @@ class CouncilTest {
     @Test
     fun `housing shelters citizens and raises their survival`() {
         val sim = newRun()
-        sim.run(40 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(40 * Time.DAYS_PER_YEAR)
         val housing = sim.buildingsOf(0).filter { it.isComplete && it.spec.housingCapacity > 0 }
         if (housing.isEmpty()) return
         val housed = sim.citizens.filter { it.civId == 0 && it.homeBuildingId != null }
@@ -193,7 +193,7 @@ class CouncilTest {
     fun `granaries raise the food storage capacity`() {
         val sim = newRun()
         val baseline = sim.civ(0).foodStorageCapacity
-        sim.run(60 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(60 * Time.DAYS_PER_YEAR)
         val granaries = sim.buildingsOf(0).count { it.isComplete && it.type == BuildingType.GRANARY }
         if (granaries == 0) return
         assertTrue(
@@ -220,7 +220,7 @@ class CouncilTest {
     @Test
     fun `endorsing a candidate costs influence and only works during a campaign`() {
         val sim = newRun()
-        sim.run(Time.DAYS_PER_YEAR - Politics.CAMPAIGN_DAYS)
+        sim.runUnattended(Time.DAYS_PER_YEAR - Politics.CAMPAIGN_DAYS)
         val civ = sim.civ(0)
         civ.influencePoints = 1_000.0
         val candidate = sim.campaignFor(0)!!.first()
@@ -236,13 +236,13 @@ class CouncilTest {
         // Run two identical worlds to the same election, endorsing the underdog in one of them.
         fun runToElection(endorse: Boolean): ElectionResult {
             val sim = newRun(7L)
-            sim.run(Time.DAYS_PER_YEAR - Politics.CAMPAIGN_DAYS)
+            sim.runUnattended(Time.DAYS_PER_YEAR - Politics.CAMPAIGN_DAYS)
             if (endorse) {
                 sim.civ(0).influencePoints = 1_000.0
                 val underdog = sim.campaignFor(0)!!.last()
                 sim.endorse(0, underdog.citizenId)
             }
-            sim.run(Politics.CAMPAIGN_DAYS)
+            sim.runUnattended(Politics.CAMPAIGN_DAYS)
             return sim.elections.first { it.civId == 0 }
         }
 
@@ -257,7 +257,7 @@ class CouncilTest {
     @Test
     fun `a petition shifts the Premier's agenda`() {
         val sim = newRun()
-        sim.run(Time.DAYS_PER_YEAR + 1)
+        sim.runUnattended(Time.DAYS_PER_YEAR + 1)
         val civ = sim.civ(0)
         civ.influencePoints = 1_000.0
         val premier = sim.premierOf(0)!!
@@ -276,7 +276,7 @@ class CouncilTest {
     @Test
     fun `a veto is limited to one a year`() {
         val sim = newRun()
-        sim.run(Time.DAYS_PER_YEAR + 1)
+        sim.runUnattended(Time.DAYS_PER_YEAR + 1)
         val civ = sim.civ(0)
         civ.influencePoints = 1_000.0
         assertTrue(sim.veto(0), "the first veto of the year was refused")
@@ -286,7 +286,7 @@ class CouncilTest {
     @Test
     fun `influence actions fail when the player cannot pay`() {
         val sim = newRun()
-        sim.run(Time.DAYS_PER_YEAR + 1)
+        sim.runUnattended(Time.DAYS_PER_YEAR + 1)
         sim.civ(0).influencePoints = 0.0
         assertFalse(sim.petition(0, BuildingCategory.FARMS, 0.2))
         assertFalse(sim.veto(0))
@@ -296,7 +296,7 @@ class CouncilTest {
     @Test
     fun `a referendum opens a fresh campaign`() {
         val sim = newRun()
-        sim.run(2 * Time.DAYS_PER_YEAR + 30)
+        sim.runUnattended(2 * Time.DAYS_PER_YEAR + 30)
         sim.civ(0).influencePoints = 1_000.0
         assertNull(sim.campaignFor(0), "a campaign was already open")
         assertTrue(sim.callReferendum(0))
@@ -306,7 +306,7 @@ class CouncilTest {
     @Test
     fun `influence accrues over time and faster with plazas`() {
         val sim = newRun()
-        sim.run(Time.DAYS_PER_YEAR)
+        sim.runUnattended(Time.DAYS_PER_YEAR)
         assertTrue(sim.civ(0).influencePoints > 0.0, "no influence accrued in a year")
     }
 
@@ -315,7 +315,7 @@ class CouncilTest {
     @Test
     fun `unrest stays low under competent government`() {
         val sim = newRun()
-        sim.run(60 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(60 * Time.DAYS_PER_YEAR)
         assertTrue(
             sim.civ(0).unrest < 0.5,
             "unrest reached ${sim.civ(0).unrest} in a town that was governing itself adequately",
@@ -341,8 +341,8 @@ class CouncilTest {
         val a = newRun(99L)
         val b = newRun(99L)
         repeat(10) {
-            a.run(5 * Time.DAYS_PER_YEAR)
-            b.run(5 * Time.DAYS_PER_YEAR)
+            a.runUnattended(5 * Time.DAYS_PER_YEAR)
+            b.runUnattended(5 * Time.DAYS_PER_YEAR)
             assertEquals(a.stateHash(), b.stateHash(), "diverged by year ${a.year}")
             assertEquals(
                 a.elections.map { it.winnerName },
@@ -357,7 +357,7 @@ class CouncilTest {
     @Test
     fun `a fifty-year run produces a varied town and a readable election history`() {
         val sim = newRun()
-        sim.run(50 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(50 * Time.DAYS_PER_YEAR)
 
         val completed = sim.buildingsOf(0).filter { it.isComplete }
         assertTrue(completed.size >= 15, "only ${completed.size} buildings stood after fifty years")
