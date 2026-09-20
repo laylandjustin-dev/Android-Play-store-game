@@ -197,7 +197,7 @@ class ElectionPauseTest {
      * term stopped being annual.
      */
     private fun runToCampaign(sim: Simulation): Boolean {
-        repeat(2 * PoliticsConfig.TERM_YEARS * Time.DAYS_PER_YEAR) {
+        repeat((PoliticsConfig.FIRST_ELECTION_YEAR + PoliticsConfig.TERM_YEARS) * Time.DAYS_PER_YEAR) {
             if (sim.endState != null) return false
             if (sim.electionPending) return true
             val player = WorldConfig.PLAYER_CIV_ID

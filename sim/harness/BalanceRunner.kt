@@ -1,12 +1,16 @@
 package com.pixeltown.harness
 
 import com.pixeltown.sim.ChronicleEventKind
+import com.pixeltown.sim.DeathCause
 import com.pixeltown.sim.EndState
 import com.pixeltown.sim.GameConfig
 import com.pixeltown.sim.RunConfig
 import com.pixeltown.sim.Simulation
 import com.pixeltown.sim.Temperament
+import com.pixeltown.sim.Trait
 import com.pixeltown.sim.TraitAllocation
+import com.pixeltown.sim.GameConfig.Traits as TraitConfig
+import com.pixeltown.sim.Resource
 import java.io.File
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
@@ -85,7 +89,57 @@ object BalanceRunner {
         // Gathering is the sixth trait and the one AD-29 kept implying: a town that cannot gather
         // never builds. This is the build that tests whether pairing it with food is viable.
         "farm+gathering" to TraitAllocation.of(3, 4, 3, 3, 6, 6),
-    )
+    ) + generatedGrid()
+
+    /**
+     * Every *shape* of allocation, generated rather than hand-listed.
+     *
+     * The handmade builds above are the ones balance conversations keep returning to, and they are a
+     * biased sample for exactly that reason — they are the builds somebody thought were interesting.
+     * A sweep meant to find holes needs the builds nobody would think to try, so this enumerates the
+     * space systematically: every single trait taken to the opening cap, and every *pair* of traits
+     * split evenly. With six traits that is 6 + 15 shapes, and together with the handmade set it puts
+     * the grid at 38 strategies.
+     *
+     * Names are `solo-x` and `duo-x+y` so a CSV can be grouped by shape without a lookup table.
+     */
+    private fun generatedGrid(): List<Pair<String, TraitAllocation>> {
+        val base = TraitConfig.BASE_VALUE
+        val budget = TraitConfig.ALLOCATION_POINTS
+        val cap = TraitConfig.ALLOCATION_MAX_PER_TRAIT
+        val out = ArrayList<Pair<String, TraitAllocation>>()
+
+        fun named(name: String, values: IntArray) {
+            // Spend anything the shape left over on the traits with room, lowest first, so every
+            // entry spends the full budget and the comparison is like for like.
+            var spare = budget - values.sumOf { it - base }
+            while (spare > 0) {
+                val next = values.indices.filter { values[it] < cap }.minByOrNull { values[it] } ?: break
+                values[next]++
+                spare--
+            }
+            out.add(name to TraitAllocation.of(*values))
+        }
+
+        // One trait to the cap.
+        for (trait in Trait.entries) {
+            val v = IntArray(TraitConfig.COUNT) { base }
+            v[trait.ordinal] = cap
+            named("solo-${trait.name.lowercase()}", v)
+        }
+
+        // Every pair, split evenly between them.
+        for (a in Trait.entries) {
+            for (b in Trait.entries) {
+                if (b.ordinal <= a.ordinal) continue
+                val v = IntArray(TraitConfig.COUNT) { base }
+                v[a.ordinal] = base + budget / 2
+                v[b.ordinal] = base + budget - budget / 2
+                named("duo-${a.name.lowercase()}+${b.name.lowercase()}", v)
+            }
+        }
+        return out
+    }
 
     /** The six one-trait builds above, in trait order. */
     private val PURE = listOf(
@@ -105,6 +159,36 @@ object BalanceRunner {
         val dominantTemperament: Temperament?,
         val buildings: Int,
         val wars: Int,
+        /**
+         * Everything below exists to find holes rather than to measure balance.
+         *
+         * A sweep that reports only "how long did it live" cannot tell a healthy economy from one
+         * where wealth is running away to infinity, or where half the food produced is rotting, or
+         * where influence accumulates faster than anything can spend it. These are the stocks and
+         * flows at the end of the run, and an anomaly in them is the shape a maths hole takes.
+         */
+        val food: Double,
+        val wood: Double,
+        val stone: Double,
+        val knowledge: Double,
+        val wealth: Double,
+        val influence: Double,
+        val unrest: Double,
+        val producedFood: Double,
+        val consumedFood: Double,
+        val spoiledFood: Double,
+        val producedWood: Double,
+        val consumedWood: Double,
+        val births: Int,
+        val deaths: Int,
+        val combatDeaths: Int,
+        val raids: Int,
+        val trades: Int,
+        val elections: Int,
+        val coups: Int,
+        val rivalsAlive: Int,
+        val traitPointsSpent: Int,
+        val techsChosen: Int,
     ) {
         val reachedCap: Boolean get() = years >= YEAR_CAP
 
@@ -142,18 +226,30 @@ object BalanceRunner {
 
         val csv = buildString {
             appendLine(
-                "seed,allocation,speed,health,hunting,elements,farming," +
+                "seed,allocation,speed,health,hunting,elements,farming,gathering," +
                     "years,peak_population,final_population,tech_tier,end_state," +
-                    "dominant_temperament,buildings,wars",
+                    "dominant_temperament,buildings,wars," +
+                    "food,wood,stone,knowledge,wealth,influence,unrest," +
+                    "produced_food,consumed_food,spoiled_food,produced_wood,consumed_wood," +
+                    "births,deaths,combat_deaths,raids,trades,elections,coups,rivals_alive," +
+                    "trait_points_spent,techs_chosen",
             )
             for (r in results) {
                 appendLine(
                     "${r.seed},${r.allocationName}," +
                         "${r.allocation.speed},${r.allocation.health},${r.allocation.hunting}," +
-                        "${r.allocation.elements},${r.allocation.farming}," +
+                        "${r.allocation.elements},${r.allocation.farming},${r.allocation.gathering}," +
                         "${r.years},${r.peakPopulation},${r.finalPopulation},${r.techTier}," +
                         "${r.endState?.name ?: "RUNNING"},${r.dominantTemperament?.name ?: "NONE"}," +
-                        "${r.buildings},${r.wars}",
+                        "${r.buildings},${r.wars}," +
+                        "${r.food.toInt()},${r.wood.toInt()},${r.stone.toInt()}," +
+                        "${r.knowledge.toInt()},${r.wealth.toInt()},${r.influence.toInt()}," +
+                        "${round3(r.unrest)}," +
+                        "${r.producedFood.toInt()},${r.consumedFood.toInt()},${r.spoiledFood.toInt()}," +
+                        "${r.producedWood.toInt()},${r.consumedWood.toInt()}," +
+                        "${r.births},${r.deaths},${r.combatDeaths},${r.raids},${r.trades}," +
+                        "${r.elections},${r.coups},${r.rivalsAlive}," +
+                        "${r.traitPointsSpent},${r.techsChosen}",
                 )
             }
         }
@@ -166,6 +262,14 @@ object BalanceRunner {
         System.err.println()
         System.err.println(report(results, elapsed))
         exitProcess(if (Targets.evaluate(results).all { it.met }) 0 else 1)
+    }
+
+    /** Three decimal places, without String.format — `:sim` and its harness stay portable. */
+    private fun round3(value: Double): String {
+        val scaled = kotlin.math.round(value * 1000).toInt()
+        val whole = scaled / 1000
+        val part = (if (scaled < 0) -scaled else scaled) % 1000
+        return "$whole.${part.toString().padStart(3, '0')}"
     }
 
     private fun runAll(jobs: List<Pair<Long, Pair<String, TraitAllocation>>>): List<Run> {
@@ -207,6 +311,28 @@ object BalanceRunner {
             dominantTemperament = temperaments.maxByOrNull { it.value }?.key,
             buildings = sim.buildingsOf(GameConfig.World.PLAYER_CIV_ID).count { it.isComplete },
             wars = sim.chronicle.totalOf(ChronicleEventKind.WAR_DECLARED),
+            food = player[Resource.FOOD],
+            wood = player[Resource.WOOD],
+            stone = player[Resource.STONE],
+            knowledge = player[Resource.KNOWLEDGE],
+            wealth = player[Resource.WEALTH],
+            influence = player.influencePoints,
+            unrest = player.unrest,
+            producedFood = player.produced[Resource.FOOD.ordinal],
+            consumedFood = player.consumed[Resource.FOOD.ordinal],
+            spoiledFood = player.spoiled,
+            producedWood = player.produced[Resource.WOOD.ordinal],
+            consumedWood = player.consumed[Resource.WOOD.ordinal],
+            births = player.totalBirths,
+            deaths = player.totalDeaths,
+            combatDeaths = sim.chronicle.deathsBy(DeathCause.COMBAT),
+            raids = sim.chronicle.totalOf(ChronicleEventKind.RAID),
+            trades = sim.chronicle.totalOf(ChronicleEventKind.TRADE),
+            elections = sim.elections.count { it.civId == GameConfig.World.PLAYER_CIV_ID },
+            coups = sim.chronicle.totalOf(ChronicleEventKind.COUP),
+            rivalsAlive = sim.civs.count { !it.isPlayer && !it.isExtinct },
+            traitPointsSpent = player.traits.pointsSpent,
+            techsChosen = player.techChoices.size,
         )
     }
 

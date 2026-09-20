@@ -59,7 +59,10 @@ class PersistenceTest {
         val sim = newRun()
         // Into the campaign window of the second term, not the second year: the town votes every
         // Politics.TERM_YEARS years now (AD-65).
-        sim.runUnattended(Politics.TERM_YEARS * 2 * Time.DAYS_PER_YEAR - Politics.CAMPAIGN_DAYS + 5)
+        // Into the campaign window of the second election. Votes fall in years
+        // FIRST_ELECTION_YEAR, +TERM_YEARS, ... so the second is at FIRST + TERM.
+        val secondVote = (Politics.FIRST_ELECTION_YEAR + Politics.TERM_YEARS) * Time.DAYS_PER_YEAR
+        sim.runUnattended(secondVote - Politics.CAMPAIGN_DAYS + 5)
         assertNotNull(sim.campaignFor(0), "the test did not actually land inside a campaign")
 
         val loaded = roundTrip(sim)

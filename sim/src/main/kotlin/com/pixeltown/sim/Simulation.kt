@@ -382,10 +382,18 @@ class Simulation(
      */
     private fun runCouncil() {
         val term = Politics.TERM_YEARS * Time.DAYS_PER_YEAR
-        val dayOfTerm = (day % term).toInt()
+        val first = Politics.FIRST_ELECTION_YEAR * Time.DAYS_PER_YEAR
 
-        if (dayOfTerm == term - Politics.CAMPAIGN_DAYS) openCampaigns()
-        if (dayOfTerm == 0 && day > 0) holdElections()
+        // The founding year is special-cased: a town cannot build without a Premier, so it elects
+        // one promptly and then keeps it for a full term. See Politics.FIRST_ELECTION_YEAR.
+        val voteToday = if (day < first) false else (day - first) % term == 0L
+        val campaignOpensToday = when {
+            day < first -> day == (first - Politics.CAMPAIGN_DAYS).toLong()
+            else -> (day - first + Politics.CAMPAIGN_DAYS) % term == 0L
+        }
+
+        if (campaignOpensToday) openCampaigns()
+        if (voteToday && day > 0) holdElections()
         if (day % Politics.DAYS_PER_DECISION == 0L && day > 0) premierDecisions()
     }
 

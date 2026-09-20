@@ -1048,6 +1048,21 @@ object GameConfig {
          * have a record worth judging, and turns the vote into something a player looks forward to.
          */
         const val TERM_YEARS = 4
+
+        /**
+         * When the *first* election is held, regardless of the term length.
+         *
+         * A town cannot build without a Premier — `premierDecisions` returns early when the office is
+         * empty — so lengthening the term to four years silently gave every colony four years with no
+         * granary, no housing and no healer's hut, however much timber it had gathered. The balance
+         * sweep showed it plainly: collapsing runs finished with hundreds of units of wood and zero
+         * spent, because nothing had ever been ordered.
+         *
+         * The founding year is therefore special-cased. A people elect their first government
+         * promptly and then keep it for a proper term, which is both the sensible mechanic and what
+         * the four-year term was actually for.
+         */
+        const val FIRST_ELECTION_YEAR = 1
         const val VOTING_AGE_YEARS = 16
         /** Days between the Premier's decision points — once a season. */
         const val DAYS_PER_DECISION = Time.DAYS_PER_SEASON
