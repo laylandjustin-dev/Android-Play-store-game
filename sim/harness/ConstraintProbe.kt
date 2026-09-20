@@ -6,6 +6,10 @@ import com.pixeltown.sim.RunConfig
 import com.pixeltown.sim.Simulation
 import com.pixeltown.sim.TraitAllocation
 import com.pixeltown.sim.Trait
+import com.pixeltown.sim.World
+import com.pixeltown.sim.WorldGenerator
+import com.pixeltown.sim.Job
+import com.pixeltown.sim.Resource
 
 /**
  * What is actually limiting each build, rather than how long it lasted.
@@ -116,6 +120,205 @@ object ConstraintProbe {
         }
     }
 
+    /**
+     * The first two years, month by month: food in the store, mouths to feed, and who is working.
+     *
+     * Reported because "food drains continuously and never goes up, and it kills me before year one
+     * whatever I do" is a claim about the opening minute of the game, which every existing test
+     * walks straight past on its way to measuring a century.
+     */
+    private fun food() {
+        for ((name, traits) in BUILDS) {
+            for (seed in longArrayOf(1_000L, 8_919L)) {
+                val sim = Simulation.newRun(RunConfig(seed = seed, traits = traits))
+                val civ = sim.civ(GameConfig.World.PLAYER_CIV_ID)
+                println("PROBE $name seed=$seed  start food=${civ[Resource.FOOD].toInt()} pop=${civ.population}")
+                var day = 0
+                while (day < 2 * GameConfig.Time.DAYS_PER_YEAR && sim.endState == null) {
+                    if (!sim.step()) {
+                        // A decision is open; answer it the safe way so the clock keeps running.
+                        val player = GameConfig.World.PLAYER_CIV_ID
+                        sim.pendingTechChoices(player).firstOrNull()?.let { sim.chooseTech(player, it) }
+                        while (sim.pendingTraitPoints(player) > 0) {
+                            val t = sim.civ(player).traits.improvable.minByOrNull {
+                                sim.civ(player).traits[it] * Trait.entries.size + it.ordinal
+                            } ?: break
+                            if (!sim.spendTraitPoint(player, t)) break
+                        }
+                        continue
+                    }
+                    day++
+                    if (day % 30 != 0) continue
+                    val jobs = sim.citizens.filter { it.civId == 0 }.groupingBy { it.job }.eachCount()
+                    println(
+                        "PROBE   day=${day.toString().padStart(3)} " +
+                            "food=${civ[Resource.FOOD].toInt().toString().padStart(5)} " +
+                            "cap=${civ.foodStorageCapacity.toInt().toString().padStart(5)} " +
+                            "pop=${civ.population.toString().padStart(3)} " +
+                            "farm=${jobs[Job.FARMER] ?: 0} hunt=${jobs[Job.HUNTER] ?: 0} " +
+                            "gath=${jobs[Job.GATHERER] ?: 0} child=${jobs[Job.CHILD] ?: 0} " +
+                            "idle=${jobs[Job.IDLE] ?: 0}",
+                    )
+                }
+                println("PROBE   ended=${sim.endState} at day ${sim.day}")
+            }
+        }
+    }
+
+    /**
+     * Does *where the player lands* decide whether they can eat?
+     *
+     * The generator keeps only cells whose `siteScore` is above zero for itself, but the player's
+     * choice is accepted on "buildable ground on the mainland" alone — and `legalStartSites`, which
+     * the map preview draws, applies that same weak test. So this walks the legal cells, scores them
+     * the way the generator would, and plays the worst ones.
+     */
+    private fun sites() {
+        val farming = TraitAllocation.of(3, 4, 3, 4, 8)
+        for (seed in longArrayOf(1_000L, 8_919L)) {
+            val probe = Simulation.newRun(RunConfig(seed = seed, traits = farming))
+            val world = probe.world
+            val legal = WorldGenerator.legalStartSites(world)
+            val cells = (0 until world.cellCount).filter { legal[it] }
+
+            // Score every legal cell the way the generator scores its own candidates.
+            val r = GameConfig.World.CIV_START_SCORE_RADIUS
+            fun score(index: Int): Double {
+                val x = index % world.width
+                val y = index / world.width
+                var total = 0.0
+                for (dy in -r..r) for (dx in -r..r) {
+                    val nx = x + dx
+                    val ny = y + dy
+                    if (!world.inBounds(nx, ny)) continue
+                    total += world.fertility[world.index(nx, ny)] + 0.5 * world.wildGame[world.index(nx, ny)]
+                }
+                return total
+            }
+            val scored = cells.map { it to score(it) }.sortedBy { it.second }
+            println(
+                "PROBE seed=$seed legal=${cells.size} " +
+                    "worst=${"%.1f".format(scored.first().second)} " +
+                    "best=${"%.1f".format(scored.last().second)} " +
+                    "zeroScore=${scored.count { it.second <= 0.0 }}",
+            )
+
+            // Walk the distribution, so the floor is chosen where survival actually turns rather
+            // than at a round number.
+            val best = scored.last().second
+            val picks = listOf(0, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100).map { pct ->
+                val i = ((scored.size - 1) * pct) / 100
+                "p$pct" to scored[i]
+            }
+            for ((label, pick) in picks) {
+                val sim = Simulation.newRun(
+                    RunConfig(seed = seed, traits = farming, startCell = pick.first),
+                )
+                val civ = sim.civ(GameConfig.World.PLAYER_CIV_ID)
+                val foodAt = HashMap<Int, Int>()
+                var day = 0
+                while (day < 2 * GameConfig.Time.DAYS_PER_YEAR && sim.endState == null) {
+                    if (!sim.step()) {
+                        val player = GameConfig.World.PLAYER_CIV_ID
+                        sim.pendingTechChoices(player).firstOrNull()?.let { sim.chooseTech(player, it) }
+                        while (sim.pendingTraitPoints(player) > 0) {
+                            val t = sim.civ(player).traits.improvable.minByOrNull {
+                                sim.civ(player).traits[it] * Trait.entries.size + it.ordinal
+                            } ?: break
+                            if (!sim.spendTraitPoint(player, t)) break
+                        }
+                        continue
+                    }
+                    day++
+                    if (day % 90 == 0) foodAt[day] = civ[Resource.FOOD].toInt()
+                }
+                // How close are the neighbours, and did anyone take the player's land?
+                val home = civ.homeSite
+                val nearest = sim.civs.filter { !it.isPlayer }.minOf {
+                    val a = it.homeSite; val b = home
+                    maxOf(
+                        kotlin.math.abs(a % world.width - b % world.width),
+                        kotlin.math.abs(a / world.width - b / world.width),
+                    )
+                }
+                val owned = (0 until world.cellCount).count { world.ownerCivId[it].toInt() == 0 }
+                println(
+                    "PROBE   ${label.padEnd(6)} cell=${pick.first.toString().padStart(5)} " +
+                        "score=${"%.1f".format(pick.second).padStart(6)} " +
+                        "ofBest=${"%.2f".format(pick.second / best)} " +
+                        "nearRival=${nearest.toString().padStart(3)} cells=${owned.toString().padStart(4)} " +
+                        "food@90=${(foodAt[90] ?: -1).toString().padStart(5)} " +
+                        "@180=${(foodAt[180] ?: -1).toString().padStart(5)} " +
+                        "@360=${(foodAt[360] ?: -1).toString().padStart(5)} " +
+                        "pop=${civ.population.toString().padStart(3)} ended=${sim.endState} day=${sim.day}",
+                )
+            }
+        }
+    }
+
+    /**
+     * Two runs side by side — one that feeds itself and one that does not — on the same seed and
+     * the same allocation, differing only in where the colony landed.
+     *
+     * Prints what the food system is actually doing: how many farmers hold a work cell, how many of
+     * them are standing on or beside it (AD-22, which is what "at work" means), and the fertility
+     * under their feet. A colony can be full of farmers and still starve if none of them ever
+     * arrives at a field.
+     */
+    private fun trace(args: Array<String>) {
+        val seed = args.firstOrNull { it.startsWith("--seed=") }?.substringAfter('=')?.toLong() ?: 1_000L
+        val cells = args.firstOrNull { it.startsWith("--cells=") }?.substringAfter('=')
+            ?.split(',')?.map { it.trim().toInt() } ?: emptyList()
+        val farming = TraitAllocation.of(3, 4, 3, 4, 8)
+
+        for (cell in cells) {
+            val sim = Simulation.newRun(RunConfig(seed = seed, traits = farming, startCell = cell))
+            val civ = sim.civ(GameConfig.World.PLAYER_CIV_ID)
+            val world = sim.world
+            println("PROBE ==== seed=$seed startCell=$cell home=${civ.homeSite}")
+            var previous = civ[Resource.FOOD]
+            var day = 0
+            while (day < 200 && sim.endState == null) {
+                if (!sim.step()) {
+                    val player = GameConfig.World.PLAYER_CIV_ID
+                    sim.pendingTechChoices(player).firstOrNull()?.let { sim.chooseTech(player, it) }
+                    while (sim.pendingTraitPoints(player) > 0) {
+                        val t = sim.civ(player).traits.improvable.minByOrNull {
+                            sim.civ(player).traits[it] * Trait.entries.size + it.ordinal
+                        } ?: break
+                        if (!sim.spendTraitPoint(player, t)) break
+                    }
+                    continue
+                }
+                day++
+                if (day % 20 != 0) continue
+
+                val farmers = sim.citizens.filter { it.civId == 0 && it.job == Job.FARMER }
+                val withCell = farmers.count { it.workCell != World.NONE }
+                val atWork = farmers.count { f ->
+                    f.workCell != World.NONE && maxOf(
+                        kotlin.math.abs(f.x - f.workCell % world.width),
+                        kotlin.math.abs(f.y - f.workCell / world.width),
+                    ) <= 1
+                }
+                val meanFert = farmers.filter { it.workCell != World.NONE }
+                    .map { world.fertility[it.workCell].toDouble() }
+                    .let { if (it.isEmpty()) 0.0 else it.average() }
+                val meanSkill = farmers.map { it.skill.toDouble() }.let { if (it.isEmpty()) 0.0 else it.average() }
+                val food = civ[Resource.FOOD]
+                println(
+                    "PROBE  day=${day.toString().padStart(3)} food=${food.toInt().toString().padStart(5)} " +
+                        "delta=${"%+.1f".format((food - previous) / 20.0).padStart(7)}/day " +
+                        "pop=${civ.population.toString().padStart(3)} " +
+                        "farmers=${farmers.size.toString().padStart(3)} withCell=${withCell.toString().padStart(3)} " +
+                        "atWork=${atWork.toString().padStart(3)} fert=${"%.2f".format(meanFert)} " +
+                        "skill=${"%.2f".format(meanSkill)}",
+                )
+                previous = food
+            }
+        }
+    }
+
     private val BUILDS = listOf(
         "even 5/5/5/5/5" to TraitAllocation.of(5, 5, 5, 5, 5),
         "farming 3/4/3/4/8" to TraitAllocation.of(3, 4, 3, 4, 8),
@@ -133,6 +336,9 @@ object ConstraintProbe {
         if (args.contains("--siting")) { siting(); return }
         if (args.contains("--rivals")) { rivals(); return }
         if (args.contains("--npc")) { npc(); return }
+        if (args.contains("--food")) { food(); return }
+        if (args.contains("--sites")) { sites(); return }
+        if (args.contains("--trace")) { trace(args); return }
         val years = args.firstOrNull { it.startsWith("--years=") }?.substringAfter('=')?.toInt() ?: YEARS
 
         println("Cause of death and limiting pressure, $years years, ${SEEDS.size} seeds per build.")

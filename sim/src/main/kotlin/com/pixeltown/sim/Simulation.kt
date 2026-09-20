@@ -741,12 +741,27 @@ class Simulation(
 
     internal fun refreshEffects(civId: Int) {
         effects[civId] = BuildingSystem.aggregate(buildingsOf(civId))
-        // Elements keeps a harvest through the winter rather than watching it spoil, so it adds to
-        // capacity the same way a granary does.
-        val weathered = 1.0 + TraitConfig.ELEMENTS_FOOD_STORAGE_BONUS * civs[civId].traits[Trait.ELEMENTS]
         effects[civId] = effects[civId].withTech(civs[civId].techChoices)
-        civs[civId].foodStorageCapacity =
-            (Economy.BASE_FOOD_STORAGE_CAPACITY + effects[civId].foodStorageBonus) * weathered
+        civs[civId].foodStorageCapacity = foodCapacityOf(civId)
+    }
+
+    /**
+     * How much food this civ can hold before the surplus rots.
+     *
+     * Derived rather than stored, because it depends on the population, which changes every tick —
+     * the cached field was the reason a colony's founding stores sat 1,470 above a flat capacity of
+     * 400 and visibly rotted for the player's first hundred days. Granaries add to it and Elements
+     * multiplies it, exactly as before.
+     */
+    fun foodCapacityOf(civId: Int): Double {
+        val civ = civs[civId]
+        // Elements keeps a harvest through the winter rather than watching it spoil, so it scales
+        // capacity the same way a granary adds to it.
+        val weathered = 1.0 + TraitConfig.ELEMENTS_FOOD_STORAGE_BONUS * civ.traits[Trait.ELEMENTS]
+        val forPopulation = Economy.FOOD_STORAGE_DAYS_PER_CITIZEN * civ.population *
+            Economy.FOOD_PER_ADULT_PER_DAY
+        val base = max(forPopulation, Economy.MIN_FOOD_STORAGE_CAPACITY)
+        return (base + effects[civId].foodStorageBonus) * weathered
     }
 
     // ------------------------------------------------------------------ tech and unrest
@@ -1459,10 +1474,14 @@ class Simulation(
                 citizen.starvingDays = if (citizen.nutrition <= 0f) citizen.starvingDays + 1 else 0
             }
 
-            // Spoilage: anything above storage capacity rots.
+            // Spoilage: anything above storage capacity rots. Computed live rather than read from
+            // the cached field, so a town that grew or shrank today is judged against what it can
+            // actually hold today.
+            val capacity = foodCapacityOf(civ.id)
+            civ.foodStorageCapacity = capacity
             val stored = civ[Resource.FOOD]
-            if (stored > civ.foodStorageCapacity) {
-                val excess = stored - civ.foodStorageCapacity
+            if (stored > capacity) {
+                val excess = stored - capacity
                 civ[Resource.FOOD] = stored - excess * Economy.SPOILAGE_PER_DAY_OVER_CAPACITY
             }
         }

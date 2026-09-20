@@ -23,7 +23,7 @@ class Civilization(
     /** Stored resources, indexed by [Resource.ordinal]. */
     val stores = DoubleArray(Resource.entries.size)
 
-    var foodStorageCapacity: Double = GameConfig.Economy.BASE_FOOD_STORAGE_CAPACITY
+    var foodStorageCapacity: Double = GameConfig.Economy.MIN_FOOD_STORAGE_CAPACITY
 
     var techTier: Int = 0
 

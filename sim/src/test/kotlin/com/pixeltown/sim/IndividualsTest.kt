@@ -161,9 +161,20 @@ class CharterTest {
         sim.runUnattended(2 * Time.DAYS_PER_YEAR)
         assertTrue(sim.setCharter(0, BuildingCategory.TECH))
 
-        val firstPremier = sim.premierOf(0)?.name
-        sim.runUnattended(12 * Time.DAYS_PER_YEAR)
-        assertTrue(sim.premierOf(0)?.name != firstPremier, "nobody new was ever elected")
+        // Run until the office actually changes hands, rather than assuming a fixed number of
+        // years is enough. A popular Premier is re-elected, so "twelve years" was never the same
+        // question as "a new Premier" — and it stopped being true the moment a healthier town kept
+        // returning the same person. Identity is the citizen, not the name: two people can share one.
+        val firstPremier = sim.premierOf(0)?.citizenId
+        var changed = false
+        repeat(40) {
+            sim.runUnattended(Time.DAYS_PER_YEAR)
+            if (sim.premierOf(0)?.citizenId != firstPremier) {
+                changed = true
+                return@repeat
+            }
+        }
+        assertTrue(changed, "nobody new was ever elected in forty years")
 
         assertEquals(BuildingCategory.TECH, sim.civ(0).charter, "the charter died with its Premier")
         // A charter is a nudge, not a command: it has to be visible in the platform, not total.

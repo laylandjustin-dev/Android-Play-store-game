@@ -194,8 +194,10 @@ data class CivEffects(
             farmYieldBonus = farmYieldBonus + farm,
             knowledgeMultiplier = knowledgeMultiplier + know,
             buildSpeedBonus = buildSpeedBonus + build,
+            // A flat bonus, sized against the storage floor so this tech is worth exactly what it
+            // was worth before capacity began scaling with population.
             foodStorageBonus = foodStorageBonus +
-                GameConfig.Economy.BASE_FOOD_STORAGE_CAPACITY * storageFraction,
+                GameConfig.Economy.MIN_FOOD_STORAGE_CAPACITY * storageFraction,
             militaryStrength = militaryStrength * (1.0 + militaryFraction),
             safetyBonus = safetyBonus + safety,
             diseaseResistBonus = diseaseResistBonus + disease,

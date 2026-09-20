@@ -650,7 +650,36 @@ object GameConfig {
 
         /** Food above storage capacity spoils at this fraction per day. */
         const val SPOILAGE_PER_DAY_OVER_CAPACITY = 0.02
-        const val BASE_FOOD_STORAGE_CAPACITY = 400.0
+
+        /**
+         * How much food a town can hold, in days of rations *per head*, before the surplus starts to
+         * rot. Granaries add to it; Elements multiplies it.
+         *
+         * This was a flat 400 for every town, from fifty-five settlers to a city of three thousand,
+         * and that flat number was a bug with a very visible symptom. A colony is founded with
+         * `STARTING_FOOD_PER_SETTLER` x 55 = 1,870 food against a capacity of 400 — so 78% of the
+         * founding stores were above the line and rotting at 29 food a day, and the food number fell
+         * every single day for the first hundred days of every run no matter what the player did.
+         * Reported, correctly, as "food drains continuously and does not go up".
+         *
+         * Two constants tuned in separate rooms, and the comment on `STARTING_FOOD_PER_SETTLER` says
+         * what the intent was: 34 days of grace so that a marginal colony "limps through its first
+         * year and declines where the player can watch it". A town that can only *hold* seven days
+         * never had that grace. Storage now scales with the population that has to eat it, and the
+         * figure is deliberately the same 34: a colony can keep exactly what it landed with.
+         *
+         * Spoilage still does its job. It was never the thing limiting growth — soil fertility is
+         * (AD-56) — and its purpose is to stop a town hoarding indefinitely, which "about a month's
+         * food per person" enforces just as well as a flat wall, at every size of town rather than
+         * only at the smallest.
+         */
+        const val FOOD_STORAGE_DAYS_PER_CITIZEN = 34.0
+
+        /**
+         * A floor under the above, so a town reduced to a handful of survivors is not also told its
+         * remaining stores are rotting. Sized at the old flat value.
+         */
+        const val MIN_FOOD_STORAGE_CAPACITY = 400.0
 
         /**
          * Below this many days of food stock, job assignment is forced toward food.

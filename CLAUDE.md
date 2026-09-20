@@ -388,6 +388,43 @@ nothing per tick; and `deathsByCause` moved onto `Civilization` because the Chro
 buffer shared by five civs — it can answer "how did people die on this map" but never "how did *my*
 town die", which is the question being asked.
 
+**AD-64 — Food storage scales with the town, and a flat capacity was why food "drains
+continuously and does not go up".** Two constants tuned in separate rooms. A colony is founded with
+`STARTING_FOOD_PER_SETTLER` x 55 = **1,870** food against `BASE_FOOD_STORAGE_CAPACITY` of **400**, and
+everything above capacity rots at 2% a day — so 78% of the founding stores were above the line,
+burning ~29 food a day, and the food number fell every single day for the first hundred days of every
+run whatever the player did. The comment on `STARTING_FOOD_PER_SETTLER` states the intent it was
+raised to 34 for: *34 days of grace so a marginal colony limps through its first year where the
+player can watch it.* A town that can only **hold** seven days never had that grace.
+
+Capacity is now `FOOD_STORAGE_DAYS_PER_CITIZEN` (34) x population, floored at the old 400, plus
+granaries, times the Elements multiplier — and derived per tick rather than cached, since it depends
+on a population that changes daily. The figure is deliberately the same 34, so a colony can keep
+exactly what it landed with. Measured on seed 1000, farming build, days 20→200:
+
+| | before | after |
+|---|---|---|
+| good site (score 174) | 1,522 → 1,774, falling for 40 days first | **1,871 → 3,284, rising from day one** |
+| poor site (score 117) | 1,102 → 557, never recovers | **1,384 → 1,149, recovers from day 120** |
+
+Spoilage still does its job: both runs plateau against the new ceiling. It was never what limited
+growth — soil fertility is (AD-56) — and its purpose is to stop a town hoarding indefinitely, which
+"about a month's food per head" enforces at every size of town rather than only the smallest.
+
+Two things this investigation found and did **not** fix, recorded so they are not rediscovered:
+
+- **The landing site is not checked for viability, and the map says every buildable mainland cell is
+  legal.** The generator keeps only cells scoring above zero for its own five picks and takes the
+  *best* separated ones, so all four rivals start on top land while the player may tap a cell with a
+  sixth of the nearby food. On seed 8919 the worst legal cell still collapses at day 403. A score
+  floor is the obvious fix and the data says it would be a blunt one — score does not cleanly predict
+  survival (a 0.51-of-best site thrives where a 0.55 one starves), because what actually matters is
+  how many farmers *reach* a field. Showing the player the land quality is the better answer than
+  forbidding cells.
+- **A colony owns exactly one cell after two years** (`ownerCivId`), in every run measured. Territory
+  claiming looks inert outside building footprints; it is not what starves anyone, but it is not what
+  AD-3x describes either.
+
 **AD-16 — Map previews are exported as PNGs from the test source set.** `MapPreviewExporter`
 writes `sim/build/preview/map-seed-*.png` on every test run using `javax.imageio`, which lets the
 renderer be inspected without a device. It is test-only on purpose: `java.awt` does not exist on
