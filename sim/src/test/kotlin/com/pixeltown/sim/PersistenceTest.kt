@@ -57,7 +57,9 @@ class PersistenceTest {
         // Saving during the thirty-day campaign window used to lose the candidates, so the
         // reloaded run generated a different slate and elected a different Premier.
         val sim = newRun()
-        sim.runUnattended(Time.DAYS_PER_YEAR * 2 - Politics.CAMPAIGN_DAYS + 5)
+        // Into the campaign window of the second term, not the second year: the town votes every
+        // Politics.TERM_YEARS years now (AD-65).
+        sim.runUnattended(Politics.TERM_YEARS * 2 * Time.DAYS_PER_YEAR - Politics.CAMPAIGN_DAYS + 5)
         assertNotNull(sim.campaignFor(0), "the test did not actually land inside a campaign")
 
         val loaded = roundTrip(sim)
@@ -217,10 +219,14 @@ class PersistenceTest {
         )
         assertEquals(populationBefore, report.populationBefore)
         assertEquals(sim.populationOf(0), report.populationAfter)
-        assertEquals(
-            report.yearsElapsed,
-            report.elections.size,
-            "a year passed without an election, or an election happened outside the report's span",
+        // One vote per term, not per year (AD-65). The report's span can also start and end
+        // mid-term, so the count is bounded rather than exact: twelve years at a four-year term is
+        // three elections, or four if the window straddles an extra one.
+        val expectedVotes = report.yearsElapsed / Politics.TERM_YEARS
+        assertTrue(
+            report.elections.size in expectedVotes..(expectedVotes + 1),
+            "${report.yearsElapsed} years produced ${report.elections.size} elections, " +
+                "which is not one per ${Politics.TERM_YEARS} years",
         )
         assertTrue(report.births > 0, "twelve years without a birth")
         assertTrue(report.highlights.size <= Meta.RETURN_REPORT_HIGHLIGHTS)

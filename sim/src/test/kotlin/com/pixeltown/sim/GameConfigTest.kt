@@ -83,9 +83,49 @@ class GameConfigTest {
     }
 
     @Test
-    fun `world is the documented 128 by 128 grid`() {
-        assertEquals(128, GameConfig.World.WIDTH)
-        assertEquals(128, GameConfig.World.HEIGHT)
+    fun `world is the documented 400 by 400 grid`() {
+        assertEquals(400, GameConfig.World.WIDTH)
+        assertEquals(400, GameConfig.World.HEIGHT)
         assertEquals(360, GameConfig.Time.DAYS_PER_YEAR)
+    }
+
+    @Test
+    fun `the map is square, and every civ has room to grow into it`() {
+        // Not a restatement of the numbers above: these are the relationships the map size has to
+        // keep. A square grid is what makes the island mask reach zero on every border (AD-11), and
+        // five civs each building out to MAX_SITE_DISTANCE must fit with their separation intact.
+        assertEquals(GameConfig.World.WIDTH, GameConfig.World.HEIGHT, "the island mask assumes a square grid")
+        assertTrue(
+            GameConfig.World.MIN_CIV_START_SEPARATION > GameConfig.Buildings.BASE_SITE_DISTANCE,
+            "civs start closer together than the radius they immediately build into",
+        )
+        assertTrue(
+            GameConfig.World.MIN_CIV_START_SEPARATION * GameConfig.World.TOTAL_CIV_COUNT <
+                GameConfig.World.WIDTH * 2,
+            "five civs at the required separation cannot fit on the map",
+        )
+    }
+
+    @Test
+    fun `building footprints match the documented sizes`() {
+        // The brief fixes these: walls one cell, towers two, houses three, works and farms five to
+        // six, and the civic buildings larger again. A footprint is visible on screen, so a wrong
+        // one is a design error rather than a balance one.
+        fun fp(type: BuildingType) = GameConfig.Buildings.spec(type).footprint
+        assertEquals(1, fp(BuildingType.WALL), "a wall is one cell wide")
+        assertEquals(2, fp(BuildingType.WATCHTOWER), "a watchtower is 2x2")
+        for (house in listOf(BuildingType.HOUSING, BuildingType.HUT)) {
+            assertEquals(3, fp(house), "$house is a 3x3 dwelling")
+        }
+        for (works in listOf(BuildingType.FIELD, BuildingType.BARRACKS, BuildingType.WORKSHOP)) {
+            assertTrue(fp(works) in 5..6, "$works should be 5x5 to 6x6, not ${fp(works)}x${fp(works)}")
+        }
+        // And no footprint may exceed what the siting rules can actually place.
+        for (type in BuildingType.entries) {
+            assertTrue(
+                fp(type) < GameConfig.Buildings.MAX_DISTANCE_FROM_OWN_BUILDING,
+                "$type is wider than a town is allowed to spread in one step",
+            )
+        }
     }
 }

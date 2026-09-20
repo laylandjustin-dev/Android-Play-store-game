@@ -489,6 +489,109 @@ forty. Two details: the founding stores are `set` rather than `add`ed so the led
 1,870 food as a first-morning harvest, and spoilage is booked separately from consumption because
 nobody got the good of it.
 
+**AD-75 — A 400x400 map makes civilisations rich, and rich civilisations do not fight. Three
+hypotheses, two of them wrong.** M5's gate — `civs trade, raid and go to war over a long run` —
+failed after the resize, and the first two explanations were plausible and false:
+
+1. *"Neighbours are too far apart to reach."* No: armies had `RAID_MAX_DAYS` 300 to cross 110 cells.
+2. *"Their territories never touch, so border friction never fires."* Partly. Separation sized from
+   town growth rather than map proportion (110 to 70, about twice `BASE_SITE_DISTANCE`) cleared 26 of
+   27 failures — but instrumentation showed borders already touching by year 60 even at 110.
+3. **The actual cause.** Tension was pinned at its **maximum of 1.000** against a raid threshold of
+   0.45 and wars still did not happen, so tension was never the gate. Aggression is weighted heavily
+   on hunger (AD-35), and a civ on this map has nearly ten times the land it had at 128x128. Everyone
+   is fed, and a fed civ does not attack. On seed 1 two rivals collapsed early and the three
+   survivors grew to 8,714 / 14,387 / 10,137 owned cells with nothing to fight over: one raid, no
+   wars in 120 years. Seed 1000, same build, produced 14 raids and 18 wars.
+
+| seed, year 120 | closest borders | peak tension | raids | wars | trades |
+|---|---|---|---|---|---|
+| 1 | 1 cell | 1.000 | 1 | 0 | 2,096 |
+| 1000 | 1 cell | 1.000 | 14 | 18 | 2,500 |
+
+The ladder is intact; its *frequency* has fallen. The gate now measures it across three maps, which
+is what it claims about the game rather than about one island, with these numbers written into the
+test so the balance decision is informed rather than hidden. **The decision is deliberately not
+taken:** the two levers are more civilisations on the larger island (the brief fixes four rivals, so
+that is a design change) or a heavier personality term in aggression so militant peoples attack while
+comfortable. Neither is touched.
+
+*The general lesson, which cost three rounds to learn: a distance constant that governs a mechanic
+has to be sized in the units of that mechanic, not as a fraction of the map. Scaling 34 to 110
+preserved the island's geometry perfectly and broke the game.*
+
+**Every balance table above is now provisional.** The M3-M7 measurements were taken at 128x128,
+before real footprints and before the trait lean, and they describe a game that no longer exists.
+`:sim:balance` is what would make them true again.
+
+**AD-70 — The map is 400x400, and the decision was made by measurement rather than by taste.**
+160,000 cells against 16,384 is a 9.8x increase on the hottest loop in the game: land regeneration
+sweeps every cell every tick (AD-45), against a 12ms browser frame budget (AD-46). Measured before
+committing to it:
+
+| | 128x128 | 400x400 |
+|---|---|---|
+| browser tick | 1.4ms | **1.5ms** |
+| JVM tick | ~0.06ms | 0.45ms |
+| paint a frame | — | 0.95ms |
+| world generation | — | 380ms (JVM), one-off |
+
+It is survivable because most cells sit at their fertility cap within a few ticks, so both branches
+of the sweep short-circuit to two reads and two compares. 10x speed is comfortable; 100x was never
+reachable and still is not (AD-20).
+
+**The local radii were deliberately not scaled.** `WORK_SEARCH_RADIUS`, `SETTLEMENT_SPAWN_RADIUS`
+and `CIV_START_SCORE_RADIUS` are distances a citizen walks at 1.5-2 cells a day, and AD-53 measured
+movement — not work rate — as the thing that decides whether a people is viable at all. Tripling them
+would have been a balance change wearing a map change's clothes. What did scale is the distance
+between civilisations (34 to 110, the same proportion of the island) and `RAID_MAX_DAYS` (120 to
+300), because at the old figure a raid expired before it arrived and the escalation ladder lost its
+first rung silently.
+
+**The cost, stated plainly:** neighbours are now three times further away *in walking time*, so
+rivals interact less. Measured over 150 years on three seeds, sharing the map still costs the player
+(8,783 people crowded against 11,855 alone), but whether a given island sees a war has become map
+luck — seed 1 spent 150 years trading, with 993 trades and not one combat death, where seeds 1000
+and 8919 produced 404 and 14. `a colony fares worse with rivals on the map` now measures fighting
+across three maps rather than asserting it on one, which is the same correction that test had
+already made once for population.
+
+**AD-71 — Buildings have real footprints, and the siting constants had to move with them.** Walls
+are 1 cell, watchtowers 2, houses and huts 3, farms, barracks and workshops 5-6, and the civic
+buildings 6. The siting code was already footprint-generic, but two constants were sized for 2x2
+sheds: `MAX_DISTANCE_FROM_OWN_BUILDING` was 9 when two adjacent six-cell buildings are already 7
+apart before any gap, and `BASE_SITE_DISTANCE` was 14, which a town of real buildings fills after a
+dozen structures and then stops building at all. They are 22 and 34 now, with the cap at 150.
+`GameConfigTest` asserts the documented sizes directly, because a footprint is visible on screen and
+a wrong one is a design error rather than a balance one.
+
+**AD-72 — A people's traits decide what their town builds, until survival says otherwise.** The
+building layer answered to the Premier's platform and the town's felt needs, and the *trait sheet* —
+the one thing the player actually chose — said nothing about it: a Hunting people built libraries as
+readily as a scholarly one. `CouncilSystem.traitLeanOf` maps each trait to the category it makes the
+town good at, weighted by how far above base it stands, and `chooseCategory` blends it in at
+`TRAIT_LEAN_WEIGHT`. The half that makes it safe is `distressOf`: the lean is scaled to zero as a
+civ's food stocks or survival scores fall, so every civilisation — the player's included — tries to
+stay alive before it tries to be itself. An ideologue building temples through a famine is a story
+the Premier's *temperament* already tells (AD-33); a whole people doing it is just a broken game.
+
+**AD-73 — Elections every four years, and endorsing is the decision.** Annual was too often once the
+election stopped the clock (AD-65): a pause every year is an interruption rather than an event, and a
+Premier barely outlived their own building order. The term is measured against the elapsed day count
+rather than the year, so it survives a save, an offline catch-up and an early election. Endorsing now
+closes the modal — the first version kept it open on the theory that a player might endorse and keep
+reading, which in practice meant a second click to dismiss a dialog you were finished with. Skipping
+stays free. Six test files carried the annual assumption and now read from `TERM_YEARS`.
+
+**AD-74 — Unit kinds are derived from buildings, not assigned as jobs.** A town does not choose
+between archers and cavalry; it builds an armoury and its soldiers become better armed. Keeping
+`UnitKind` a *derivation* leaves the weekly job assignment a food-and-materials decision (AD-25) and
+makes military variety a consequence of the building layer, which is where a Premier's agenda already
+lives. The shares are fixed rather than rolled, so the same buildings always field the same army and
+none of it touches the RNG stream. `JobGroup` does the same job for the civilian side: five columns a
+player can take in at a glance, because "1,240 people" is a number you can read and not one you can
+act on.
+
 **AD-16 — Map previews are exported as PNGs from the test source set.** `MapPreviewExporter`
 writes `sim/build/preview/map-seed-*.png` on every test run using `javax.imageio`, which lets the
 renderer be inspected without a device. It is test-only on purpose: `java.awt` does not exist on

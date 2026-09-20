@@ -189,9 +189,15 @@ class ElectionPauseTest {
     private fun newRun() =
         Simulation.newRun(RunConfig(seed = 1_000L, traits = TraitAllocation.of(3, 4, 3, 4, 8)))
 
-    /** Runs to the first campaign, answering the other two pauses on the way. */
+    /**
+     * Runs to the first campaign, answering the other two pauses on the way.
+     *
+     * The window is two terms, not a fixed number of years: the town votes every
+     * [PoliticsConfig.TERM_YEARS] years, so a three-year search found no election at all once the
+     * term stopped being annual.
+     */
     private fun runToCampaign(sim: Simulation): Boolean {
-        repeat(3 * Time.DAYS_PER_YEAR) {
+        repeat(2 * PoliticsConfig.TERM_YEARS * Time.DAYS_PER_YEAR) {
             if (sim.endState != null) return false
             if (sim.electionPending) return true
             val player = WorldConfig.PLAYER_CIV_ID

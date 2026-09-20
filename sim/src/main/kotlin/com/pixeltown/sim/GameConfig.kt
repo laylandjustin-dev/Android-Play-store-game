@@ -260,8 +260,8 @@ object GameConfig {
     // ---------------------------------------------------------------- world
 
     object World {
-        const val WIDTH = 128
-        const val HEIGHT = 128
+        const val WIDTH = 400
+        const val HEIGHT = 400
 
         const val STARTING_SETTLERS = 55
 
@@ -351,7 +351,24 @@ object GameConfig {
         const val ISLAND_FALLOFF_POWER = 2.2
 
         /** Minimum distance in cells between civ starting sites. */
-        const val MIN_CIV_START_SEPARATION = 34
+        /**
+         * How far apart five civilisations are planted, in cells.
+         *
+         * Chosen from how far a town *grows*, not from the proportion of the map it sits on — and
+         * that distinction is the whole lesson of the 400x400 resize. Scaling 34 to 110 preserved
+         * the geometry of the old island perfectly and broke M5: border friction (the first rung of
+         * the escalation ladder, AD-34) requires two civs' owned cells within
+         * [Rivals.BORDER_FRICTION_RADIUS] of each other, and at 110 apart their territories never
+         * touched at all. Tension could then only ever *ease*, through trade, so 120-year runs
+         * contained no raid, no war and not one combat death — exactly the silent, eventless peace
+         * AD-33 and AD-34 were each written to fix.
+         *
+         * At roughly twice [Buildings.BASE_SITE_DISTANCE] a colony is unmistakably its own place on
+         * day one, and ordinary growth brings its borders into contact with a neighbour's inside a
+         * normal run. The generator relaxes the figure in steps when an island cannot fit five sites,
+         * so it costs nothing on a cramped map.
+         */
+        const val MIN_CIV_START_SEPARATION = 70
 
         /** Radius of the fertility/game window used to score candidate starting sites. */
         const val CIV_START_SCORE_RADIUS = 6
@@ -842,9 +859,17 @@ object GameConfig {
          * the town: at a fixed 18 cells a colony ran out of room at 63 buildings and then never
          * built again, while its population grew past 1,300 with nowhere to live.
          */
-        const val BASE_SITE_DISTANCE = 14
-        const val SITE_DISTANCE_PER_CITIZEN = 0.035
-        const val MAX_SITE_DISTANCE = 46
+        /**
+         * How far from its village a civ will build, as a floor, a per-citizen growth, and a cap.
+         *
+         * All three grew with the 400x400 map and the real footprints. A town whose granary is six
+         * cells across and whose town hall is ten cannot be packed inside fourteen cells the way a
+         * town of 2x2 sheds could: at the old distances a colony ran out of room after a dozen
+         * buildings and then silently stopped building anything at all.
+         */
+        const val BASE_SITE_DISTANCE = 34
+        const val SITE_DISTANCE_PER_CITIZEN = 0.09
+        const val MAX_SITE_DISTANCE = 150
 
         /** Minimum gap between buildings, so towns do not become solid blocks. */
         const val SITE_SPACING = 1
@@ -862,49 +887,55 @@ object GameConfig {
          * The first building is exempt, because there is nothing yet to be near: it anchors on the
          * village itself.
          */
-        const val MAX_DISTANCE_FROM_OWN_BUILDING = 9
+        /**
+         * How far a new building may stand from the nearest one the civ already owns, measured
+         * origin to origin — which is why it has to clear the footprints themselves. Two adjacent
+         * six-cell buildings are already 7 apart before any gap, so the old 9 left almost no room
+         * and a town could not grow outward without failing this test.
+         */
+        const val MAX_DISTANCE_FROM_OWN_BUILDING = 22
 
         val CATALOGUE: List<BuildingSpec> = listOf(
             // ---- Farms: storage, yield, and turning surplus into money ----
             BuildingSpec(
-                BuildingType.FIELD, BuildingCategory.FARMS, tier = 0, footprint = 2,
+                BuildingType.FIELD, BuildingCategory.FARMS, tier = 0, footprint = 6,
                 buildPointsRequired = 60.0, woodCost = 20.0, stoneCost = 0.0, upkeepWealth = 0.02,
                 farmYieldBonus = 0.06, range = 10,
             ),
             BuildingSpec(
-                BuildingType.GRANARY, BuildingCategory.FARMS, tier = 1, footprint = 2,
+                BuildingType.GRANARY, BuildingCategory.FARMS, tier = 1, footprint = 5,
                 buildPointsRequired = 140.0, woodCost = 60.0, stoneCost = 20.0, upkeepWealth = 0.05,
                 foodStorageBonus = 600.0,
             ),
             BuildingSpec(
-                BuildingType.IRRIGATION, BuildingCategory.FARMS, tier = 2, footprint = 2,
+                BuildingType.IRRIGATION, BuildingCategory.FARMS, tier = 2, footprint = 5,
                 buildPointsRequired = 220.0, woodCost = 70.0, stoneCost = 60.0, upkeepWealth = 0.08,
                 farmYieldBonus = 0.10, seasonFloor = 0.55, range = 12,
             ),
             BuildingSpec(
-                BuildingType.MILL, BuildingCategory.FARMS, tier = 3, footprint = 2,
+                BuildingType.MILL, BuildingCategory.FARMS, tier = 3, footprint = 5,
                 buildPointsRequired = 320.0, woodCost = 120.0, stoneCost = 80.0, upkeepWealth = 0.12,
                 foodToWealth = 0.08, foodStorageBonus = 200.0,
             ),
 
             // ---- Health: care access, disease, and infant survival ----
             BuildingSpec(
-                BuildingType.HUT, BuildingCategory.HEALTH, tier = 0, footprint = 2,
+                BuildingType.HUT, BuildingCategory.HEALTH, tier = 0, footprint = 3,
                 buildPointsRequired = 70.0, woodCost = 25.0, stoneCost = 0.0, upkeepWealth = 0.02,
                 careCapacity = 14.0, range = 14,
             ),
             BuildingSpec(
-                BuildingType.CLINIC, BuildingCategory.HEALTH, tier = 1, footprint = 2,
+                BuildingType.CLINIC, BuildingCategory.HEALTH, tier = 1, footprint = 3,
                 buildPointsRequired = 170.0, woodCost = 60.0, stoneCost = 30.0, upkeepWealth = 0.06,
                 careCapacity = 45.0, diseaseResistBonus = 0.05, range = 18,
             ),
             BuildingSpec(
-                BuildingType.AQUEDUCT, BuildingCategory.HEALTH, tier = 2, footprint = 2,
+                BuildingType.AQUEDUCT, BuildingCategory.HEALTH, tier = 2, footprint = 3,
                 buildPointsRequired = 260.0, woodCost = 40.0, stoneCost = 140.0, upkeepWealth = 0.09,
                 careCapacity = 30.0, diseaseResistBonus = 0.12, range = 22,
             ),
             BuildingSpec(
-                BuildingType.HOSPITAL, BuildingCategory.HEALTH, tier = 3, footprint = 3,
+                BuildingType.HOSPITAL, BuildingCategory.HEALTH, tier = 3, footprint = 6,
                 buildPointsRequired = 420.0, woodCost = 150.0, stoneCost = 120.0, upkeepWealth = 0.16,
                 careCapacity = 120.0, diseaseResistBonus = 0.10, range = 24,
             ),
@@ -916,61 +947,61 @@ object GameConfig {
                 militaryStrength = 6.0, safetyBonus = 0.08, range = 20,
             ),
             BuildingSpec(
-                BuildingType.BARRACKS, BuildingCategory.MILITARY, tier = 1, footprint = 2,
+                BuildingType.BARRACKS, BuildingCategory.MILITARY, tier = 1, footprint = 6,
                 buildPointsRequired = 190.0, woodCost = 70.0, stoneCost = 40.0, upkeepWealth = 0.08,
                 militaryStrength = 28.0, safetyBonus = 0.10,
             ),
             BuildingSpec(
-                BuildingType.WALL, BuildingCategory.MILITARY, tier = 2, footprint = 2,
+                BuildingType.WALL, BuildingCategory.MILITARY, tier = 2, footprint = 1,
                 buildPointsRequired = 300.0, woodCost = 30.0, stoneCost = 190.0, upkeepWealth = 0.06,
                 militaryStrength = 14.0, safetyBonus = 0.22,
             ),
             BuildingSpec(
-                BuildingType.ARMOURY, BuildingCategory.MILITARY, tier = 3, footprint = 2,
+                BuildingType.ARMOURY, BuildingCategory.MILITARY, tier = 3, footprint = 5,
                 buildPointsRequired = 380.0, woodCost = 110.0, stoneCost = 130.0, upkeepWealth = 0.14,
                 militaryStrength = 60.0, safetyBonus = 0.10,
             ),
 
             // ---- Tech: knowledge rate, build speed, and the tier ladder ----
             BuildingSpec(
-                BuildingType.WORKSHOP, BuildingCategory.TECH, tier = 0, footprint = 2,
+                BuildingType.WORKSHOP, BuildingCategory.TECH, tier = 0, footprint = 5,
                 buildPointsRequired = 90.0, woodCost = 35.0, stoneCost = 15.0, upkeepWealth = 0.04,
                 buildSpeedBonus = 0.12, knowledgeMultiplier = 0.10,
             ),
             BuildingSpec(
-                BuildingType.LIBRARY, BuildingCategory.TECH, tier = 1, footprint = 2,
+                BuildingType.LIBRARY, BuildingCategory.TECH, tier = 1, footprint = 5,
                 buildPointsRequired = 200.0, woodCost = 80.0, stoneCost = 40.0, upkeepWealth = 0.09,
                 knowledgeMultiplier = 0.45,
             ),
             BuildingSpec(
-                BuildingType.ACADEMY, BuildingCategory.TECH, tier = 2, footprint = 3,
+                BuildingType.ACADEMY, BuildingCategory.TECH, tier = 2, footprint = 6,
                 buildPointsRequired = 340.0, woodCost = 130.0, stoneCost = 90.0, upkeepWealth = 0.15,
                 knowledgeMultiplier = 0.80, buildSpeedBonus = 0.10,
             ),
             BuildingSpec(
-                BuildingType.OBSERVATORY, BuildingCategory.TECH, tier = 4, footprint = 3,
+                BuildingType.OBSERVATORY, BuildingCategory.TECH, tier = 4, footprint = 6,
                 buildPointsRequired = 520.0, woodCost = 160.0, stoneCost = 180.0, upkeepWealth = 0.22,
                 knowledgeMultiplier = 1.40,
             ),
 
             // ---- Lifestyle: housing, morale, influence ----
             BuildingSpec(
-                BuildingType.HOUSING, BuildingCategory.LIFESTYLE, tier = 0, footprint = 2,
+                BuildingType.HOUSING, BuildingCategory.LIFESTYLE, tier = 0, footprint = 3,
                 buildPointsRequired = 75.0, woodCost = 30.0, stoneCost = 5.0, upkeepWealth = 0.02,
                 housingCapacity = 8, moraleBonus = 0.02, range = 12,
             ),
             BuildingSpec(
-                BuildingType.PLAZA, BuildingCategory.LIFESTYLE, tier = 1, footprint = 3,
+                BuildingType.PLAZA, BuildingCategory.LIFESTYLE, tier = 1, footprint = 6,
                 buildPointsRequired = 160.0, woodCost = 40.0, stoneCost = 70.0, upkeepWealth = 0.05,
                 moraleBonus = 0.10, influenceBonus = 0.04, range = 16,
             ),
             BuildingSpec(
-                BuildingType.TEMPLE, BuildingCategory.LIFESTYLE, tier = 2, footprint = 2,
+                BuildingType.TEMPLE, BuildingCategory.LIFESTYLE, tier = 2, footprint = 5,
                 buildPointsRequired = 280.0, woodCost = 90.0, stoneCost = 110.0, upkeepWealth = 0.10,
                 moraleBonus = 0.14, influenceBonus = 0.05, range = 18,
             ),
             BuildingSpec(
-                BuildingType.THEATRE, BuildingCategory.LIFESTYLE, tier = 3, footprint = 3,
+                BuildingType.THEATRE, BuildingCategory.LIFESTYLE, tier = 3, footprint = 6,
                 buildPointsRequired = 400.0, woodCost = 150.0, stoneCost = 90.0, upkeepWealth = 0.18,
                 moraleBonus = 0.20, influenceBonus = 0.06, range = 20,
             ),
@@ -1007,6 +1038,16 @@ object GameConfig {
 
         /** Candidates are announced this many days before the vote, so the player can campaign. */
         const val CAMPAIGN_DAYS = 30
+
+        /**
+         * Years a Premier holds office before the town votes again.
+         *
+         * Annual was too often once the election stopped the clock (AD-65): a pause every single
+         * year is an interruption rather than an event, and it made the office itself cheap — a
+         * Premier barely outlived their own building order. Four years gives a term long enough to
+         * have a record worth judging, and turns the vote into something a player looks forward to.
+         */
+        const val TERM_YEARS = 4
         const val VOTING_AGE_YEARS = 16
         /** Days between the Premier's decision points — once a season. */
         const val DAYS_PER_DECISION = Time.DAYS_PER_SEASON
@@ -1080,6 +1121,27 @@ object GameConfig {
         const val COST_PETITION = 35
         const val COST_VETO = 45
         const val COST_REFERENDUM = 120
+
+        /**
+         * The two things a player may do to a neighbour directly, priced in influence.
+         *
+         * Everything else the player does is a nudge to their own town; these reach across the map,
+         * so they are the most expensive levers on the board. Offering a trade is cheap because the
+         * neighbour still has to want it — it opens a negotiation, it does not command one. Forcing
+         * a war is the single most consequential button in the game and is priced to match: a player
+         * should have to save for it, and should not be able to do it twice in a season.
+         */
+        /**
+         * How much of a build decision a people's own traits account for, when the town is
+         * comfortable. Scaled to zero as distress rises, so survival always wins in the end.
+         *
+         * At 0.35 a committed people's character is plainly visible in what they build over a
+         * century without the Premier's platform or the town's needs becoming decoration.
+         */
+        const val TRAIT_LEAN_WEIGHT = 0.35
+
+        const val COST_OFFER_TRADE = 25
+        const val COST_FORCE_WAR = 180
         const val ENDORSE_VOTE_WEIGHT_BONUS = 0.25
         const val VETOES_PER_YEAR = 1
 
@@ -1114,7 +1176,7 @@ object GameConfig {
         const val MIN_VIABLE_FARMING = 4
 
         /** Full per-citizen detail within this radius of player-visible area; aggregated beyond. */
-        const val DETAIL_RADIUS_CELLS = 24
+        const val DETAIL_RADIUS_CELLS = 75
 
         // aggression = 0.5*militaryShare + 0.3*(1 - foodSecurity) + 0.2*personalityBias
         /**
@@ -1209,7 +1271,15 @@ object GameConfig {
         const val ENGAGEMENT_RANGE = 3
 
         /** A raiding party gives up and goes home after this long. */
-        const val RAID_MAX_DAYS = 120
+        /**
+         * How long a raiding party stays out before it turns for home.
+         *
+         * A march is three times longer on the 400x400 map, and at 1.5-2 cells a day crossing 110
+         * cells to a neighbour is most of a season each way. At the old 120 days a raid expired
+         * before it arrived, so raids simply stopped happening — the escalation ladder (AD-34) lost
+         * its first rung silently.
+         */
+        const val RAID_MAX_DAYS = 300
 
         /**
          * War weariness: tension falls by this each day a war runs, so wars end. Slow enough that
@@ -1226,6 +1296,17 @@ object GameConfig {
 
         /** Below this share of its starting strength, an army breaks off and goes home. */
         const val ARMY_BROKEN_AT = 0.35
+
+        /**
+         * What share of a civ's soldiers its buildings can equip as the better unit kinds.
+         *
+         * Derived from buildings rather than chosen per soldier (see [UnitKind]), and fixed rather
+         * than rolled, so the same town always fields the same army and none of this touches the RNG
+         * stream. The remainder are infantry where there is a barracks and militia where there is
+         * not, which is what makes the first barracks visible in the army as well as on the map.
+         */
+        const val SHARE_MEN_AT_ARMS = 0.30
+        const val SHARE_ARCHERS = 0.25
 
         /** Minimum soldiers before a civ will start anything. */
         const val MIN_PARTY_SIZE = 3

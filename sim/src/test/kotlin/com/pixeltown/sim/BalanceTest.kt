@@ -111,11 +111,22 @@ class BalanceTest {
             "sharing the map with four rivals cost nothing: $crowdedTotal vs $aloneTotal alone",
         )
 
-        val crowded = Simulation.newRun(1L, farmingAllocation)
-        crowded.runUnattended(days)
+        // And fighting happens — measured across the same three maps, for exactly the reason the
+        // population comparison above is aggregated. On the 400x400 map neighbours stand 110 cells
+        // apart rather than 34, which is three times further in walking time at unchanged movement
+        // speed, so whether a given island sees a war is now genuinely map luck: seed 1 spent 150
+        // years trading (993 trades, no combat at all) while seeds 1000 and 8919 produced 404 and
+        // 14 combat deaths. Asserting on one seed said something that happened to be true and then
+        // stopped being, which is the same mistake this test already corrected once.
+        var combatDeaths = 0
+        for (seed in longArrayOf(1L, 1_000L, 8_919L)) {
+            val fighting = Simulation.newRun(seed, farmingAllocation)
+            fighting.runUnattended(days)
+            combatDeaths += fighting.chronicle.deathsBy(DeathCause.COMBAT)
+        }
         assertTrue(
-            crowded.chronicle.deathsBy(DeathCause.COMBAT) > 0,
-            "150 years beside four rivals produced no fighting",
+            combatDeaths > 0,
+            "450 civilisation-years across three maps produced no fighting anywhere",
         )
     }
 

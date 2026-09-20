@@ -5,6 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import com.pixeltown.sim.GameConfig.Time
+import com.pixeltown.sim.GameConfig.Politics as PoliticsConfig
 import com.pixeltown.sim.GameConfig.Traits as TraitConfig
 import com.pixeltown.sim.GameConfig.World as WorldConfig
 
@@ -141,7 +142,7 @@ class CharterTest {
     @Test
     fun `a charter costs influence and shows up on the sitting Premier`() {
         val sim = withInfluence(newRun())
-        sim.runUnattended(2 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(PoliticsConfig.TERM_YEARS * Time.DAYS_PER_YEAR + 1)
 
         val before = sim.premierOf(0)?.agenda?.get(BuildingCategory.TECH) ?: return
         val influenceBefore = sim.civ(0).influencePoints
@@ -158,7 +159,7 @@ class CharterTest {
     @Test
     fun `it outlives the Premier who was in office`() {
         val sim = withInfluence(newRun())
-        sim.runUnattended(2 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(PoliticsConfig.TERM_YEARS * Time.DAYS_PER_YEAR + 1)
         assertTrue(sim.setCharter(0, BuildingCategory.TECH))
 
         // Run until the office actually changes hands, rather than assuming a fixed number of
@@ -186,7 +187,7 @@ class CharterTest {
     @Test
     fun `changing it does not compound`() {
         val sim = withInfluence(newRun())
-        sim.runUnattended(2 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(PoliticsConfig.TERM_YEARS * Time.DAYS_PER_YEAR + 1)
         if (sim.premierOf(0) == null) return
 
         assertTrue(sim.setCharter(0, BuildingCategory.TECH))
@@ -201,7 +202,7 @@ class CharterTest {
     @Test
     fun `it can be revoked, and revoking is free`() {
         val sim = withInfluence(newRun())
-        sim.runUnattended(2 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(PoliticsConfig.TERM_YEARS * Time.DAYS_PER_YEAR + 1)
         assertTrue(sim.setCharter(0, BuildingCategory.MILITARY))
 
         val influence = sim.civ(0).influencePoints
@@ -213,7 +214,7 @@ class CharterTest {
     @Test
     fun `setting the charter it already has is refused`() {
         val sim = withInfluence(newRun())
-        sim.runUnattended(2 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(PoliticsConfig.TERM_YEARS * Time.DAYS_PER_YEAR + 1)
         assertTrue(sim.setCharter(0, BuildingCategory.FARMS))
         assertFalse(sim.setCharter(0, BuildingCategory.FARMS), "paid twice for the same charter")
     }
@@ -221,7 +222,7 @@ class CharterTest {
     @Test
     fun `a charter survives a save`() {
         val sim = withInfluence(newRun())
-        sim.runUnattended(2 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(PoliticsConfig.TERM_YEARS * Time.DAYS_PER_YEAR + 1)
         assertTrue(sim.setCharter(0, BuildingCategory.LIFESTYLE))
 
         val reloaded = Simulation.restore(SaveFormat.decode(SaveFormat.encode(sim.snapshot())))
@@ -232,7 +233,7 @@ class CharterTest {
     @Test
     fun `every category can be petitioned, not just two of them`() {
         val sim = withInfluence(newRun())
-        sim.runUnattended(2 * Time.DAYS_PER_YEAR)
+        sim.runUnattended(PoliticsConfig.TERM_YEARS * Time.DAYS_PER_YEAR + 1)
         if (sim.premierOf(0) == null) return
         for (category in BuildingCategory.entries) {
             assertTrue(sim.petition(0, category, 0.35), "$category could not be petitioned")

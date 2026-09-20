@@ -373,15 +373,20 @@ class Simulation(
     // ------------------------------------------------------------------ the council
 
     /**
-     * The political year: candidates are announced, the vote is held, and the Premier acts once
-     * per season. Between those moments this does nothing at all.
+     * The political cycle: candidates are announced, the vote is held every
+     * [Politics.TERM_YEARS] years, and the Premier acts once per season. Between those moments this
+     * does nothing at all.
+     *
+     * The term is measured against the whole elapsed day count rather than the year, so a four-year
+     * cycle stays on the same footing after a save, an offline catch-up, or an early election.
      */
     private fun runCouncil() {
-        val dayOfYear = (day % Time.DAYS_PER_YEAR).toInt()
+        val term = Politics.TERM_YEARS * Time.DAYS_PER_YEAR
+        val dayOfTerm = (day % term).toInt()
 
-        if (dayOfYear == Time.DAYS_PER_YEAR - Politics.CAMPAIGN_DAYS) openCampaigns()
-        if (dayOfYear == 0 && day > 0) holdElections()
-        if (dayOfYear % Politics.DAYS_PER_DECISION == 0 && day > 0) premierDecisions()
+        if (dayOfTerm == term - Politics.CAMPAIGN_DAYS) openCampaigns()
+        if (dayOfTerm == 0 && day > 0) holdElections()
+        if (day % Politics.DAYS_PER_DECISION == 0L && day > 0) premierDecisions()
     }
 
     /**
@@ -527,8 +532,8 @@ class Simulation(
     /**
      * Dismisses the election pause. Returns false when nothing was waiting.
      *
-     * Endorsing a candidate does *not* imply this: a player may endorse and then keep reading, so
-     * the world restarts when they say so and not a moment earlier.
+     * Called both when the player endorses somebody — endorsing *is* the decision, so the dialog
+     * closes with it — and when they choose to stay out of it. Skipping stays free.
      */
     fun acknowledgeElection(): Boolean {
         if (!electionPending) return false
@@ -647,7 +652,13 @@ class Simulation(
     /** Chooses what to build and where, and lays the foundation. Construction happens over time. */
     private fun placeBuildOrder(civ: Civilization, premier: Premier, members: List<Citizen>) {
         val need = townNeeds(civ, members)
-        val category = CouncilSystem.chooseCategory(premier, need, rng)
+        val category = CouncilSystem.chooseCategory(
+            premier,
+            need,
+            rng,
+            traitLean = CouncilSystem.traitLeanOf(civ.traits),
+            distress = distressOf(civ, members),
+        )
         val options = GameConfig.Buildings.available(category, civ.techTier)
         if (options.isEmpty()) return
 
@@ -681,6 +692,25 @@ class Simulation(
     }
 
     /** How badly the town wants each category right now — the average of its citizens' needs. */
+    /**
+     * How much trouble a civ is in, 0 (thriving) to 1 (desperate).
+     *
+     * Two things, because they are the two ways a town dies: it cannot feed itself, or its people
+     * are failing. Both are already computed every tick for other purposes, so this costs a walk of
+     * the civ's own members and nothing more.
+     *
+     * Used to squeeze a people's trait lean out of their building decisions as things get worse —
+     * every civilisation, the player's included, tries to stay alive before it tries to be itself.
+     */
+    private fun distressOf(civ: Civilization, members: List<Citizen>): Double {
+        if (members.isEmpty()) return 1.0
+        val daysOfFood = civ[Resource.FOOD] / (members.size * Economy.FOOD_PER_ADULT_PER_DAY)
+        val hunger = (1.0 - daysOfFood / Economy.FOOD_COMFORTABLE_DAYS_OF_STOCK).coerceIn(0.0, 1.0)
+        val survival = members.sumOf { it.survival.toDouble() } / members.size
+        val failing = (1.0 - survival / SurvivalConfig.MAX).coerceIn(0.0, 1.0)
+        return max(hunger, failing)
+    }
+
     private fun townNeeds(civ: Civilization, members: List<Citizen>): Map<BuildingCategory, Double> {
         if (members.isEmpty()) return BuildingCategory.entries.associateWith { 0.0 }
         val totals = DoubleArray(BuildingCategory.entries.size)
@@ -1071,6 +1101,54 @@ class Simulation(
         )
     }
 
+    /**
+     * The player offers a neighbour a trade, out of season.
+     *
+     * Trade already happened on its own schedule between every pair that was not hostile, which made
+     * it something the player watched rather than used. This is the same [attemptTrade] the rivals
+     * run — deliberately, so a player-driven trade cannot be a better deal than a rival's — and it
+     * can fail for all the same reasons: no surplus to sell, no coin to pay, or a neighbour angry
+     * enough that nobody is trading with anybody. Influence is only spent when it actually happens,
+     * because paying for a refusal would make the button a gamble rather than a lever.
+     */
+    fun offerTrade(civId: Int, otherCivId: Int): Boolean {
+        if (civId == otherCivId) return false
+        val us = civ(civId)
+        val them = civ(otherCivId)
+        if (us.isExtinct || them.isExtinct) return false
+        if (us.influencePoints < Politics.COST_OFFER_TRADE) return false
+
+        val tradesBefore = relations.tradeCount(civId, otherCivId)
+        // Try both directions: whoever has the surplus sells it.
+        attemptTrade(us, them)
+        if (relations.tradeCount(civId, otherCivId) == tradesBefore) attemptTrade(them, us)
+        if (relations.tradeCount(civId, otherCivId) == tradesBefore) return false
+
+        return spendInfluence(civId, Politics.COST_OFFER_TRADE)
+    }
+
+    /**
+     * The player forces a war their town did not ask for.
+     *
+     * The most consequential button in the game, and the one thing here that overrides the
+     * simulation's own judgement rather than nudging it: aggression, posture and the truce all
+     * decide wars on their own (AD-35), and this declares one regardless. It is priced accordingly
+     * and refuses in exactly one case — a war already under way — because declaring a war twice is
+     * meaningless rather than expensive.
+     */
+    fun forceWar(civId: Int, otherCivId: Int): Boolean {
+        if (civId == otherCivId) return false
+        val us = civ(civId)
+        val them = civ(otherCivId)
+        if (us.isExtinct || them.isExtinct) return false
+        if (relations.atWar(civId, otherCivId)) return false
+        if (!spendInfluence(civId, Politics.COST_FORCE_WAR)) return false
+
+        relations.raise(civId, otherCivId, RivalConfig.TENSION_MAX)
+        declareWar(us, them)
+        return true
+    }
+
     /** Pay up or take the tension. A civ submits when it is clearly the weaker party. */
     private fun demandTribute(demander: Civilization, target: Civilization) {
         if (strength[demander.id] <= 0.0) return
@@ -1361,6 +1439,82 @@ class Simulation(
             }
         }
         armies.removeAll { it.members.isEmpty() }
+    }
+
+    /**
+     * How many soldiers of each kind a civ fields, derived from what it has built.
+     *
+     * A soldier is one kind only — the best their town can equip them with — so the counts sum to
+     * the soldier count and the breakdown is a partition rather than a tally of overlapping
+     * qualities. The shares are fixed rather than rolled per citizen, so the same buildings always
+     * produce the same army and nothing here touches the RNG stream.
+     */
+    fun unitBreakdown(civId: Int): Map<UnitKind, Int> {
+        val soldiers = membersOf(civId).count { it.job == Job.SOLDIER }
+        if (soldiers == 0) return emptyMap()
+
+        val built = buildingsOf(civId).filter { it.isComplete }.map { it.type }.toSet()
+        val hasBarracks = BuildingType.BARRACKS in built
+        val hasTower = BuildingType.WATCHTOWER in built
+        val hasArmoury = BuildingType.ARMOURY in built
+
+        // Best equipment first, and each tier takes a share of what is left.
+        val result = LinkedHashMap<UnitKind, Int>()
+        var left = soldiers
+        if (hasArmoury) {
+            val n = (soldiers * RivalConfig.SHARE_MEN_AT_ARMS).toInt().coerceAtMost(left)
+            if (n > 0) { result[UnitKind.MEN_AT_ARMS] = n; left -= n }
+        }
+        if (hasTower) {
+            val n = (soldiers * RivalConfig.SHARE_ARCHERS).toInt().coerceAtMost(left)
+            if (n > 0) { result[UnitKind.ARCHERS] = n; left -= n }
+        }
+        if (hasBarracks && left > 0) {
+            result[UnitKind.INFANTRY] = left
+            left = 0
+        }
+        if (left > 0) result[UnitKind.MILITIA] = left
+        return result
+    }
+
+    /** How a civ's people are employed, grouped for the HUD. */
+    fun jobBreakdown(civId: Int): Map<JobGroup, Int> {
+        val counts = LinkedHashMap<JobGroup, Int>()
+        for (group in JobGroup.entries) counts[group] = 0
+        for (citizen in membersOf(civId)) {
+            val group = JobGroup.of(citizen.job)
+            counts[group] = (counts[group] ?: 0) + 1
+        }
+        return counts
+    }
+
+    /**
+     * Every pair's standing, for the relations screen: tension, posture, trade and war.
+     *
+     * The whole matrix rather than only the player's row, because the interesting thing about a
+     * five-civ map is that the others have opinions about each other — a player watching two rivals
+     * go to war is watching an opportunity.
+     */
+    fun relationReports(): List<RelationReport> {
+        val out = ArrayList<RelationReport>()
+        for (a in civs.indices) {
+            for (b in a + 1 until civs.size) {
+                out.add(
+                    RelationReport(
+                        civA = a,
+                        civB = b,
+                        nameA = civs[a].name,
+                        nameB = civs[b].name,
+                        tension = relations.tensionBetween(a, b),
+                        atWar = relations.atWar(a, b),
+                        trades = relations.tradeCount(a, b),
+                        inTruce = relations.inTruce(a, b, day),
+                        bothAlive = !civs[a].isExtinct && !civs[b].isExtinct,
+                    ),
+                )
+            }
+        }
+        return out
     }
 
     /** What the player knows about each rival, for the Rivals screen. */

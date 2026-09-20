@@ -357,6 +357,28 @@
 
   .opt .b.gold { color: var(--gold); }
 
+  /* Relations, and the people breakdown. */
+  .sub-h { margin: 4px 0 2px; font: 10px/1 Silkscreen, monospace; letter-spacing: 0.10em;
+           text-transform: uppercase; color: var(--mute); }
+  .rel { display: grid; grid-template-columns: 1fr 74px 60px 62px; gap: 9px; align-items: center;
+         font-size: 11px; padding: 4px 0; border-bottom: 1px solid var(--line-soft); }
+  .rel.gone { opacity: 0.45; }
+  .rel .who { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rel .post { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
+  .rel .tr { text-align: right; color: var(--mute); font-variant-numeric: tabular-nums; }
+  .rel .tension { position: relative; height: 6px; background: rgba(255,255,255,0.07); border-radius: 1px; }
+  .rel .tension i { position: absolute; inset: 0 auto 0 0; background: var(--calm); border-radius: 1px; }
+  .rel.war .tension i { background: var(--war); }
+  .p-at-war { color: var(--war); }
+  .p-hostile { color: var(--warn); }
+  .p-strained { color: var(--gold); }
+  .p-trading, .p-peaceful { color: var(--calm); }
+  .p-truce, .p-ended { color: var(--mute); }
+  .rel-act { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 0;
+             border-bottom: 1px solid var(--line-soft); }
+  .rel-act .who { flex: 1; min-width: 88px; color: var(--ink-bright); }
+  .rel-act button { padding: 6px 10px; font-size: 11px; }
+
   /* The Chronicle's upgrade rows, and the finish screen's ledger and rival table. */
   .upgrade { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center;
              padding: 11px 0; border-bottom: 1px solid var(--line-soft); }
@@ -606,11 +628,15 @@
       <button class="tab" data-tab="council" aria-selected="true">Council</button>
       <button class="tab" data-tab="feed-panel" aria-selected="false">Chronicle</button>
       <button class="tab" data-tab="rivals" aria-selected="false">Rivals</button>
+      <button class="tab" data-tab="relations" aria-selected="false">Relations</button>
+      <button class="tab" data-tab="people" aria-selected="false">People</button>
     </div>
     <section class="panel tabbed">
       <div class="body" id="council"></div>
       <div class="body" id="feed-panel" hidden><div class="feed" id="feed"></div></div>
       <div class="body" id="rivals" hidden></div>
+      <div class="body" id="relations" hidden></div>
+      <div class="body" id="people" hidden></div>
     </section>
   </div>
 
@@ -620,8 +646,8 @@
     <div class="sheet wide">
       <h2 id="election-title">The town goes to the polls</h2>
       <p class="sub">
-        You do not choose the Premier — the town does. You may spend influence to endorse one
-        candidate, or stay out of it. Either way the years start again when you say so.
+        You do not choose the Premier — the town does. Endorse one candidate with your influence, or
+        stay out of it; either way the years start again at once. The town votes every four years.
       </p>
       <div id="election-options"></div>
       <div class="end-actions">
@@ -784,7 +810,7 @@
 
   // ---------------- the panel tabs ----------------
   // Council, Chronicle and Rivals stacked is a long scroll on a phone, so only one shows.
-  const TABS = ['council', 'feed-panel', 'rivals'];
+  const TABS = ['council', 'feed-panel', 'rivals', 'relations', 'people'];
   document.querySelector('.tabs').addEventListener('click', e => {
     const tab = e.target.closest('.tab'); if (!tab) return;
     for (const id of TABS) document.getElementById(id).hidden = id !== tab.dataset.tab;
@@ -1290,6 +1316,48 @@
         <div class="tension"><i style="width:${Math.round(r.tension * 100)}%"></i></div>
       </div>`).join(''));
 
+    // Where the town's effort goes, and what its soldiers are.
+    setHTML('people', (() => {
+      const total = (s.jobs || []).reduce((n, g) => n + g.v, 0) || 1;
+      const groups = (s.jobs || []).map(g => `
+        <div class="bar">
+          <span class="bk">${g.k}</span>
+          <span class="bt"><i style="width:${Math.round(g.v / total * 100)}%"></i></span>
+          <span class="bv">${g.v}</span>
+        </div>`).join('');
+      const units = (s.units || []).length
+        ? (s.units || []).map(u => `<div class="sheetline"><span class="bk">${u.k}</span>
+            <span class="bv">${u.v}</span></div>`).join('')
+        : '<div class="sheetline"><span class="bk quiet">nobody is under arms</span></div>';
+      return `<h3 class="sub-h">Where the work goes</h3>${groups}
+        <h3 class="sub-h">Under arms</h3>${units}
+        <p class="quiet">Soldiers are equipped by what the town has built: a barracks makes infantry
+        of militia, a watchtower trains marksmen, an armoury puts them in mail.</p>`;
+    })());
+
+    // Every pair on the island, not only ours: two rivals going to war is an opportunity.
+    setHTML('relations', (() => {
+      const rel = JSON.parse(game.relations());
+      const mine = rel.filter(r => r.mine), theirs = rel.filter(r => !r.mine);
+      const row = r => `
+        <div class="rel${r.atWar ? ' war' : ''}${r.alive ? '' : ' gone'}">
+          <span class="who">${r.nameA} &harr; ${r.nameB}</span>
+          <span class="post p-${r.posture.replace(' ', '-')}">${r.posture}</span>
+          <span class="tension"><i style="width:${Math.round(r.tension * 100)}%"></i></span>
+          <span class="tr">${r.trades} trades</span>
+        </div>`;
+      const acts = s.rivals.filter(r => r.pop > 0).map(r => `
+        <div class="rel-act">
+          <span class="who">${r.name}</span>
+          <button data-trade="${r.civId}" ${s.influence < 25 ? 'disabled' : ''}>Offer trade (25)</button>
+          <button data-war="${r.civId}" ${s.influence < 180 || r.war ? 'disabled' : ''}>
+            ${r.war ? 'already at war' : 'Declare war (180)'}</button>
+        </div>`).join('');
+      return `<h3 class="sub-h">You and them</h3>${mine.map(row).join('')}
+        <h3 class="sub-h">Them and each other</h3>${theirs.map(row).join('')}
+        <h3 class="sub-h">Reach across the map</h3>${acts}`;
+    })());
+
     // The run is over: bank what it earned and move to a screen of its own. An obituary squeezed
     // into a panel above the map, with the game still ticking behind it, read as a notification
     // rather than an ending.
@@ -1447,10 +1515,27 @@
     </div>`;
   }
 
+  document.getElementById('relations').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || !game) return;
+    if (b.dataset.trade !== undefined) {
+      const ok = game.offerTrade(Number(b.dataset.trade));
+      // A refusal is information, not a cost: nothing is spent unless the trade happens.
+      b.textContent = ok ? 'traded' : 'they declined';
+      setTimeout(() => pull(), 900);
+    } else if (b.dataset.war !== undefined) {
+      if (game.forceWar(Number(b.dataset.war))) pull();
+    }
+  });
+
   document.getElementById('election-options').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b || !game) return;
-    // Endorsing does not dismiss the modal: a player may endorse and keep reading.
-    if (game.endorse(Number(b.dataset.vote))) pull();
+    // Endorsing *is* the decision, so it closes the modal and the years start again. The first
+    // version kept it open on the theory that a player might endorse and keep reading; in practice
+    // that just meant a second click to dismiss a dialog you were finished with.
+    if (game.endorse(Number(b.dataset.vote))) {
+      game.acknowledgeElection();
+      pull();
+    }
   });
   document.getElementById('election-done').addEventListener('click', () => {
     if (!game) return;

@@ -135,6 +135,35 @@ data class RivalReport(
 )
 
 /** An army in the field: real citizens walking the map, not an abstraction. */
+/**
+ * One pair's standing, for the relations screen.
+ *
+ * [posture] is derived here rather than in a UI so every front end reads the same word for the same
+ * arithmetic — a screen that invented its own thresholds would drift from the simulation's.
+ */
+data class RelationReport(
+    val civA: Int,
+    val civB: Int,
+    val nameA: String,
+    val nameB: String,
+    val tension: Double,
+    val atWar: Boolean,
+    val trades: Int,
+    val inTruce: Boolean,
+    val bothAlive: Boolean,
+) {
+    val posture: String
+        get() = when {
+            !bothAlive -> "ended"
+            atWar -> "at war"
+            inTruce -> "truce"
+            tension >= RivalConfig.TENSION_RAID_THRESHOLD -> "hostile"
+            tension >= RivalConfig.TENSION_RAID_THRESHOLD * 0.6 -> "strained"
+            trades > 0 -> "trading"
+            else -> "peaceful"
+        }
+}
+
 class Army(
     val id: Int,
     val civId: Int,

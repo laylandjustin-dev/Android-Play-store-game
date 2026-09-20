@@ -201,6 +201,27 @@ class WebGame(
         return simulation.chooseTech(GameConfig.World.PLAYER_CIV_ID, option)
     }
 
+    /** The player offers a neighbour a trade, out of season. False if nothing came of it. */
+    fun offerTrade(civId: Int): Boolean =
+        simulation.offerTrade(GameConfig.World.PLAYER_CIV_ID, civId)
+
+    /** The player forces a war their town did not ask for. The most expensive lever on the board. */
+    fun forceWar(civId: Int): Boolean =
+        simulation.forceWar(GameConfig.World.PLAYER_CIV_ID, civId)
+
+    /** Every pair's standing: tension, posture, trade and war — the whole matrix, not just ours. */
+    fun relations(): String = simulation.relationReports().joinToString(",", "[", "]") { r ->
+        "{\"a\":${r.civA},\"b\":${r.civB}" +
+            ",\"nameA\":\"${escape(r.nameA)}\"" +
+            ",\"nameB\":\"${escape(r.nameB)}\"" +
+            ",\"tension\":${round2(r.tension)}" +
+            ",\"posture\":\"${r.posture}\"" +
+            ",\"atWar\":${r.atWar}" +
+            ",\"trades\":${r.trades}" +
+            ",\"alive\":${r.bothAlive}" +
+            ",\"mine\":${r.civA == GameConfig.World.PLAYER_CIV_ID || r.civB == GameConfig.World.PLAYER_CIV_ID}}"
+    }
+
     /** True while the player's election is waiting to be looked at. */
     val electionPending: Boolean get() = simulation.electionPending
 
@@ -271,6 +292,18 @@ class WebGame(
             sb.append('"').append(trait.name.lowercase()).append("\":").append(player.traits[trait])
         }
         sb.append('}')
+        // Where a town's effort actually goes. "1,240 people" is a number a player can read and not
+        // one they can act on.
+        sb.append(",\"jobs\":").append(
+            shareJson(simulation.jobBreakdown(GameConfig.World.PLAYER_CIV_ID).entries.map {
+                it.key.label to it.value
+            }),
+        )
+        sb.append(",\"units\":").append(
+            shareJson(simulation.unitBreakdown(GameConfig.World.PLAYER_CIV_ID).entries.map {
+                it.key.label to it.value
+            }),
+        )
         sb.append(",\"buildings\":").append(simulation.buildingsOf(0).count { it.isComplete })
         sb.append(",\"armies\":").append(simulation.armiesInField.count { it.civId == 0 })
         sb.append(",\"end\":").append(simulation.endState?.let { "\"${it.name}\"" } ?: "null")
@@ -392,7 +425,8 @@ class WebGame(
         sb.append(",\"rivals\":[")
         for ((index, report) in simulation.rivalReports().withIndex()) {
             if (index > 0) sb.append(',')
-            sb.append("{\"name\":\"").append(escape(report.name)).append('"')
+            sb.append("{\"civId\":").append(report.civId)
+            sb.append(",\"name\":\"").append(escape(report.name)).append('"')
             sb.append(",\"personality\":\"").append(report.personality.name.lowercase()).append('"')
             sb.append(",\"archetype\":\"")
                 .append(Archetype.of(simulation.civ(report.civId).traits).label).append('"')

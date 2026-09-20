@@ -2,6 +2,7 @@ package com.pixeltown.sim
 
 import com.pixeltown.sim.GameConfig.Politics as PoliticsConfig
 import com.pixeltown.sim.GameConfig.Survival as SurvivalConfig
+import com.pixeltown.sim.GameConfig.Traits as TraitConfig
 import kotlin.math.max
 import kotlin.math.min
 
@@ -169,6 +170,43 @@ internal object CouncilSystem {
         }
     }
 
+    /**
+     * What a people's own trait sheet says they should be building, and how strongly.
+     *
+     * The missing half of the building layer. A civ's agenda came from its Premier's platform and
+     * the town's felt needs, and its *traits* — the one thing the player actually chose, and the
+     * thing that decides what the town is good at — said nothing at all about what got built. A
+     * Hunting people built libraries as readily as a scholarly one.
+     *
+     * Each trait argues for the category it makes the town good at, weighted by how far above base
+     * it stands, so a flat people has no lean and a committed one has a strong one. This is the same
+     * principle as AD-33 (personality should be legible in what a civ *does*) applied to the trait
+     * sheet instead of to the personality, and it applies to the player's civ too — their allocation
+     * is a statement of intent, and the town acting on it is what makes the choice mean something.
+     */
+    fun traitLeanOf(traits: TraitAllocation): Map<BuildingCategory, Double> {
+        val lean = DoubleArray(BuildingCategory.entries.size)
+        fun add(category: BuildingCategory, trait: Trait) {
+            val above = traits[trait] - TraitConfig.BASE_VALUE
+            if (above > 0) lean[category.ordinal] += above.toDouble()
+        }
+        // Farming feeds the town; Elements is the other half of surviving a bad year on stores.
+        add(BuildingCategory.FARMS, Trait.FARMING)
+        add(BuildingCategory.FARMS, Trait.ELEMENTS)
+        // Hunting doubles as military effectiveness, so a hunting people are a fighting people.
+        add(BuildingCategory.MILITARY, Trait.HUNTING)
+        // Health is the trait that makes clinics and aqueducts worth their stone.
+        add(BuildingCategory.HEALTH, Trait.HEALTH)
+        // Speed is work rate and research rate both, which is what tech buildings multiply.
+        add(BuildingCategory.TECH, Trait.SPEED)
+        // Gathering is the building trait: a people who work timber fast build the town out.
+        add(BuildingCategory.LIFESTYLE, Trait.GATHERING)
+
+        val total = lean.sum()
+        if (total <= 0.0) return BuildingCategory.entries.associateWith { 0.0 }
+        return BuildingCategory.entries.associateWith { lean[it.ordinal] / total }
+    }
+
     // ------------------------------------------------------------------ the Premier's decisions
 
     /**
@@ -182,12 +220,27 @@ internal object CouncilSystem {
         premier: Premier,
         need: Map<BuildingCategory, Double>,
         rng: SimRandom,
+        /** What this people's traits incline them toward — see [traitLeanOf]. */
+        traitLean: Map<BuildingCategory, Double> = emptyMap(),
+        /**
+         * How badly the town is doing, 0 (thriving) to 1 (in trouble).
+         *
+         * The balance the whole thing turns on. A comfortable town may indulge its character; a
+         * hungry one may not, and as this rises the trait lean is squeezed out in favour of what the
+         * town actually needs. Without it a Hunting people would go on building watchtowers through
+         * a famine, which is a story the *Premier's* temperament is already there to tell — a
+         * people's character should shape a good decade, not override survival.
+         */
+        distress: Double = 0.0,
     ): BuildingCategory {
         val deviation = PoliticsConfig.TEMPERAMENT_DEVIATION.getValue(premier.temperament)
+        val leanWeight = PoliticsConfig.TRAIT_LEAN_WEIGHT * (1.0 - distress.coerceIn(0.0, 1.0))
         val scores = BuildingCategory.entries.map { category ->
             val needScore = need[category] ?: 0.0
             val agendaScore = premier.agenda[category]
-            category to (1.0 - deviation) * needScore + deviation * agendaScore
+            val leanScore = traitLean[category] ?: 0.0
+            val political = (1.0 - deviation) * needScore + deviation * agendaScore
+            category to (1.0 - leanWeight) * political + leanWeight * leanScore
         }
         val total = scores.sumOf { it.second }
         if (total <= 0.0) return premier.agenda.dominant

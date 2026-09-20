@@ -6,6 +6,7 @@ import com.pixeltown.sim.RunConfig
 import com.pixeltown.sim.Simulation
 import com.pixeltown.sim.TraitAllocation
 import com.pixeltown.sim.Trait
+import com.pixeltown.sim.ChronicleEventKind
 import com.pixeltown.sim.World
 import com.pixeltown.sim.WorldGenerator
 import com.pixeltown.sim.Job
@@ -322,6 +323,106 @@ object ConstraintProbe {
         }
     }
 
+    /**
+     * How expensive is a tick on this map size?
+     *
+     * The one measurement that decides whether a 400x400 map is possible at all. Land regeneration
+     * sweeps every cell every tick (AD-45), so 16,384 cells becoming 160,000 is a 9.8x increase on
+     * the hottest loop in the game, and the browser's budget is 12ms a frame (AD-46) while 100x
+     * speed needs a 1ms tick (AD-20).
+     */
+    private fun timing() {
+        val farming = TraitAllocation.of(3, 4, 3, 4, 8)
+        println("PROBE map=${GameConfig.World.WIDTH}x${GameConfig.World.HEIGHT} " +
+            "cells=${GameConfig.World.WIDTH * GameConfig.World.HEIGHT}")
+
+        val genStart = System.nanoTime()
+        val sim = Simulation.newRun(RunConfig(seed = 1_000L, traits = farming))
+        println("PROBE worldgen=${(System.nanoTime() - genStart) / 1_000_000}ms")
+
+        // Warm up, then time in blocks, reporting cost against population.
+        var day = 0
+        while (day < 60) { if (sim.step()) day++ else answer(sim) }
+        for (block in 1..6) {
+            val start = System.nanoTime()
+            var ran = 0
+            while (ran < 360) { if (sim.step()) ran++ else answer(sim) }
+            val ms = (System.nanoTime() - start) / 1_000_000.0
+            println(
+                "PROBE year=${sim.year} pop=${sim.civ(0).population.toString().padStart(4)} " +
+                    "total=${sim.population.toString().padStart(5)} " +
+                    "tick=${"%.3f".format(ms / 360)}ms",
+            )
+        }
+    }
+
+    private fun answer(sim: Simulation) {
+        val player = GameConfig.World.PLAYER_CIV_ID
+        sim.acknowledgeElection()
+        sim.pendingTechChoices(player).firstOrNull()?.let { sim.chooseTech(player, it) }
+        while (sim.pendingTraitPoints(player) > 0) {
+            val t = sim.civ(player).traits.improvable.firstOrNull() ?: break
+            if (!sim.spendTraitPoint(player, t)) break
+        }
+    }
+
+    /**
+     * Why does nobody go to war on the big map?
+     *
+     * Reports the escalation ladder's inputs rather than its outputs: how much land each civ owns,
+     * how close the nearest pair of differently-owned cells ever gets (border friction needs
+     * BORDER_FRICTION_RADIUS), and what the highest tension between any pair reaches against the
+     * raid and war thresholds. If tension never approaches the threshold the cause is upstream of
+     * the war rules entirely.
+     */
+    private fun tension() {
+        val farming = TraitAllocation.of(3, 4, 3, 4, 8)
+        println(
+            "PROBE separation=${GameConfig.World.MIN_CIV_START_SEPARATION} " +
+                "frictionRadius=${GameConfig.Rivals.BORDER_FRICTION_RADIUS} " +
+                "raidAt=${GameConfig.Rivals.TENSION_RAID_THRESHOLD}",
+        )
+        for (seed in longArrayOf(1L, 1_000L)) {
+            val sim = Simulation.newRun(RunConfig(seed = seed, traits = farming))
+            val world = sim.world
+            for (year in intArrayOf(20, 60, 120)) {
+                sim.runUnattended(year * GameConfig.Time.DAYS_PER_YEAR - sim.day.toInt())
+
+                val owned = IntArray(sim.civs.size)
+                val cellsOf = Array(sim.civs.size) { ArrayList<Int>() }
+                for (cell in 0 until world.cellCount) {
+                    val o = world.ownerCivId[cell].toInt()
+                    if (o >= 0) { owned[o]++; cellsOf[o].add(cell) }
+                }
+                // Closest approach between any two civs' territory.
+                var closest = Int.MAX_VALUE
+                for (a in sim.civs.indices) for (b in a + 1 until sim.civs.size) {
+                    for (ca in cellsOf[a]) {
+                        val ax = ca % world.width; val ay = ca / world.width
+                        for (cb in cellsOf[b]) {
+                            val d = maxOf(kotlin.math.abs(ax - cb % world.width), kotlin.math.abs(ay - cb / world.width))
+                            if (d < closest) closest = d
+                        }
+                    }
+                }
+                var peak = 0.0
+                for (a in sim.civs.indices) for (b in a + 1 until sim.civs.size) {
+                    val t = sim.relations.tensionBetween(a, b)
+                    if (t > peak) peak = t
+                }
+                println(
+                    "PROBE seed=$seed y=${year.toString().padStart(3)} " +
+                        "owned=${owned.joinToString("/")} " +
+                        "closestBorders=${if (closest == Int.MAX_VALUE) "-" else closest.toString()} " +
+                        "peakTension=${"%.3f".format(peak)} " +
+                        "raids=${sim.chronicle.totalOf(ChronicleEventKind.RAID)} " +
+                        "wars=${sim.chronicle.totalOf(ChronicleEventKind.WAR_DECLARED)} " +
+                        "trades=${sim.chronicle.totalOf(ChronicleEventKind.TRADE)}",
+                )
+            }
+        }
+    }
+
     private val BUILDS = listOf(
         "even 5/5/5/5/5" to TraitAllocation.of(5, 5, 5, 5, 5),
         "farming 3/4/3/4/8" to TraitAllocation.of(3, 4, 3, 4, 8),
@@ -341,6 +442,8 @@ object ConstraintProbe {
         if (args.contains("--npc")) { npc(); return }
         if (args.contains("--food")) { food(); return }
         if (args.contains("--sites")) { sites(); return }
+        if (args.contains("--timing")) { timing(); return }
+        if (args.contains("--tension")) { tension(); return }
         if (args.contains("--trace")) { trace(args); return }
         val years = args.firstOrNull { it.startsWith("--years=") }?.substringAfter('=')?.toInt() ?: YEARS
 
