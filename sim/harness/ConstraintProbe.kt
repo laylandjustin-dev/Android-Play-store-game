@@ -46,6 +46,7 @@ object ConstraintProbe {
             var days = 0
             while (days < 120 * GameConfig.Time.DAYS_PER_YEAR && sim.endState == null) {
                 val player = GameConfig.World.PLAYER_CIV_ID
+                sim.acknowledgeElection()
                 sim.pendingTechChoices(player).firstOrNull()?.let { sim.chooseTech(player, it) }
                 while (sim.pendingTraitPoints(player) > 0) {
                     // The weakest trait with room in it. Deliberately not `needBasedGrowth`, which
@@ -138,6 +139,7 @@ object ConstraintProbe {
                     if (!sim.step()) {
                         // A decision is open; answer it the safe way so the clock keeps running.
                         val player = GameConfig.World.PLAYER_CIV_ID
+                        sim.acknowledgeElection()
                         sim.pendingTechChoices(player).firstOrNull()?.let { sim.chooseTech(player, it) }
                         while (sim.pendingTraitPoints(player) > 0) {
                             val t = sim.civ(player).traits.improvable.minByOrNull {
@@ -220,6 +222,7 @@ object ConstraintProbe {
                 while (day < 2 * GameConfig.Time.DAYS_PER_YEAR && sim.endState == null) {
                     if (!sim.step()) {
                         val player = GameConfig.World.PLAYER_CIV_ID
+                        sim.acknowledgeElection()
                         sim.pendingTechChoices(player).firstOrNull()?.let { sim.chooseTech(player, it) }
                         while (sim.pendingTraitPoints(player) > 0) {
                             val t = sim.civ(player).traits.improvable.minByOrNull {

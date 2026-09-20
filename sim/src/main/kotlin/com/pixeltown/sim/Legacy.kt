@@ -214,6 +214,28 @@ data class RunConfig(
 }
 
 /**
+ * A rival as it stood when the run ended: who they were, what they were built for, and how it went.
+ *
+ * On the finish screen this is the answer to "was I actually doing well?" — a player who reached
+ * 300 people cannot tell whether that was good without knowing that the militant civ across the
+ * island reached 900, or died in year forty.
+ */
+data class RivalOutcome(
+    val name: String,
+    val personality: Personality,
+    val traits: TraitAllocation,
+    val population: Int,
+    val peakPopulation: Int,
+    val techTier: Int,
+    val buildings: Int,
+    val extinct: Boolean,
+    /** True if this rival and the player were at war when the run ended. */
+    val atWarWithPlayer: Boolean,
+    val warsWithPlayer: Int,
+    val tradesWithPlayer: Int,
+)
+
+/**
  * How a finished run scored, what it earned, and — the larger half — what the player actually
  * decided along the way.
  *
@@ -254,6 +276,13 @@ data class RunSummary(
     val raidsSuffered: Int = 0,
     val rivalsSurviving: Int = 0,
     val rivalsExtinct: Int = 0,
+    /** Every rival as it stood at the end — the yardstick the player's own numbers need. */
+    val rivals: List<RivalOutcome> = emptyList(),
+    /** Everything the town ever produced and everything it ever spent, per resource. */
+    val produced: Map<Resource, Double> = emptyMap(),
+    val consumed: Map<Resource, Double> = emptyMap(),
+    /** Food that rotted before anyone ate it. Not consumption — nobody got the good of it. */
+    val spoiled: Double = 0.0,
 ) {
     /** A whole-number percentage of [total], for the UI. Zero total reads as zero, never NaN. */
     private fun share(part: Int, total: Int): Int =

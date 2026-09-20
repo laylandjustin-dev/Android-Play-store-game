@@ -21,6 +21,8 @@ pixeltown/
 │       ├── WorldRenderer.kt   Paints the world into a flat ARGB IntArray; FrameRenderer composites.
 │       ├── TraitAllocation.kt The six traits and every stat derived from them.
 │       ├── CitizenNames.kt    Given names from syllables, family names from a list. Two ints each.
+│       ├── SiteSurvey.kt      What the land round a cell is worth, in days of food.
+│       ├── TraitEffects.kt     What one more point in a trait changes, read off the sim.
 │       ├── Citizen.kt         One person, one pixel. Mutable by design.
 │       ├── Civilization.kt    A civ's shared state: stores, tech, unrest, statistics.
 │       ├── Chronicle.kt       The rolling event record behind the feed and the return report.
@@ -424,6 +426,68 @@ Two things this investigation found and did **not** fix, recorded so they are no
 - **A colony owns exactly one cell after two years** (`ownerCivId`), in every run measured. Territory
   claiming looks inert outside building footprints; it is not what starves anyone, but it is not what
   AD-3x describes either.
+
+**AD-65 — Every decision the player can make now stops the clock, and the election was the one
+that could not be reached.** A campaign runs for thirty days before each year's end. At 10x that is
+three seconds and at 100x under half of one, so the slate appeared and the vote was counted before a
+player could read one candidate's pitch — which made all four influence levers, the entire point of
+the Council screen, unreachable in practice. `electionPending` joins the tech tier and the growth
+point in `awaitingPlayer` (AD-59). Three details:
+
+- **Skipping is free and is a real answer.** Not acting on an election is legitimate, so
+  `acknowledgeElection` costs nothing and clears the pause whether the player endorsed anybody or
+  not. Endorsing deliberately does *not* dismiss the modal: a player may endorse and keep reading.
+- **`holdElections` clears the flag unconditionally**, so an unacknowledged pause cannot survive the
+  vote it was about and strand the clock on a slate that no longer exists.
+- **It broke every attended test helper at once,** which is the useful part: six `GenerationGrowthTest`
+  cases failed because an election at day 330 stopped the clock before a decade could arrive. The
+  helpers now dismiss elections, because that is what a player does. A pause that no test notices is
+  a pause that does not work.
+
+**AD-66 — The site survey, because the map was offering a trap.** AD-64 left this open: every
+buildable mainland cell read as legal, the best and worst differing by a factor of six in nearby
+food, with all four rivals placed on top land. Forbidding the bad cells was rejected twice over —
+AD-51 settles the principle, and the data refuses a clean threshold, since a site at 0.51 of the
+map's best score thrives where one at 0.55 starves (what decides it is how many farmers physically
+*reach* a field). `SiteSurvey` instead shows the player exactly what the generator can see, in the
+units the game is played in: farmland, game, timber, stone and fresh water in range, a rating
+relative to the best land *on this island*, and the number that matters — roughly how many people
+this ground feeds, set against the fifty-five stepping off the boat. It is stated as an upper bound
+because it assumes a farmer on every fertile cell, which no real colony manages.
+
+**AD-67 — The Chronicle was unreachable, which made the answer to "how do I spend Chronicle points"
+*you cannot*.** `:sim` has had the whole meta layer since M6 — seven upgrades, the cost curve, the
+allocation cap — and the playable build could not reach a line of it: a run computed its points,
+printed them on the end screen, and threw them away. `WebChronicle` is the façade that makes them
+real, and two decisions in it are worth recording. The state crosses to JavaScript as **one opaque
+string**, so the shell can persist it in `localStorage` without knowing what an upgrade is, and
+unknown upgrade names are skipped on the way in — the same tolerance `techChoices` and
+`traitGrowthHistory` have, for the same reason (AD-57). And the opening budget is now a *function* of
+the legacy rather than the constant 10, so "Deeper roots" actually reaches the allocation screen.
+
+**AD-68 — The allocation screen reads its numbers off the simulation, not off prose.** Six one-line
+blurbs told a player what a trait was *about* and never what a point was *worth*. `TraitEffects`
+builds the allocation one point higher and reads the same `TraitAllocation` the game runs on, so
+every row is the real figure with a real percentage, and a retuned formula moves the screen with no
+copy to edit. Two things fell out of building it:
+
+- **Hunting's two rows were one row.** `Citizen.strength` *is* `huntYield` scaled by that person's
+  vigour, condition, skill and age, so listing "hunt yield" and "fighting strength" separately would
+  have shown the same number twice and implied two dials. They are one line that says so.
+- **Rounding before serialising is lying.** The façade formatted to two decimal places on the way
+  out, which turned soil recovery's honest "+16%" row into `0.00 -> 0.00`. Numbers cross the boundary
+  at full precision; formatting belongs at the point of display.
+
+**AD-69 — The run ends on a screen of its own.** The obituary was a panel above the still-running
+map, which read as a notification rather than an ending. It is now `screen-end`, and the extra
+material is what makes it worth a screen: the **resource ledger** (everything the town ever produced
+against everything it ever spent, counted in `Civilization.add`/`take` because those are the only two
+doors into the store — a ledger with a door it does not watch is worse than none) and **every rival's
+final state** beside the player's own row, because a player who reached 300 people cannot tell
+whether that was good without knowing the militant civ across the island reached 900 or died in year
+forty. Two details: the founding stores are `set` rather than `add`ed so the ledger does not report
+1,870 food as a first-morning harvest, and spoilage is booked separately from consumption because
+nobody got the good of it.
 
 **AD-16 — Map previews are exported as PNGs from the test source set.** `MapPreviewExporter`
 writes `sim/build/preview/map-seed-*.png` on every test run using `javax.imageio`, which lets the

@@ -129,6 +129,9 @@ class Simulation(
     /** The candidates standing in [civId]'s current election, or null outside a campaign. */
     fun campaignFor(civId: Int): List<Candidate>? = campaigns[civId]
 
+    /** The candidate the player has endorsed this campaign, or null. For the election screen. */
+    fun endorsementFor(civId: Int): Int? = endorsements[civId]
+
     /** Set when the run reaches a terminal state; null while it is still running. */
     var endState: EndState? = null
         private set
@@ -237,7 +240,9 @@ class Simulation(
             pair(females[i], males[i])
         }
 
-        civ.add(Resource.FOOD, settlers * Economy.STARTING_FOOD_PER_SETTLER)
+        // Set rather than added: the founding stores were carried ashore, not grown here, and the
+        // ledger behind the end-of-run breakdown reports what the town *produced*.
+        civ[Resource.FOOD] = settlers * Economy.STARTING_FOOD_PER_SETTLER
         refreshEffects(civ.id)
         civ.population = placed.size
         world.ownerCivId[civ.homeSite] = civ.id.toByte()
@@ -497,10 +502,44 @@ class Simulation(
             if (members.isEmpty()) continue
             campaigns[civ.id] = CouncilSystem.chooseCandidates(members, rng, CouncilSystem.agendaBiasOf(civ))
             endorsements[civ.id] = null
+            // The player's election stops the clock until they have seen the slate. A rival's does
+            // not: there is nobody to stop for.
+            if (civ.isPlayer) electionPending = true
         }
     }
 
+    /**
+     * True while the player's election is waiting to be looked at.
+     *
+     * An election is the one yearly event the player's four influence levers exist for, and it used
+     * to happen while the world kept moving: at 10x the thirty-day campaign window is three seconds,
+     * so in practice the slate appeared and the vote was counted before a player could read a single
+     * candidate's pitch. It now pauses exactly as a tech tier and a growth point do (AD-59).
+     *
+     * [acknowledgeElection] clears it, whether the player endorsed somebody or chose to stay out of
+     * it — which is why the UI offers "skip". Not acting is a legitimate answer to an election and
+     * must not be more expensive than acting, so skipping costs nothing and the pause never repeats
+     * for the same campaign.
+     */
+    var electionPending: Boolean = false
+        internal set
+
+    /**
+     * Dismisses the election pause. Returns false when nothing was waiting.
+     *
+     * Endorsing a candidate does *not* imply this: a player may endorse and then keep reading, so
+     * the world restarts when they say so and not a moment earlier.
+     */
+    fun acknowledgeElection(): Boolean {
+        if (!electionPending) return false
+        electionPending = false
+        return true
+    }
+
     private fun holdElections() {
+        // Whatever happened, the campaign is over: an unacknowledged pause must not survive the
+        // vote it was about and strand the clock on a slate that no longer exists.
+        electionPending = false
         for (civ in civs) {
             val members = membersOf(civ.id)
             val candidates = campaigns[civ.id]
@@ -810,7 +849,9 @@ class Simulation(
         get() {
             val player = civ(WorldConfig.PLAYER_CIV_ID)
             if (player.pendingTechTier != null) return true
-            return !unattended && player.unspentTraitPoints > 0 && player.traits.improvable.isNotEmpty()
+            if (unattended) return false
+            if (electionPending && campaigns[WorldConfig.PLAYER_CIV_ID]?.isNotEmpty() == true) return true
+            return player.unspentTraitPoints > 0 && player.traits.improvable.isNotEmpty()
         }
 
     /** Growth points the player has earned and not yet spent. Zero when nothing is waiting. */
@@ -1482,7 +1523,11 @@ class Simulation(
             val stored = civ[Resource.FOOD]
             if (stored > capacity) {
                 val excess = stored - capacity
-                civ[Resource.FOOD] = stored - excess * Economy.SPOILAGE_PER_DAY_OVER_CAPACITY
+                val rotted = excess * Economy.SPOILAGE_PER_DAY_OVER_CAPACITY
+                civ[Resource.FOOD] = stored - rotted
+                // Booked here because spoilage writes the store directly rather than going through
+                // `take`, and because it is not consumption: nobody got the good of it.
+                civ.spoiled += rotted
             }
         }
     }
@@ -2037,6 +2082,26 @@ class Simulation(
             raidsSuffered = player.raidsSuffered,
             rivalsSurviving = rivals.count { !it.isExtinct },
             rivalsExtinct = rivals.count { it.isExtinct },
+            rivals = rivals.map { rival ->
+                RivalOutcome(
+                    name = rival.name,
+                    personality = rival.personality,
+                    traits = rival.traits,
+                    population = rival.population,
+                    peakPopulation = rival.peakPopulation,
+                    techTier = rival.techTier,
+                    buildings = buildingsOf(rival.id).count { it.isComplete },
+                    extinct = rival.isExtinct,
+                    atWarWithPlayer = relations.atWar(player.id, rival.id),
+                    warsWithPlayer = rival.warsFought,
+                    tradesWithPlayer = relations.tradeCount(player.id, rival.id),
+                )
+            },
+            produced = Resource.entries.associateWith { player.produced[it.ordinal] }
+                .filterValues { it > 0.0 },
+            consumed = Resource.entries.associateWith { player.consumed[it.ordinal] }
+                .filterValues { it > 0.0 },
+            spoiled = player.spoiled,
         )
     }
 
@@ -2107,6 +2172,9 @@ class Simulation(
                 deathsByCause = civ.deathsByCause.toList(),
                 warsFought = civ.warsFought,
                 raidsSuffered = civ.raidsSuffered,
+                produced = civ.produced.toList(),
+                consumed = civ.consumed.toList(),
+                spoiled = civ.spoiled,
                 epidemicDaysLeft = civ.epidemicDaysLeft,
                 epidemicCount = civ.epidemicCount,
                 charter = civ.charter,
@@ -2162,6 +2230,7 @@ class Simulation(
             }
         },
         endorsements = civs.map { endorsements[it.id] },
+        electionPending = electionPending,
         vetoPending = civs.map { vetoPending[it.id] },
         elections = elections.map { e ->
             ElectionSave(
@@ -2346,6 +2415,11 @@ class Simulation(
                     civ.autoSpentTraitPoints = c.autoSpentTraitPoints
                     civ.warsFought = c.warsFought
                     civ.raidsSuffered = c.raidsSuffered
+                    // Sized from the save, so a resource added since the file was written cannot
+                    // run off the end of the array.
+                    for ((i, v) in c.produced.withIndex()) if (i < civ.produced.size) civ.produced[i] = v
+                    for ((i, v) in c.consumed.withIndex()) if (i < civ.consumed.size) civ.consumed[i] = v
+                    civ.spoiled = c.spoiled
                     // Sized from the save rather than copied wholesale: a cause added since the
                     // file was written must not run off the end of the array.
                     for ((i, count) in c.deathsByCause.withIndex()) {
@@ -2481,6 +2555,7 @@ class Simulation(
                     ).also { it.votes = c.votes }
                 }
             }
+            simulation.electionPending = save.electionPending
             for ((civId, endorsed) in save.endorsements.withIndex()) {
                 simulation.endorsements[civId] = endorsed
             }

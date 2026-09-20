@@ -78,6 +78,7 @@ class RunBreakdownTest {
             if (sim.pendingTraitPoints(WorldConfig.PLAYER_CIV_ID) > 0) {
                 sim.spendTraitPoint(WorldConfig.PLAYER_CIV_ID, Trait.GATHERING)
             }
+            sim.acknowledgeElection()
             sim.step()
         }
         val player = sim.civ(WorldConfig.PLAYER_CIV_ID)

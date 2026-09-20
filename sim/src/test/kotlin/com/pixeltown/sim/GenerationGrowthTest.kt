@@ -38,6 +38,9 @@ class GenerationGrowthTest {
             if (sim.pendingTechChoices(WorldConfig.PLAYER_CIV_ID).isNotEmpty()) {
                 sim.chooseTech(WorldConfig.PLAYER_CIV_ID, sim.pendingTechChoices(WorldConfig.PLAYER_CIV_ID).first())
             }
+            // An election stops the clock too, and it arrives thirty days before every year's end —
+            // so a helper that did not dismiss one never reached a decade at all.
+            sim.acknowledgeElection()
             sim.step()
         }
     }
@@ -49,6 +52,7 @@ class GenerationGrowthTest {
             if (sim.pendingTechChoices(WorldConfig.PLAYER_CIV_ID).isNotEmpty()) {
                 sim.chooseTech(WorldConfig.PLAYER_CIV_ID, sim.pendingTechChoices(WorldConfig.PLAYER_CIV_ID).first())
             }
+            sim.acknowledgeElection()
             while (sim.pendingTraitPoints(WorldConfig.PLAYER_CIV_ID) > 0) {
                 val trait = sim.needBasedGrowth(player(sim)) ?: break
                 if (!sim.spendTraitPoint(WorldConfig.PLAYER_CIV_ID, trait)) break

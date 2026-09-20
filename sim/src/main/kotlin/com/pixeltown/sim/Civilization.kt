@@ -126,6 +126,23 @@ class Civilization(
         peakPopulation = peak
     }
 
+    /**
+     * Everything this civ has ever produced and everything it has ever spent, per resource.
+     *
+     * Counted in [add] and [take] rather than at each call site, because those two are the only
+     * doors into the store and a ledger with a door it does not watch is worse than no ledger. The
+     * end-of-run breakdown reads it; nothing in the simulation does, which is what keeps it honest.
+     *
+     * `set` is deliberately *not* counted: it is used by the save codec to restore a store, and by
+     * spoilage to write a reduced figure, neither of which is a town producing or spending anything.
+     * Spoilage is tracked separately as [spoiled].
+     */
+    val produced = DoubleArray(Resource.entries.size)
+    val consumed = DoubleArray(Resource.entries.size)
+
+    /** Food that rotted before anyone could eat it. Not "consumed": nobody got the good of it. */
+    var spoiled: Double = 0.0
+
     operator fun get(resource: Resource): Double = stores[resource.ordinal]
 
     operator fun set(resource: Resource, value: Double) {
@@ -133,13 +150,16 @@ class Civilization(
     }
 
     fun add(resource: Resource, amount: Double) {
+        if (amount <= 0.0) return
         stores[resource.ordinal] += amount
+        produced[resource.ordinal] += amount
     }
 
     /** Removes up to [amount]; returns what was actually taken. */
     fun take(resource: Resource, amount: Double): Double {
         val taken = minOf(amount, stores[resource.ordinal])
         stores[resource.ordinal] -= taken
+        consumed[resource.ordinal] += taken
         return taken
     }
 

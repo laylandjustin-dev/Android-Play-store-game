@@ -52,7 +52,7 @@
     position: relative;
     z-index: 1;
   }
-  #screen-menu, #screen-setup, #screen-game {
+  #screen-menu, #screen-setup, #screen-game, #screen-chronicle, #screen-end {
     display: flex;
     flex-direction: column;
     gap: var(--rhythm);
@@ -320,12 +320,88 @@
   .sheetline .bv { color: var(--ink); font-variant-numeric: tabular-nums; }
   .brk ul { margin: 0; padding-left: 16px; font-size: 11px; color: var(--ink); }
 
+  /* What a trait point buys, under each stepper. The row becomes two: the name and the stepper on
+     the first, the effects spanning both columns under them. */
+  .trait { grid-template-areas: "what stepper" "buys buys"; align-items: start; }
+  .trait .what { grid-area: what; }
+  .trait .stepper { grid-area: stepper; }
+  .buys { grid-area: buys; display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 7px; }
+  .buy { display: flex; align-items: baseline; gap: 6px; font-size: 10.5px; }
+  .buy .bl { color: var(--mute); }
+  .buy .bn { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .buy .bp { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .buy .bp.up { color: var(--calm); }
+  .buy .bp.down { color: var(--war); }
+
+  /* The site survey: what the land is worth, before landing on it. */
+  .survey { display: flex; flex-direction: column; gap: 10px; }
+  .sv-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .sv-rating {
+    font-family: Silkscreen, monospace; font-size: 11px; letter-spacing: 0.10em;
+    text-transform: uppercase; padding: 4px 8px; border-radius: 2px; border: 1px solid;
+  }
+  .r-prime { color: var(--calm); border-color: var(--calm); }
+  .r-good { color: var(--gold); border-color: var(--gold); }
+  .r-fair { color: var(--ink); border-color: var(--line); }
+  .r-poor { color: var(--warn); border-color: var(--warn); }
+  .r-bleak, .r-unbuildable { color: var(--war); border-color: var(--war); }
+  .sv-grid { display: grid; gap: 9px; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); }
+  .sv-cell { display: flex; flex-direction: column; gap: 1px; }
+  .sv-cell .k { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mute); }
+  .sv-cell .v { font-size: 17px; font-weight: 700; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .sv-cell .why { font-size: 10px; color: var(--mute); }
+  .sv-verdict { font-size: 11.5px; border-left: 2px solid var(--line); padding-left: 10px;
+                display: flex; flex-direction: column; gap: 3px; }
+  .sv-verdict.ok { border-color: var(--calm); }
+  .sv-verdict.warn { border-color: var(--warn); }
+
+  .opt .b.gold { color: var(--gold); }
+
+  /* The Chronicle's upgrade rows, and the finish screen's ledger and rival table. */
+  .upgrade { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center;
+             padding: 11px 0; border-bottom: 1px solid var(--line-soft); }
+  .upgrade:last-child { border-bottom: 0; }
+  .upgrade.maxed { opacity: 0.55; }
+  .upgrade .what { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .upgrade .nm { color: var(--ink-bright); font-weight: 600; letter-spacing: 0.03em; }
+  .upgrade .lvl { color: var(--gold); font-size: 11px; }
+  .upgrade .desc { font-size: 11px; color: var(--mute); }
+
+  .ledger { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; font-size: 11px;
+            padding: 3px 0; }
+  .ledger.head { color: var(--mute); font: 10px/1 Silkscreen, monospace; letter-spacing: 0.08em;
+                 text-transform: uppercase; padding-bottom: 5px; }
+  .ledger .bk { color: var(--ink); text-transform: capitalize; }
+  .ledger .made, .ledger .spent { width: 76px; text-align: right; font-variant-numeric: tabular-nums; }
+  .ledger .made { color: var(--calm); }
+  .ledger .spent { color: var(--mute); }
+  .ledger.head .made, .ledger.head .spent { color: var(--mute); }
+
+  .rivals-table { display: flex; flex-direction: column; gap: 2px; overflow-x: auto; }
+  .rival-row { display: grid; gap: 8px; font-size: 11px; align-items: center; padding: 4px 0;
+               grid-template-columns: minmax(96px, 1.3fr) minmax(104px, 1.2fr) 86px 58px 58px 34px;
+               border-bottom: 1px solid var(--line-soft); min-width: 460px; }
+  .rival-row.head { color: var(--mute); font: 10px/1 Silkscreen, monospace; letter-spacing: 0.08em;
+                    text-transform: uppercase; }
+  .rival-row.you { border-bottom: 1px solid var(--gold-dim); }
+  .rival-row.you .nm { color: var(--gold); font-weight: 700; }
+  .rival-row.gone { opacity: 0.5; }
+  .rival-row .nm { color: var(--ink-bright); overflow: hidden; text-overflow: ellipsis; }
+  .rival-row .bld { color: var(--mute); text-transform: capitalize; }
+  .rival-row .tr, .rival-row .pp, .rival-row .pk, .rival-row .tt {
+    text-align: right; font-variant-numeric: tabular-nums; color: var(--ink);
+  }
+  .rival-row.head .tr, .rival-row.head .pp, .rival-row.head .pk, .rival-row.head .tt { color: var(--mute); }
+
+  .earned { color: var(--ink-bright); border-left: 2px solid var(--gold); padding-left: 10px; }
+  .end-actions { display: flex; gap: 9px; flex-wrap: wrap; }
+
   /* ---------------------------------------------------------------- overlays */
-  #overlay, #tech, #growth-modal {
+  #overlay, #tech, #growth-modal, #election-modal {
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
     padding: 20px; z-index: 30; background: rgba(4, 5, 9, 0.88); backdrop-filter: blur(4px);
   }
-  #tech, #growth-modal { z-index: 40; }
+  #tech, #growth-modal, #election-modal { z-index: 40; }
   .sheet {
     background: var(--panel); border: 1px solid var(--line); border-radius: 2px; padding: 20px;
     display: flex; flex-direction: column; gap: 9px; width: min(340px, 100%);
@@ -367,6 +443,7 @@
 
     <div class="menu">
       <button class="primary big" id="menu-new">New colony</button>
+      <button class="big" id="menu-chronicle">The Chronicle <span id="menu-points"></span></button>
       <button class="big" id="menu-help" aria-expanded="false">How to play</button>
     </div>
 
@@ -396,6 +473,43 @@
       <b>This is the game, not a mock-up.</b> Every tick, election and war comes from the same
       <b>:sim</b> Kotlin module the Android app is built on, compiled to JavaScript.
     </footer>
+  </div>
+
+  <!-- ---------- the Chronicle: what a finished run earned, and what it buys ---------- -->
+  <div id="screen-chronicle" hidden>
+    <div class="topbar">
+      <span class="crumb">The Chronicle</span>
+      <button class="ghost" id="chronicle-back">Back</button>
+    </div>
+
+    <section class="panel">
+      <h2>What this is</h2>
+      <div class="body">
+        <p class="sub">
+          Every civilisation you finish is remembered. A run's Chronicle points are
+          <b>peak population &divide; 10</b>, plus <b>years survived &divide; 4</b>, plus
+          <b>tech tier squared &times; 6</b>, plus a bonus for how it ended — nothing for a collapse,
+          25 for a conquest, 200 for enduring three centuries, 500 for ascending. They are spent
+          here, on advantages every later colony is founded with.
+        </p>
+        <div id="chronicle-stats" class="brk"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Permanent upgrades</h2>
+      <div class="body" id="upgrades"></div>
+    </section>
+  </div>
+
+  <!-- ---------- the finish screen ---------- -->
+  <div id="screen-end" hidden>
+    <div class="topbar">
+      <span class="crumb" id="end-crumb">The run has ended</span>
+      <button class="ghost" id="end-chronicle">The Chronicle</button>
+      <button class="ghost" id="end-again">New colony</button>
+    </div>
+    <div id="end-body"></div>
   </div>
 
   <!-- ---------- 2. founding ---------- -->
@@ -441,6 +555,7 @@
           <button id="reroll">New island</button>
           <span class="quiet" id="sitelabel"></span>
         </div>
+        <div class="body" id="survey"></div>
       </div>
     </section>
 
@@ -487,8 +602,6 @@
       <div class="body" id="who-body"></div>
     </section>
 
-    <div id="ended-box" hidden></div>
-
     <div class="tabs" role="tablist">
       <button class="tab" data-tab="council" aria-selected="true">Council</button>
       <button class="tab" data-tab="feed-panel" aria-selected="false">Chronicle</button>
@@ -502,6 +615,21 @@
   </div>
 
   <!-- a tier reached: the clock is stopped until this is answered -->
+  <!-- the year's election. Stops the clock, and skipping is a real answer. -->
+  <div id="election-modal" hidden>
+    <div class="sheet wide">
+      <h2 id="election-title">The town goes to the polls</h2>
+      <p class="sub">
+        You do not choose the Premier — the town does. You may spend influence to endorse one
+        candidate, or stay out of it. Either way the years start again when you say so.
+      </p>
+      <div id="election-options"></div>
+      <div class="end-actions">
+        <button class="primary" id="election-done">Let them vote</button>
+      </div>
+    </div>
+  </div>
+
   <!-- a generation comes of age. A modal, because the clock really is stopped behind it. -->
   <div id="growth-modal" hidden>
     <div class="sheet wide">
@@ -541,10 +669,26 @@
 (function () {
   const api = (window.pixeltown || globalThis.pixeltown).com.pixeltown.web;
 
+  // Panels are rebuilt from innerHTML, and renderGame runs on every animation frame the sim is
+  // dirty on — which is all of them. That destroyed and recreated every button several times a
+  // second, so a tap landed on an element that no longer existed and the whole panel visibly
+  // flickered. Writing only when the markup has actually changed makes the buttons stable DOM:
+  // the council and the growth panel then sit still between the events that change them.
+  //
+  // Declared up here rather than beside `renderGame`, because `function` declarations hoist and
+  // `const` does not: the Chronicle and setup screens call this during page setup, and from further
+  // down the file it was a temporal-dead-zone error on the first click.
+  const lastHTML = new Map();
+  function setHTML(id, html) {
+    if (lastHTML.get(id) === html) return;
+    lastHTML.set(id, html);
+    document.getElementById(id).innerHTML = html;
+  }
+
   // ---------------- screens ----------------
   // Three of them: the title, setting a colony up, and playing it. One function owns which is
   // visible so a screen can never be left half-shown.
-  const SCREENS = ['screen-menu', 'screen-setup', 'screen-game'];
+  const SCREENS = ['screen-menu', 'screen-setup', 'screen-game', 'screen-chronicle', 'screen-end'];
   function show(id) {
     for (const s of SCREENS) document.getElementById(s).hidden = s !== id;
     const title = id === 'screen-menu';
@@ -552,6 +696,79 @@
     document.getElementById('menu-veil').hidden = !title;
     window.scrollTo(0, 0);
   }
+
+  // ---------------- the Chronicle ----------------
+  // The meta layer has existed in :sim since M6 and the playable build could not reach a line of
+  // it: a run computed its Chronicle points, printed them, and threw them away. The encoded state
+  // lives in localStorage — per-viewer, which is exactly right for a single-player legacy — and
+  // every read and write is guarded, because a private window or blocked site data makes the
+  // accessor throw rather than return nothing.
+  const LEGACY_KEY = 'pixeltown.chronicle';
+  function loadLegacy() {
+    try { return localStorage.getItem(LEGACY_KEY) || ''; } catch (e) { return ''; }
+  }
+  function saveLegacy(encoded) {
+    try { localStorage.setItem(LEGACY_KEY, encoded); } catch (e) { /* nothing we can do, or should */ }
+  }
+  let chronicle = new api.WebChronicle(loadLegacy());
+  /** Set once when the run ends, so the finish screen is built exactly once. */
+  let ended = false;
+  const END_TITLE = {
+    COLLAPSE: 'the colony died',
+    CONQUEST: 'the colony was taken',
+    ENDURANCE: 'three centuries endured',
+    ASCENSION: 'the colony ascended'
+  };
+
+  function renderMenuPoints() {
+    const el = document.getElementById('menu-points');
+    el.textContent = chronicle.points > 0 ? `· ${chronicle.points} pts` : '';
+  }
+
+  function renderChronicle() {
+    setHTML('chronicle-stats', [
+      ['Points to spend', chronicle.points],
+      ['Runs finished', chronicle.runsPlayed],
+      ['Longest run', chronicle.bestYears + ' years'],
+      ['Opening points', (10 + chronicle.bonusAllocationPoints)],
+      ['Settlers', chronicle.startingSettlers]
+    ].map(([k, v]) => `<div class="sheetline"><span class="bk">${k}</span>
+       <span class="bv">${v}</span></div>`).join(''));
+
+    const ups = JSON.parse(chronicle.upgrades());
+    setHTML('upgrades', ups.map(u => `
+      <div class="upgrade${u.cost < 0 ? ' maxed' : ''}">
+        <span class="what">
+          <span class="nm">${u.label} <span class="lvl">${u.level}/${u.max}</span></span>
+          <span class="desc">${u.blurb}</span>
+        </span>
+        <button data-buy="${u.id}" ${u.cost < 0 || !u.affordable ? 'disabled' : ''}>
+          ${u.cost < 0 ? 'maxed' : u.cost + ' pts'}
+        </button>
+      </div>`).join(''));
+  }
+
+  document.getElementById('upgrades').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || !b.dataset.buy) return;
+    if (chronicle.buy(b.dataset.buy)) {
+      saveLegacy(chronicle.encode());
+      renderChronicle();
+      renderMenuPoints();
+      renderAlloc();
+    }
+  });
+
+  function openChronicle() {
+    renderChronicle();
+    show('screen-chronicle');
+  }
+  document.getElementById('menu-chronicle').addEventListener('click', openChronicle);
+  document.getElementById('end-chronicle').addEventListener('click', openChronicle);
+  document.getElementById('chronicle-back').addEventListener('click', () => show('screen-menu'));
+  document.getElementById('end-again').addEventListener('click', () => location.reload());
+  document.getElementById('end-body').addEventListener('click', e => {
+    if (e.target.closest('#end-spend')) openChronicle();
+  });
 
   document.getElementById('menu-new').addEventListener('click', () => {
     show('screen-setup');
@@ -644,7 +861,9 @@
     gathering: 'Timber and stone gathered — and how fast you build'
   };
   // MAX is the opening cap; a trait can still climb to the ceiling above, one decade point at a time.
-  const BASE = 3, BUDGET = 10, MAX = 8, MIN = 1;
+  const BASE = 3, BASE_BUDGET = 10, MAX = 8, MIN = 1;
+  /** The opening budget, including whatever the Chronicle's "Deeper roots" has bought. */
+  function budget() { return BASE_BUDGET + chronicle.bonusAllocationPoints; }
   const alloc = { speed: BASE, health: BASE, hunting: BASE, elements: BASE, farming: BASE, gathering: BASE };
   const vals = () => TRAITS.map(([k]) => alloc[k]);
   let seed = Math.floor(Math.random() * 1e6) + 1;
@@ -658,7 +877,43 @@
         <span class="val" id="v-${key}">${BASE}</span>
         <button data-key="${key}" data-d="1" aria-label="More ${name}">+</button>
       </span>
+      <div class="buys" id="buys-${key}"></div>
     </div>`).join('');
+
+  /**
+   * What the next point in each trait actually buys, with percentages.
+   *
+   * Every figure comes from `:sim` — the façade builds the allocation one point higher and reads the
+   * same `TraitAllocation` the game runs on. So this cannot drift from the simulation the way the
+   * one-line blurbs above it could, and a retuned formula moves these numbers with no copy to edit.
+   */
+  function renderBuys() {
+    const all = JSON.parse(api.previewTraitEffects(...vals()));
+    for (const [key] of TRAITS) {
+      const rows = all[key] || [];
+      const atCap = alloc[key] >= MAX;
+      setHTML('buys-' + key, rows.length === 0 || atCap
+        ? `<span class="quiet">${atCap ? 'at the opening cap of ' + MAX : 'nothing further'}</span>`
+        : rows.filter(r => r.changes).map(r => {
+            const better = r.lowerIsBetter ? r.pct < 0 : r.pct > 0;
+            return `<span class="buy">
+              <span class="bl">${r.label}</span>
+              <span class="bn">${fmtEffect(r.from, r.unit)} &rarr; ${fmtEffect(r.to, r.unit)}</span>
+              <span class="bp ${better ? 'up' : 'down'}">${r.pct > 0 ? '+' : ''}${r.pct}%</span>
+            </span>`;
+          }).join(''));
+    }
+  }
+
+  /** One number, written the way its unit reads. */
+  function fmtEffect(v, unit) {
+    if (unit === 'percent') return Math.round(v * 100) + '%';
+    if (unit === 'years') return Math.round(v) + 'y';
+    if (unit === 'multiplier') return v.toFixed(2) + '\u00D7';
+    // Small rates (soil recovery is ~0.003/day) need the places; ordinary figures do not.
+    if (v !== 0 && Math.abs(v) < 0.1) return v.toPrecision(2);
+    return v.toFixed(2);
+  }
 
   function spent() { return TRAITS.reduce((n, [k]) => n + alloc[k] - BASE, 0); }
 
@@ -672,11 +927,11 @@
 
   function renderAlloc() {
     TRAITS.forEach(([k]) => { document.getElementById('v-' + k).textContent = alloc[k]; });
-    const left = BUDGET - spent();
+    const left = budget() - spent();
     document.getElementById('points').textContent = left;
     document.querySelectorAll('.stepper button').forEach(b => {
       const k = b.dataset.key, d = Number(b.dataset.d);
-      b.disabled = d > 0 ? (left <= 0 || alloc[k] >= MAX) : (alloc[k] <= MIN || alloc[k] <= BASE - (BUDGET - 0));
+      b.disabled = d > 0 ? (left <= 0 || alloc[k] >= MAX) : (alloc[k] <= MIN);
       if (d < 0) b.disabled = alloc[k] <= MIN;
     });
     const p = JSON.parse(api.previewTraits(...vals()));
@@ -688,6 +943,8 @@
     ].map(([k, v]) => `<div><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
     const [name, line] = archetypeOf();
     document.getElementById('archetype').innerHTML = `<b>${name}</b> — ${line}`;
+    renderBuys();
+    if (preview) drawSurvey();
     // Founding with points unspent is a weaker start than any real allocation, and it starves:
     // a colony at 3/3/3/3/3 was dead inside its first year.
     const begin = document.getElementById('begin');
@@ -701,7 +958,7 @@
   traitsEl.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     const k = b.dataset.key, d = Number(b.dataset.d);
-    if (d > 0 && (spent() >= BUDGET || alloc[k] >= MAX)) return;
+    if (d > 0 && (spent() >= budget() || alloc[k] >= MAX)) return;
     if (d < 0 && alloc[k] <= MIN) return;
     alloc[k] += d; renderAlloc();
   });
@@ -785,6 +1042,47 @@
     document.getElementById('sitelabel').textContent = chosenCell < 0
       ? 'no site chosen - the scouts will pick'
       : `site ${chosenCell % preview.width}, ${Math.floor(chosenCell / preview.width)}`;
+    drawSurvey();
+  }
+
+  /**
+   * What the land around the selected cell is worth.
+   *
+   * This is the screen's most important number and it did not exist: every buildable mainland cell
+   * was offered as legal, and the difference between the best and the worst is a factor of six in
+   * nearby food. The scouts' own pick is surveyed when nothing is chosen, so the two are comparable.
+   */
+  function drawSurvey() {
+    const cell = chosenCell < 0 ? preview.suggestedCell : chosenCell;
+    const v = JSON.parse(preview.survey(cell, ...vals()));
+    if (!v) { setHTML('survey', ''); return; }
+    const short = v.feeds < v.settlers;
+    setHTML('survey', `
+      <div class="sv-head">
+        <span class="sv-rating r-${v.rating}">${v.rating} ground</span>
+        <span class="quiet">${v.share}% of the best land on this island${
+          chosenCell < 0 ? ' · the scouts\' pick' : ''}</span>
+      </div>
+      <div class="sv-grid">
+        ${[
+          ['Farmland', v.farmland, 'fertility within six cells'],
+          ['Wild game', v.game, 'what hunters have to work with'],
+          ['Forest', v.timber, 'cells of timber'],
+          ['Hill & rock', v.stone, 'cells of stone'],
+          ['Fresh water', v.water, 'river cells']
+        ].map(([k, val, why]) => `<div class="sv-cell">
+            <span class="k">${k}</span><span class="v">${val}</span>
+            <span class="why">${why}</span>
+          </div>`).join('')}
+      </div>
+      <div class="sv-verdict ${short ? 'warn' : 'ok'}">
+        Feeds roughly <b>${v.feeds}</b> people at your farming — ${
+          short
+            ? `fewer than the <b>${v.settlers}</b> stepping off the boat. They will be hungry from the first winter.`
+            : `against the <b>${v.settlers}</b> stepping off the boat.`
+        }
+        <span class="quiet">An upper bound: it assumes a farmer on every fertile cell in range.</span>
+      </div>`);
   }
 
   siteCanvas.addEventListener('click', e => {
@@ -819,6 +1117,7 @@
     game = new api.WebGame(
       seed, ...vals(),
       document.getElementById('colony').value, chosenCell, colourIndex);
+    ended = false;
     off.width = game.width; off.height = game.height;
     image = offCtx.createImageData(game.width, game.height);
     view32 = new Uint32Array(image.data.buffer);
@@ -878,18 +1177,6 @@
     renderGame();
   }
 
-  // Panels are rebuilt from innerHTML, and renderGame runs on every animation frame the sim is
-  // dirty on — which is all of them. That destroyed and recreated every button several times a
-  // second, so a tap landed on an element that no longer existed and the whole panel visibly
-  // flickered. Writing only when the markup has actually changed makes the buttons stable DOM:
-  // the council and the growth panel then sit still between the events that change them.
-  const lastHTML = new Map();
-  function setHTML(id, html) {
-    if (lastHTML.get(id) === html) return;
-    lastHTML.set(id, html);
-    document.getElementById(id).innerHTML = html;
-  }
-
   function renderGame() {
     const s = state;
     document.getElementById('hud-title').textContent = `${s.colony} · ${s.archetype}`;
@@ -911,6 +1198,27 @@
       ['People', s.pop], ['Food', s.food], ['Wood', s.wood], ['Stone', s.stone],
       ['Tech', s.tier + '/6'], ['Buildings', s.buildings], ['Unrest', s.unrest], ['Influence', s.influence]
     ].map(([k, v]) => `<div class="stat"><span class="k">${k}</span><span class="v">${v}</span></div>`).join(''));
+
+    // The year's election. The simulation has already stopped itself (Simulation.electionPending),
+    // so this only has to put the slate on screen. At 10x the thirty-day campaign window is three
+    // seconds, which is why endorsing was a lever nobody could ever reach in time.
+    const electionModal = document.getElementById('election-modal');
+    const voting = s.electionPending && s.campaign && s.campaign.length > 0;
+    electionModal.hidden = !voting;
+    if (voting) {
+      document.getElementById('election-title').textContent =
+        `Year ${s.year} — the town goes to the polls`;
+      setHTML('election-options', s.campaign.map(k => `
+        <button class="opt" data-vote="${k.id}" ${s.influence < 20 ? 'disabled' : ''}>
+          <span class="t">${k.name}, ${k.age} — ${k.agenda} · ${k.temperament}</span>
+          <span class="b">${k.pitch}</span>
+          <span class="b gold">${
+            s.endorsed === k.id ? 'endorsed' : (s.influence < 20 ? 'needs 20 influence' : 'endorse for 20 influence')
+          }</span>
+        </button>`).join(''));
+      document.getElementById('election-done').textContent =
+        s.endorsed ? 'Let them vote' : 'Stay out of it';
+    }
 
     // A generation comes of age: the decade's trait point, and where it goes. The simulation has
     // already stopped itself (Simulation.awaitingPlayer), so this only has to put it on screen.
@@ -982,12 +1290,18 @@
         <div class="tension"><i style="width:${Math.round(r.tension * 100)}%"></i></div>
       </div>`).join(''));
 
-    const box = document.getElementById('ended-box');
-    if (s.end && s.summary) {
-      box.hidden = false;
-      box.className = 'ended';
-      box.innerHTML = endedHtml(s);
+    // The run is over: bank what it earned and move to a screen of its own. An obituary squeezed
+    // into a panel above the map, with the game still ticking behind it, read as a notification
+    // rather than an ending.
+    if (s.end && s.summary && !ended) {
+      ended = true;
       setSpeed(0);
+      const earned = chronicle.recordRun(s.summary.points, s.summary.years);
+      saveLegacy(chronicle.encode());
+      renderMenuPoints();
+      document.getElementById('end-crumb').textContent = `${s.colony} — ${END_TITLE[s.end] || s.end}`;
+      document.getElementById('end-body').innerHTML = endedHtml(s, earned);
+      show('screen-end');
     }
   }
 
@@ -1014,13 +1328,72 @@
     }).join('');
   }
 
-  function endedHtml(s) {
+  /** A row per resource: what the town made, what it spent. */
+  function ledger(produced, consumed, spoiled) {
+    const keys = [...new Set([...produced.map(r => r.k), ...consumed.map(r => r.k)])];
+    const by = (rows, k) => (rows.find(r => r.k === k) || { v: 0 }).v;
+    const rows = keys.map(k => `
+      <div class="ledger">
+        <span class="bk">${k}</span>
+        <span class="made">+${by(produced, k).toLocaleString()}</span>
+        <span class="spent">−${by(consumed, k).toLocaleString()}</span>
+      </div>`).join('');
+    const rot = spoiled > 0
+      ? `<div class="sheetline"><span class="bk">Spoiled</span>
+         <span class="bv">${spoiled.toLocaleString()} food rotted before anyone ate it</span></div>`
+      : '';
+    return `<div class="ledger head"><span class="bk"></span><span class="made">made</span>
+      <span class="spent">spent</span></div>${rows}${rot}`;
+  }
+
+  /** Every rival, so the player's own numbers have something to be measured against. */
+  function rivalTable(rivals, m) {
+    if (!rivals || !rivals.length) return '';
+    const rows = rivals.map(r => `
+      <div class="rival-row${r.extinct ? ' gone' : ''}">
+        <span class="nm">${r.name}${r.atWar ? ' <span class="chip danger">at war</span>' : ''}</span>
+        <span class="bld">${r.archetype} · ${r.personality}</span>
+        <span class="tr">${TRAITS.map(([k]) => r.traits[k]).join('/')}</span>
+        <span class="pp">${r.extinct ? 'died' : r.pop.toLocaleString()}</span>
+        <span class="pk">${r.peak.toLocaleString()}</span>
+        <span class="tt">${r.tier}</span>
+      </div>`).join('');
+    return `
+      <div class="rival-row head">
+        <span class="nm">who</span><span class="bld">built for</span>
+        <span class="tr">${TRAITS.map(([, n]) => n[0]).join('/')}</span>
+        <span class="pp">left</span><span class="pk">peak</span><span class="tt">tier</span>
+      </div>
+      <div class="rival-row you">
+        <span class="nm">${m.youName}</span>
+        <span class="bld">you</span>
+        <span class="tr">${TRAITS.map(([k]) => m.final[k]).join('/')}</span>
+        <span class="pp">${m.endPop.toLocaleString()}</span>
+        <span class="pk">${m.peak.toLocaleString()}</span>
+        <span class="tt">${m.tier}</span>
+      </div>${rows}`;
+  }
+
+  function endedHtml(s, earned) {
     const m = s.summary;
+    m.youName = s.colony;
+    m.endPop = s.pop;
     const grown = (m.growthCounts || []).reduce((n, c) => n + c.v, 0);
-    return `<h2>${s.end}</h2>
-      <div>Survived <b>${m.years}</b> years · peak population <b>${m.peak}</b> ·
-        tech tier <b>${m.tier}</b> · Chronicle points <b>${m.points}</b></div>
+    return `<div class="ended">
+      <h2>${END_TITLE[s.end] || s.end}</h2>
+      <div>Survived <b>${m.years}</b> years · peak population <b>${m.peak.toLocaleString()}</b> ·
+        tech tier <b>${m.tier}</b></div>
+      <div class="earned">This run earned <b>${earned.toLocaleString()}</b> Chronicle points.
+        You now have <b>${chronicle.points.toLocaleString()}</b> to spend.</div>
       <div class="brk">
+        <section>
+          <h3>What the town made and spent</h3>
+          ${ledger(m.produced || [], m.consumed || [], m.spoiled || 0)}
+        </section>
+        <section style="grid-column:1/-1">
+          <h3>The island, at the end</h3>
+          <div class="rivals-table">${rivalTable(m.rivalDetail, m)}</div>
+        </section>
         <section>
           <h3>The trait sheet</h3>
           ${traitSheet(m.opening, m.final)}
@@ -1067,8 +1440,22 @@
             : '<div class="sheetline"><span class="bk quiet">nothing — no tier was reached</span></div>'}
         </section>
       </div>
-      <div><button class="primary" onclick="location.reload()">Start a new run</button></div>`;
+      <div class="end-actions">
+        <button class="primary" id="end-spend">Spend ${chronicle.points.toLocaleString()} points</button>
+        <button onclick="location.reload()">Start a new colony</button>
+      </div>
+    </div>`;
   }
+
+  document.getElementById('election-options').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || !game) return;
+    // Endorsing does not dismiss the modal: a player may endorse and keep reading.
+    if (game.endorse(Number(b.dataset.vote))) pull();
+  });
+  document.getElementById('election-done').addEventListener('click', () => {
+    if (!game) return;
+    if (game.acknowledgeElection()) pull();
+  });
 
   document.getElementById('growth').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b || !game) return;

@@ -41,6 +41,14 @@ data class SaveGame(
      */
     val campaigns: List<List<CandidateSave>?> = emptyList(),
     val endorsements: List<Int?> = emptyList(),
+    /**
+     * Whether the player's election is still waiting to be looked at.
+     *
+     * Part of the save for the same reason the candidate slate is (AD-40): a run saved inside the
+     * campaign window and reloaded must present the same decision, not silently skip it. Defaulted
+     * false, so a save from before elections paused the clock simply does not pause.
+     */
+    val electionPending: Boolean = false,
     val vetoPending: List<Boolean> = emptyList(),
     val elections: List<ElectionSave>,
     val relations: RelationsSave,
@@ -125,6 +133,10 @@ data class CivSave(
     val deathsByCause: List<Int> = emptyList(),
     val warsFought: Int = 0,
     val raidsSuffered: Int = 0,
+    /** The lifetime resource ledger behind the end-of-run breakdown. Defaulted for older saves. */
+    val produced: List<Double> = emptyList(),
+    val consumed: List<Double> = emptyList(),
+    val spoiled: Double = 0.0,
     /** An epidemic in progress is part of the run, not a detail to re-roll on load. */
     val epidemicDaysLeft: Int = 0,
     val epidemicCount: Int = 0,

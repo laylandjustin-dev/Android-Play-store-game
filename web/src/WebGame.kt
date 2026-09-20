@@ -11,14 +11,19 @@ import com.pixeltown.sim.CivColors
 import com.pixeltown.sim.ColonyName
 import com.pixeltown.sim.FrameRenderer
 import com.pixeltown.sim.GameConfig
+import com.pixeltown.sim.Legacy
+import com.pixeltown.sim.LegacyUpgrade
 import com.pixeltown.sim.Palette
 import com.pixeltown.sim.Resource
 import com.pixeltown.sim.RunConfig
 import com.pixeltown.sim.SimRandom
+import com.pixeltown.sim.SiteSurvey
 import com.pixeltown.sim.Simulation
 import com.pixeltown.sim.Trait
 import com.pixeltown.sim.TechOption
 import com.pixeltown.sim.TraitAllocation
+import com.pixeltown.sim.TraitEffect
+import com.pixeltown.sim.TraitEffects
 import com.pixeltown.sim.World
 import com.pixeltown.sim.WorldGenerator
 import com.pixeltown.sim.WorldRenderer
@@ -196,6 +201,30 @@ class WebGame(
         return simulation.chooseTech(GameConfig.World.PLAYER_CIV_ID, option)
     }
 
+    /** True while the player's election is waiting to be looked at. */
+    val electionPending: Boolean get() = simulation.electionPending
+
+    /**
+     * Dismisses the election pause, whether the player endorsed anybody or not.
+     *
+     * Skipping is a legitimate answer to an election and costs nothing — the whole point of the
+     * pause is that the slate can be *read*, not that it must be acted on.
+     */
+    fun acknowledgeElection(): Boolean = simulation.acknowledgeElection()
+
+    /**
+     * What one more point in [trait] would change, with percentages.
+     *
+     * Every row is computed by building the allocation one point higher and reading the same
+     * `TraitAllocation` the simulation runs on, so this can never drift from the game the way a
+     * hand-written blurb does.
+     */
+    fun traitEffects(trait: String): String {
+        val which = Trait.entries.firstOrNull { it.name.equals(trait, ignoreCase = true) }
+            ?: return "[]"
+        return effectsJson(TraitEffects.of(simulation.civ(GameConfig.World.PLAYER_CIV_ID).traits, which))
+    }
+
     fun spendTraitPoint(trait: String): Boolean {
         val which = Trait.entries.firstOrNull { it.name.equals(trait, ignoreCase = true) } ?: return false
         return simulation.spendTraitPoint(GameConfig.World.PLAYER_CIV_ID, which)
@@ -224,6 +253,10 @@ class WebGame(
         sb.append(",\"growthPoints\":").append(player.unspentTraitPoints)
         sb.append(",\"epidemic\":").append(player.epidemicDaysLeft > 0)
         sb.append(",\"awaiting\":").append(simulation.awaitingPlayer)
+        sb.append(",\"electionPending\":").append(simulation.electionPending)
+        sb.append(",\"endorsed\":").append(
+            simulation.endorsementFor(GameConfig.World.PLAYER_CIV_ID)?.toString() ?: "null",
+        )
         sb.append(",\"charter\":").append(player.charter?.let { "\"${it.name.lowercase()}\"" } ?: "null")
         sb.append(",\"techs\":[")
         for ((i, choice) in player.techChoices.withIndex()) {
@@ -289,6 +322,38 @@ class WebGame(
             sb.append(",\"raids\":").append(summary.raidsSuffered)
             sb.append(",\"rivalsLeft\":").append(summary.rivalsSurviving)
             sb.append(",\"rivalsGone\":").append(summary.rivalsExtinct)
+            // What everyone else was built for and how it went for them — without this the player's
+            // own numbers have no yardstick.
+            sb.append(",\"rivalDetail\":[")
+            for ((i, rival) in summary.rivals.withIndex()) {
+                if (i > 0) sb.append(',')
+                sb.append("{\"name\":\"").append(escape(rival.name)).append('"')
+                sb.append(",\"personality\":\"").append(rival.personality.name.lowercase()).append('"')
+                sb.append(",\"archetype\":\"").append(escape(Archetype.of(rival.traits).label)).append('"')
+                sb.append(",\"traits\":").append(traitsJson(rival.traits))
+                sb.append(",\"pop\":").append(rival.population)
+                sb.append(",\"peak\":").append(rival.peakPopulation)
+                sb.append(",\"tier\":").append(rival.techTier)
+                sb.append(",\"buildings\":").append(rival.buildings)
+                sb.append(",\"extinct\":").append(rival.extinct)
+                sb.append(",\"atWar\":").append(rival.atWarWithPlayer)
+                sb.append(",\"wars\":").append(rival.warsWithPlayer)
+                sb.append(",\"trades\":").append(rival.tradesWithPlayer)
+                sb.append('}')
+            }
+            sb.append(']')
+            // The resource ledger: everything the town ever made and everything it ever spent.
+            sb.append(",\"produced\":").append(
+                shareJson(Resource.entries.mapNotNull { r ->
+                    summary.produced[r]?.let { r.name.lowercase() to it.toInt() }
+                }),
+            )
+            sb.append(",\"consumed\":").append(
+                shareJson(Resource.entries.mapNotNull { r ->
+                    summary.consumed[r]?.let { r.name.lowercase() to it.toInt() }
+                }),
+            )
+            sb.append(",\"spoiled\":").append(summary.spoiled.toInt())
             sb.append('}')
         }
 
@@ -377,7 +442,7 @@ class WebGame(
         return "${scaled / 100}.${(if (scaled < 0) -scaled else scaled) % 100}"
     }
 
-    private fun escape(text: String): String = text.replace("\\", "").replace("\"", "'")
+    private fun escape(text: String): String = escapeJson(text)
 
     private fun hex(argb: Int): String {
         val rgb = argb and 0xFFFFFF
@@ -431,6 +496,41 @@ class WebPreview(seed: Double, private val colorIndex: Int = 0) {
     fun isLegal(cell: Int): Boolean = cell in legal.indices && legal[cell]
 
     /**
+     * The best site score on this map, computed once. Ratings are a share of it, so "prime" means
+     * prime *for this island* rather than against some absolute the player cannot see.
+     */
+    private val bestScore: Double = SiteSurvey.bestScore(generated.world, legal)
+
+    /**
+     * What the land around [cell] is worth — the answer to "why did my colony starve there?" given
+     * before landing rather than after. [traits] is the allocation the player has chosen so far, so
+     * the "feeds about" figure is theirs and not a generic one.
+     */
+    fun survey(
+        cell: Int,
+        speed: Int,
+        health: Int,
+        hunting: Int,
+        elements: Int,
+        farming: Int,
+        gathering: Int,
+    ): String {
+        if (cell < 0 || cell >= generated.world.cellCount) return "null"
+        val traits = TraitAllocation(speed, health, hunting, elements, farming, gathering)
+        val s = SiteSurvey.of(generated.world, cell, isLegal(cell), bestScore)
+        return "{\"legal\":${s.legal}" +
+            ",\"rating\":\"${s.rating}\"" +
+            ",\"share\":${(s.shareOfBest * 100).toInt()}" +
+            ",\"farmland\":${s.farmland.toInt()}" +
+            ",\"game\":${s.game.toInt()}" +
+            ",\"timber\":${s.timber}" +
+            ",\"stone\":${s.stone}" +
+            ",\"water\":${s.freshWater}" +
+            ",\"feeds\":${s.feedsAbout(traits)}" +
+            ",\"settlers\":${GameConfig.World.STARTING_SETTLERS}}"
+    }
+
+    /**
      * The island, with [selectedCell] ringed in the player's colour (-1 for none). Illegal ground
      * is darkened, so where the player may land is visible rather than something they discover by
      * tapping.
@@ -453,6 +553,131 @@ class WebPreview(seed: Double, private val colorIndex: Int = 0) {
         const val ILLEGAL_DIM = 0.72f
     }
 }
+
+/**
+ * The Chronicle: points earned by finished runs, and the permanent upgrades they buy.
+ *
+ * `:sim` has had this since M6 and the playable build could not reach a line of it — a run computed
+ * its Chronicle points, printed them on the end screen, and threw them away. So the honest answer to
+ * "what are Chronicle points and how do I spend them" was *nothing, and you can't*. This is the
+ * façade that makes them real: the shell keeps the encoded state in `localStorage`, hands it back on
+ * the next visit, and a run started from it is a run with the upgrades applied.
+ *
+ * The state is a plain string rather than an object graph so the shell can store it without knowing
+ * anything about upgrades, and so adding an upgrade cannot break a stored legacy: unknown names are
+ * skipped on the way in, exactly as unknown techs are (AD-57's lesson).
+ */
+@JsExport
+class WebChronicle(encoded: String = "") {
+
+    private val legacy: Legacy = decode(encoded)
+
+    val points: Int get() = legacy.chroniclePoints
+    val runsPlayed: Int get() = legacy.runsPlayed
+    val bestYears: Int get() = legacy.bestYears
+
+    /** Every upgrade, with what it costs, what it is worth, and whether it can be bought now. */
+    fun upgrades(): String = LegacyUpgrade.entries.joinToString(",", "[", "]") { upgrade ->
+        val cost = legacy.costOf(upgrade)
+        val level = legacy.levelOf(upgrade)
+        "{\"id\":\"${upgrade.name}\"" +
+            ",\"label\":\"${escapeJson(labelOf(upgrade))}\"" +
+            ",\"blurb\":\"${escapeJson(blurbOf(upgrade))}\"" +
+            ",\"level\":$level" +
+            ",\"max\":${upgrade.maxLevel}" +
+            ",\"cost\":${cost ?: -1}" +
+            ",\"affordable\":${cost != null && cost <= legacy.chroniclePoints}}"
+    }
+
+    /** Buys one level. False when it is maxed or unaffordable — the caller's request was not legal. */
+    fun buy(id: String): Boolean {
+        val upgrade = LegacyUpgrade.entries.firstOrNull { it.name == id } ?: return false
+        return legacy.buy(upgrade)
+    }
+
+    /** Banks a finished run's points and its record. Returns what the run earned. */
+    fun recordRun(points: Int, yearsSurvived: Int): Int {
+        legacy.grant(points)
+        legacy.recordRun(yearsSurvived)
+        return points
+    }
+
+    /** The opening allocation budget this legacy grants, over the standard ten. */
+    val bonusAllocationPoints: Int get() = legacy.bonusAllocationPoints
+
+    val startingSettlers: Int get() = legacy.startingSettlers
+
+    /** For `localStorage`. Deliberately not JSON: the shell never reads inside it. */
+    fun encode(): String = buildString {
+        append(legacy.chroniclePoints).append('|')
+        append(legacy.runsPlayed).append('|')
+        append(legacy.bestYears)
+        for (upgrade in LegacyUpgrade.entries) {
+            val level = legacy.levelOf(upgrade)
+            if (level > 0) append('|').append(upgrade.name).append(':').append(level)
+        }
+    }
+
+    private companion object {
+        fun decode(encoded: String): Legacy {
+            if (encoded.isBlank()) return Legacy()
+            val parts = encoded.split('|')
+            val levels = HashMap<LegacyUpgrade, Int>()
+            for (part in parts.drop(3)) {
+                val name = part.substringBefore(':')
+                val level = part.substringAfter(':', "").toIntOrNull() ?: continue
+                // An upgrade this build does not know is dropped rather than throwing: a stored
+                // legacy must survive the game gaining and losing upgrades.
+                LegacyUpgrade.entries.firstOrNull { it.name == name }?.let { levels[it] = level }
+            }
+            return Legacy.restore(
+                parts.getOrNull(0)?.toIntOrNull() ?: 0,
+                parts.getOrNull(1)?.toIntOrNull() ?: 0,
+                parts.getOrNull(2)?.toIntOrNull() ?: 0,
+                levels,
+            )
+        }
+
+        fun labelOf(upgrade: LegacyUpgrade): String = when (upgrade) {
+            LegacyUpgrade.ALLOCATION_POINT -> "Deeper roots"
+            LegacyUpgrade.EXTRA_SETTLERS -> "A larger landing"
+            LegacyUpgrade.STARTING_BUILDING -> "Ready-made"
+            LegacyUpgrade.FAST_LEARNERS -> "Quick hands"
+            LegacyUpgrade.STANDING -> "Old families"
+            LegacyUpgrade.FERTILITY_FLOOR -> "Deep soil"
+            LegacyUpgrade.DIPLOMACY -> "Good name"
+        }
+
+        fun blurbOf(upgrade: LegacyUpgrade): String = when (upgrade) {
+            LegacyUpgrade.ALLOCATION_POINT ->
+                "+1 point to spend on the opening screen. Capped at +4 however much you spend."
+            LegacyUpgrade.EXTRA_SETTLERS -> "+5 settlers step off the boat."
+            LegacyUpgrade.STARTING_BUILDING -> "One building already standing on day one."
+            LegacyUpgrade.FAST_LEARNERS -> "Skill matures faster, so a young colony is less helpless."
+            LegacyUpgrade.STANDING -> "Citizens start with influence, so the council is contested sooner."
+            LegacyUpgrade.FERTILITY_FLOOR -> "A floor under soil fertility: land cannot be exhausted entirely."
+            LegacyUpgrade.DIPLOMACY -> "The rivals begin better disposed toward you."
+        }
+    }
+}
+
+/** Trait-effect rows as JSON. One implementation, so the two screens cannot disagree. */
+private fun effectsJson(rows: List<TraitEffect>): String =
+    rows.joinToString(",", "[", "]") { row ->
+        // Full precision, not `fixed()`: soil recovery is ~0.003 a day, and rounding to two places
+        // before serialising turned an honest "+16%" row into "0.00 -> 0.00". Formatting is the
+        // reader's job and belongs at the point of display.
+        "{\"label\":\"${escapeJson(row.label)}\"" +
+            ",\"from\":${row.from}" +
+            ",\"to\":${row.to}" +
+            ",\"unit\":\"${row.unit.name.lowercase()}\"" +
+            ",\"pct\":${row.percentChange}" +
+            ",\"lowerIsBetter\":${row.lowerIsBetter}" +
+            ",\"changes\":${row.changes}}"
+    }
+
+/** Makes a string safe to drop inside the hand-rolled JSON these façades emit. */
+private fun escapeJson(text: String): String = text.replace("\\", "").replace("\"", "'")
 
 /** The colours a player may choose from, as CSS hex, in the order the picker shows them. */
 @JsExport
@@ -477,6 +702,27 @@ fun describeBuild(
     val archetype = Archetype.of(TraitAllocation(speed, health, hunting, elements, farming, gathering))
     return "{\"label\":\"${archetype.label}\",\"blurb\":\"${archetype.blurb}\"," +
         "\"shape\":\"${archetype.shape.name.lowercase()}\"}"
+}
+
+/**
+ * What each trait's next point would change, for the allocation screen — before a run exists.
+ *
+ * Returns every trait at once, keyed by name, because the screen shows all six steppers together
+ * and asking per trait would mean six crossings of the Kotlin/JS boundary per keystroke.
+ */
+@JsExport
+fun previewTraitEffects(
+    speed: Int,
+    health: Int,
+    hunting: Int,
+    elements: Int,
+    farming: Int,
+    gathering: Int = GameConfig.Traits.BASE_VALUE,
+): String {
+    val traits = TraitAllocation(speed, health, hunting, elements, farming, gathering)
+    return Trait.entries.joinToString(",", "{", "}") { trait ->
+        "\"${trait.name.lowercase()}\":${effectsJson(TraitEffects.of(traits, trait))}"
+    }
 }
 
 /** The derived numbers the allocation screen previews, without starting a run. */

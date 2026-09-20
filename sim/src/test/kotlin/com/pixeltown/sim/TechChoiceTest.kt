@@ -25,6 +25,7 @@ class TechChoiceTest {
         repeat(maxYears * Time.DAYS_PER_YEAR) {
             if (sim.endState != null) return false
             if (sim.civ(WorldConfig.PLAYER_CIV_ID).pendingTechTier != null) return true
+            sim.acknowledgeElection()
             while (sim.pendingTraitPoints(WorldConfig.PLAYER_CIV_ID) > 0) {
                 val trait = sim.needBasedGrowth(sim.civ(WorldConfig.PLAYER_CIV_ID)) ?: break
                 if (!sim.spendTraitPoint(WorldConfig.PLAYER_CIV_ID, trait)) break
