@@ -489,6 +489,35 @@ forty. Two details: the founding stores are `set` rather than `add`ed so the led
 1,870 food as a first-morning harvest, and spoilage is booked separately from consumption because
 nobody got the good of it.
 
+**AD-76 — Shape says what a building is; colour says whose it is.** Buildings were drawn in a fixed
+per-category colour, identical for every civ, so five towns' structures were indistinguishable on a
+shared island — the one thing a player most needs to read at a glance. The fix was available only
+because the silhouettes already existed: a pentagon is a farm whatever colour it is, so the colour
+channel was being spent on information the shape already carried. The figure is now mostly the
+owner's colour with `CATEGORY_TINT` (0.25) of the accent mixed in, which keeps a barracks reading
+slightly colder than a granary *within* one town's palette without competing with the outline.
+
+Two consequences worth recording. The renderer takes `civId` and `CivColors` **defaulted**, so the
+map-preview exporters and the visual tests compile unchanged — and it must be `CivColors` rather than
+`Palette.CIV`, because rivals are recoloured around the player's pick (AD-52) and a renderer reading
+the stock table would draw the colour they used to be. And the new invariant: since colour now
+carries the owner, the shape is the *only* thing left saying what a building is, so
+`every category has a shape of its own` is a test rather than an observation.
+
+Two existing renderer tests failed on this, both because they asserted `Palette.BUILDING[category]`
+as a literal expected pixel — pinned to the old palette rather than to the drawing. They now assert
+the structure: exactly two tones per building, the figure being the brighter, five distinct
+silhouettes. *A test that names a constant tests the constant; a test that names the relationship
+survives the constant changing.*
+
+**AD-77 — The building index is generated, not written.** Twenty buildings across five categories
+and six tiers, with costs, footprints, upkeep and effects — read out of
+`GameConfig.Buildings.CATALOGUE` at display time. A hand-maintained table of those numbers is wrong
+the first time one is tuned, and silently wrong, which is the worst kind. The index cannot disagree
+with the simulation because there is nothing to disagree with. Only the *names* are hand-written
+(`HOUSING` and `HUT` are accurate and graceless), and the effect lines list only the non-zero fields
+of a spec that carries fifteen, because that is what makes twenty entries readable.
+
 **AD-75 — A 400x400 map makes civilisations rich, and rich civilisations do not fight. Three
 hypotheses, two of them wrong.** M5's gate — `civs trade, raid and go to war over a long run` —
 failed after the resize, and the first two explanations were plausible and false:

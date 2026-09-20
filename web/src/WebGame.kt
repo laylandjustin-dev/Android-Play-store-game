@@ -5,6 +5,8 @@ package com.pixeltown.web
 import com.pixeltown.sim.Agenda
 import com.pixeltown.sim.Archetype
 import com.pixeltown.sim.BuildingCategory
+import com.pixeltown.sim.BuildingShape
+import com.pixeltown.sim.BuildingType
 import com.pixeltown.sim.Citizen
 import com.pixeltown.sim.ChronicleEventKind
 import com.pixeltown.sim.CivColors
@@ -712,6 +714,80 @@ private fun effectsJson(rows: List<TraitEffect>): String =
 
 /** Makes a string safe to drop inside the hand-rolled JSON these façades emit. */
 private fun escapeJson(text: String): String = text.replace("\\", "").replace("\"", "'")
+
+/**
+ * The building index: every structure in the game, read out of the catalogue itself.
+ *
+ * Generated rather than written, which is the whole point of it. A hand-maintained table of twenty
+ * buildings' costs and effects is wrong the first time a number is tuned, and silently — so this
+ * walks `GameConfig.Buildings.CATALOGUE` and reports what is actually there. One line of the index
+ * cannot disagree with the simulation, because there is nothing to disagree with.
+ *
+ * The effects are described rather than dumped: a spec carries fifteen possible fields and any one
+ * building sets three or four, so listing only the non-zero ones is what makes the index readable.
+ */
+@JsExport
+fun buildingIndex(): String = GameConfig.Buildings.CATALOGUE.joinToString(",", "[", "]") { spec ->
+    val effects = ArrayList<String>()
+    fun note(condition: Boolean, text: String) { if (condition) effects.add(text) }
+    note(spec.housingCapacity > 0, "houses ${spec.housingCapacity}")
+    note(spec.foodStorageBonus > 0.0, "+${spec.foodStorageBonus.toInt()} food storage")
+    note(spec.careCapacity > 0.0, "cares for ${spec.careCapacity.toInt()}")
+    note(spec.moraleBonus > 0.0, "+${pct(spec.moraleBonus)} morale")
+    note(spec.influenceBonus > 0.0, "+${fixed(spec.influenceBonus)} influence a day")
+    note(spec.militaryStrength > 0.0, "+${spec.militaryStrength.toInt()} military strength")
+    note(spec.safetyBonus > 0.0, "+${pct(spec.safetyBonus)} safety")
+    note(spec.knowledgeMultiplier > 0.0, "+${pct(spec.knowledgeMultiplier)} research")
+    note(spec.farmYieldBonus > 0.0, "+${pct(spec.farmYieldBonus)} farm yield")
+    note(spec.buildSpeedBonus > 0.0, "+${pct(spec.buildSpeedBonus)} build speed")
+    note(spec.diseaseResistBonus > 0.0, "+${pct(spec.diseaseResistBonus)} disease resistance")
+    note(spec.seasonFloor > 0.0, "a floor under the worst season")
+    note(spec.foodToWealth > 0.0, "turns surplus grain into money")
+
+    "{\"type\":\"${spec.type.name}\"" +
+        ",\"label\":\"${escapeJson(labelOfBuilding(spec.type))}\"" +
+        ",\"category\":\"${spec.category.name.lowercase()}\"" +
+        ",\"shape\":\"${BuildingShape.of(spec.category).name.lowercase()}\"" +
+        ",\"tier\":${spec.tier}" +
+        ",\"footprint\":${spec.footprint}" +
+        ",\"wood\":${spec.woodCost.toInt()}" +
+        ",\"stone\":${spec.stoneCost.toInt()}" +
+        ",\"work\":${spec.buildPointsRequired.toInt()}" +
+        ",\"upkeep\":${fixed(spec.upkeepWealth)}" +
+        ",\"effects\":" + effects.joinToString(",", "[", "]") { "\"${escapeJson(it)}\"" } +
+        "}"
+}
+
+/** A whole-number percentage, for the index's effect lines. */
+private fun pct(value: Double): String = "${(value * 100).toInt()}%"
+
+/**
+ * The name a player sees, as distinct from the enum's.
+ *
+ * `HOUSING` and `HUT` are accurate and graceless; a building index is read, so it gets words.
+ */
+private fun labelOfBuilding(type: BuildingType): String = when (type) {
+    BuildingType.FIELD -> "Field"
+    BuildingType.GRANARY -> "Granary"
+    BuildingType.IRRIGATION -> "Irrigation"
+    BuildingType.MILL -> "Mill"
+    BuildingType.HUT -> "Healer's hut"
+    BuildingType.CLINIC -> "Clinic"
+    BuildingType.AQUEDUCT -> "Aqueduct"
+    BuildingType.HOSPITAL -> "Hospital"
+    BuildingType.WATCHTOWER -> "Watchtower"
+    BuildingType.BARRACKS -> "Barracks"
+    BuildingType.WALL -> "Wall"
+    BuildingType.ARMOURY -> "Armoury"
+    BuildingType.WORKSHOP -> "Workshop"
+    BuildingType.LIBRARY -> "Library"
+    BuildingType.ACADEMY -> "Academy"
+    BuildingType.OBSERVATORY -> "Observatory"
+    BuildingType.HOUSING -> "Houses"
+    BuildingType.PLAZA -> "Plaza"
+    BuildingType.TEMPLE -> "Temple"
+    BuildingType.THEATRE -> "Theatre"
+}
 
 /** The colours a player may choose from, as CSS hex, in the order the picker shows them. */
 @JsExport

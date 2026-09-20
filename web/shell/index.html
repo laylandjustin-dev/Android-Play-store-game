@@ -52,7 +52,7 @@
     position: relative;
     z-index: 1;
   }
-  #screen-menu, #screen-setup, #screen-game, #screen-chronicle, #screen-end {
+  #screen-menu, #screen-setup, #screen-game, #screen-chronicle, #screen-end, #screen-buildings {
     display: flex;
     flex-direction: column;
     gap: var(--rhythm);
@@ -357,6 +357,21 @@
 
   .opt .b.gold { color: var(--gold); }
 
+  /* The building index. */
+  #screen-buildings .panel > h2 { text-transform: capitalize; color: var(--gold); font-size: 12px; }
+  .bindex { gap: 0; }
+  .bitem { display: grid; gap: 2px 12px; padding: 9px 0; border-bottom: 1px solid var(--line-soft);
+           grid-template-columns: minmax(150px, 1fr) minmax(190px, auto); }
+  .bitem:last-child { border-bottom: 0; }
+  .bhead { display: flex; flex-direction: column; gap: 1px; }
+  .bname { color: var(--ink-bright); font-weight: 600; font-family: Oxanium, monospace;
+           letter-spacing: 0.03em; }
+  .bmeta { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mute); }
+  .bcost { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--ink);
+           justify-content: flex-end; align-content: flex-start; font-variant-numeric: tabular-nums; }
+  .bcost .up { color: var(--warn); }
+  .beff { grid-column: 1 / -1; font-size: 11px; color: var(--calm); }
+
   /* Relations, and the people breakdown. */
   .sub-h { margin: 4px 0 2px; font: 10px/1 Silkscreen, monospace; letter-spacing: 0.10em;
            text-transform: uppercase; color: var(--mute); }
@@ -466,6 +481,7 @@
     <div class="menu">
       <button class="primary big" id="menu-new">New colony</button>
       <button class="big" id="menu-chronicle">The Chronicle <span id="menu-points"></span></button>
+      <button class="big" id="menu-buildings">The building index</button>
       <button class="big" id="menu-help" aria-expanded="false">How to play</button>
     </div>
 
@@ -522,6 +538,28 @@
       <h2>Permanent upgrades</h2>
       <div class="body" id="upgrades"></div>
     </section>
+  </div>
+
+  <!-- ---------- the building index ---------- -->
+  <div id="screen-buildings" hidden>
+    <div class="topbar">
+      <span class="crumb">The building index</span>
+      <button class="ghost" id="buildings-back">Back</button>
+    </div>
+    <section class="panel">
+      <h2>How to read it</h2>
+      <div class="body">
+        <p class="sub">
+          Twenty structures across five categories and six tiers. You never build any of them
+          yourself — the Premier your town elects decides what goes up, and your levers are the
+          charter, the petition, the veto and the vote. On the map a building's
+          <b>shape tells you what it is</b> and its <b>colour tells you whose it is</b>: farms are
+          pentagons, health circles, military triangles, tech long rectangles, lifestyle hollow
+          diamonds. <b>Work</b> is builder-days; a half-built structure does nothing at all.
+        </p>
+      </div>
+    </section>
+    <div id="building-list"></div>
   </div>
 
   <!-- ---------- the finish screen ---------- -->
@@ -714,7 +752,8 @@
   // ---------------- screens ----------------
   // Three of them: the title, setting a colony up, and playing it. One function owns which is
   // visible so a screen can never be left half-shown.
-  const SCREENS = ['screen-menu', 'screen-setup', 'screen-game', 'screen-chronicle', 'screen-end'];
+  const SCREENS = ['screen-menu', 'screen-setup', 'screen-game', 'screen-chronicle', 'screen-end',
+    'screen-buildings'];
   function show(id) {
     for (const s of SCREENS) document.getElementById(s).hidden = s !== id;
     const title = id === 'screen-menu';
@@ -795,6 +834,45 @@
   document.getElementById('end-body').addEventListener('click', e => {
     if (e.target.closest('#end-spend')) openChronicle();
   });
+
+  // ---------------- the building index ----------------
+  // Generated from the catalogue in :sim, so a tuned number cannot leave a stale table behind.
+  const CATEGORY_ORDER = ['farms', 'health', 'military', 'tech', 'lifestyle'];
+  const SHAPE_GLYPH = {
+    pentagon: '\u2B1F', circle: '\u25CF', triangle: '\u25B2',
+    rectangle: '\u25AC', hollow_diamond: '\u25C7'
+  };
+  function renderBuildings() {
+    const all = JSON.parse(api.buildingIndex());
+    const byCategory = CATEGORY_ORDER.map(cat => [cat, all.filter(b => b.category === cat)]);
+    setHTML('building-list', byCategory.map(([cat, items]) => `
+      <section class="panel">
+        <h2>${SHAPE_GLYPH[items[0].shape] || ''} ${cat}</h2>
+        <div class="body bindex">
+          ${items.sort((a, b) => a.tier - b.tier).map(b => `
+            <div class="bitem">
+              <span class="bhead">
+                <span class="bname">${b.label}</span>
+                <span class="bmeta">tier ${b.tier} · ${b.footprint}&times;${b.footprint}</span>
+              </span>
+              <span class="bcost">
+                ${b.wood ? `<span>${b.wood} wood</span>` : ''}
+                ${b.stone ? `<span>${b.stone} stone</span>` : ''}
+                <span>${b.work} work</span>
+                ${b.upkeep > 0 ? `<span class="up">${b.upkeep}/day upkeep</span>` : ''}
+              </span>
+              <span class="beff">${b.effects.length
+                ? b.effects.join(' · ')
+                : '<span class="quiet">nothing on its own</span>'}</span>
+            </div>`).join('')}
+        </div>
+      </section>`).join(''));
+  }
+  document.getElementById('menu-buildings').addEventListener('click', () => {
+    renderBuildings();
+    show('screen-buildings');
+  });
+  document.getElementById('buildings-back').addEventListener('click', () => show('screen-menu'));
 
   document.getElementById('menu-new').addEventListener('click', () => {
     show('screen-setup');

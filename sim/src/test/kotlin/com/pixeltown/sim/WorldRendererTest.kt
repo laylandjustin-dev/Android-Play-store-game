@@ -82,8 +82,18 @@ class WorldRendererTest {
         for (y in 6..7) {
             for (x in 6..7) assertNotEquals(0, pixels[w.index(x, y)], "footprint cell $x,$y unpainted")
         }
-        // The base of a pentagon is the figure itself, in the category's accent.
-        assertEquals(Palette.BUILDING[BuildingCategory.FARMS.ordinal], pixels[w.index(7, 7)])
+        // The base of a pentagon is the figure, so it is the brighter of the two tones. Asserted
+        // structurally rather than against `Palette.BUILDING`: the figure is now a blend of the
+        // category accent with the owner's colour (shape says what it is, colour says whose), so a
+        // literal constant here was testing the old fixed palette rather than the drawing.
+        fun luminance(argb: Int) = (argb ushr 16 and 0xFF) + (argb ushr 8 and 0xFF) + (argb and 0xFF)
+        val tones = (6..7).flatMap { y -> (6..7).map { x -> pixels[w.index(x, y)] } }.distinct()
+        assertEquals(2, tones.size, "a building should be drawn in exactly two tones, got $tones")
+        assertEquals(
+            tones.maxBy { luminance(it) },
+            pixels[w.index(7, 7)],
+            "the base of the pentagon was not the figure tone",
+        )
         // Nothing wrapped around to the opposite edge.
         assertEquals(0, pixels[w.index(0, 0)])
     }
@@ -98,8 +108,12 @@ class WorldRendererTest {
             val pixels = IntArray(w.cellCount)
             WorldRenderer.drawBuilding(w, pixels, x = 0, y = 0, footprint = 3, category = category)
 
-            val accent = Palette.BUILDING[category.ordinal]
-            val figure = (0 until 3).flatMap { y -> (0 until 3).map { x -> pixels[w.index(x, y)] == accent } }
+            // The figure is whichever of the two tones is brighter — which is how a player reads it
+            // too, and which does not care what colour the owner happens to be.
+            fun luminance(argb: Int) = (argb ushr 16 and 0xFF) + (argb ushr 8 and 0xFF) + (argb and 0xFF)
+            val brightest = (0 until 3).flatMap { y -> (0 until 3).map { x -> pixels[w.index(x, y)] } }
+                .maxBy { luminance(it) }
+            val figure = (0 until 3).flatMap { y -> (0 until 3).map { x -> pixels[w.index(x, y)] == brightest } }
             assertTrue(figure.any { it }, "$category drew no figure at all")
             assertTrue(figure.any { !it }, "$category filled its whole footprint, so it has no shape")
             assertTrue(seen.add(figure), "$category has the same silhouette as another category")

@@ -134,14 +134,24 @@ object WorldRenderer {
         if (world.inBounds(x, y)) out[world.index(x, y)] = colour
     }
 
-    /** Draws a building as a solid block of its category colour, clipped to the world. */
     /**
-     * Draws a building as its category's silhouette (see [BuildingShape]).
+     * Draws a building as its category's silhouette (see [BuildingShape]), in its owner's colour.
      *
-     * The whole footprint is painted either way — a building is a solid object on the map — with
-     * the figure in the category's accent colour and the rest of the footprint in a darker tone of
-     * it. [complete] is false for a half-built structure, which is drawn dimmer still: an unfinished
-     * building does nothing for the town and should not look as though it does.
+     * **Shape says what it is; colour says whose it is.** That division is what makes it possible
+     * for a building to carry both at once, and it is why the colour could change: the category was
+     * already unambiguous from the outline — a pentagon is a farm whatever colour it is — so painting
+     * every civ's farms in the same fixed yellow spent the colour channel on information the shape
+     * already carried. Five towns' buildings were indistinguishable from each other on a shared
+     * island, which is the one thing a player most needs to read at a glance.
+     *
+     * The category accent is not discarded, only outvoted: the figure is mostly the civ's colour
+     * with [CATEGORY_TINT] of the accent mixed in, so a military building still reads a little
+     * colder than a farm within the same town's palette.
+     *
+     * The whole footprint is painted either way — a building is a solid object on the map — with the
+     * figure bright and the rest of the footprint a darker tone of the same hue. [complete] is false
+     * for a half-built structure, which is drawn dimmer still: an unfinished building does nothing
+     * for the town and should not look as though it does.
      */
     fun drawBuilding(
         world: World,
@@ -151,10 +161,15 @@ object WorldRenderer {
         footprint: Int,
         category: BuildingCategory,
         complete: Boolean = true,
+        /** Whose building this is. Defaults to the player so the exporters keep working unchanged. */
+        civId: Int = GameConfig.World.PLAYER_CIV_ID,
+        colors: CivColors = CivColors.DEFAULT,
     ) {
         val accent = Palette.BUILDING[category.ordinal]
-        val figure = if (complete) accent else Palette.scaleBrightness(accent, 0.5f)
-        val ground = Palette.scaleBrightness(accent, if (complete) 0.42f else 0.24f)
+        val owner = colors[civId]
+        val base = blend(accent, owner, 1f - CATEGORY_TINT)
+        val figure = if (complete) base else Palette.scaleBrightness(base, 0.5f)
+        val ground = Palette.scaleBrightness(base, if (complete) 0.42f else 0.24f)
         val mask = BuildingShape.of(category).mask(footprint)
 
         for (dy in 0 until footprint) {
@@ -166,6 +181,15 @@ object WorldRenderer {
             }
         }
     }
+
+    /**
+     * How much of a building's category accent survives the blend with its owner's colour.
+     *
+     * Small on purpose. The shape already states the category unambiguously, so this is a hint that
+     * keeps a barracks from looking identical to a granary within one town — not a second signal
+     * competing with the first.
+     */
+    const val CATEGORY_TINT = 0.25f
 
     /** Linear per-channel blend of two opaque ARGB colours. */
     private fun blend(from: Int, to: Int, t: Float): Int {
@@ -241,6 +265,7 @@ class FrameRenderer(private val world: World) {
                 WorldRenderer.drawBuilding(
                     world, out, building.x, building.y, building.spec.footprint,
                     building.spec.category, complete = building.isComplete,
+                    civId = civ.id, colors = colors,
                 )
             }
         }
