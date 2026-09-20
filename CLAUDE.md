@@ -813,6 +813,48 @@ is dominated by two 16,384-element float arrays (soil fertility, wild game) that
 without breaking determinism, so compression is the only lever. `java.util.zip` exists on both the
 JVM and Android, so this costs nothing in portability.
 
+**AD-78 — Three fixes from the 1,026-run sweep, and a fourth that was a growth cap in disguise.**
+The sweep's own data named four faults. Three were real and are fixed; the fourth taught the more
+useful lesson.
+
+- **The glut brake was disabled exactly when it mattered.** `gatheringTheWrongThing` guarded on
+  `wood > 0.0`, so a town with *no* wood read as having no glut of stone and kept quarrying. Evidence:
+  25 runs survived ten years or more having built **nothing at all**, one of them for 79 years with 125
+  people, 4,141 stone and zero wood. The guard is replaced by `glutOf`, which handles the
+  no-alternative case explicitly (`MIN_GLUT_WITHOUT_ALTERNATIVE`), and by a `DESPERATE_PREFERENCE` of
+  6.0 that pulls gatherers hard toward a resource they have none of. *A brake whose condition cannot be
+  met in the failure case is not a brake.*
+- **Influence was the one uncapped aggregate effect.** Six of the seven civ-wide building effects are
+  capped; influence was not, and the median late-run stock was 74,007 against a priciest lever of 180 —
+  **411 times** what any decision costs. A resource you cannot spend faster than you earn it is not a
+  currency, and every Council lever it pays for stops being a choice. Capped as a *rate*
+  (`MAX_INFLUENCE_PER_DAY` 0.35) rather than a stock, so a town that builds for influence still earns
+  faster than one that does not.
+- **A civ could forfeit a decade permanently.** `awardGenerationPoints` set `generationsAwarded = due`
+  and *then* skipped on `population == 0`. But `population` is refreshed at the end of the tick, so it
+  is one day stale here: a living civ that happened to read as empty paid for a decade it never
+  received. The population check now comes first. For a genuinely extinct people the reordering is
+  invisible, which is why it survived so long.
+
+**The fourth was rejected, and this is the part worth keeping.** The sweep's largest single number is
+that a **median 56% of all food produced rots**, towns growing 2.25 times what they eat. The obvious
+fix — release the discretionary food share when the granary is full, leaving `MIN_FOOD_WORKER_SHARE`
+untouchable — was built, and it broke `a colony fares worse with rivals on the map`: the lone farming
+colony fell from 11,855 people to 7,338 while the crowded one *rose*. Halving the constant to 0.5
+changed almost nothing (7,241), which is the tell — the damage is not in the dial.
+
+The reason is AD-64's own arithmetic. Capacity is 34 days x population, so a growing town's ceiling
+rises every day it grows, and keeping the store full therefore requires a *continuous* surplus.
+"Full" is not a glut in a healthy colony; it is the steady state of one. Releasing labour at full caps
+the town at whatever size it had reached, and it does so most severely in the case the player is
+playing for. It reads as a spoilage fix and behaves as a growth cap — the same disguise AD-54 names,
+and the third time this project has met it.
+
+So the spoilage figure is **not** waste to be reclaimed by moving labour: it is the price of the
+surplus that funds growth, and the discretionary food share is the growth engine rather than a
+rounding error. If 56% is to come down, it has to come down through storage or through spoilage
+itself, not through the workforce. Recorded so it is not rebuilt.
+
 ### Decisions recorded ahead of implementation
 
 **AD-8 — Entitlements are read only at run start.** The simulation snapshots its starting

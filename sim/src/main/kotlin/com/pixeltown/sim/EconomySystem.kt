@@ -232,28 +232,68 @@ internal object EconomySystem {
         val wood = civ[Resource.WOOD]
         val stone = civ[Resource.STONE]
         return when (world.terrainAt(cell)) {
-            TerrainType.FOREST -> if (wood <= stone) SCARCITY_PREFERENCE else 1.0
-            TerrainType.HILL -> if (stone < wood) SCARCITY_PREFERENCE else 1.0
+            TerrainType.FOREST -> preferenceFor(wood, stone)
+            TerrainType.HILL -> preferenceFor(stone, wood)
             else -> 1.0
         }
     }
 
-    /** True when a gatherer is stockpiling the resource the town already has far too much of. */
+    /**
+     * How strongly a worker should favour gathering [mine] given the town also holds [other].
+     *
+     * None of it at all is the strongest signal there is, and it earns a larger multiplier than
+     * merely having less: a town on zero wood cannot build, and walking further to the only forest
+     * in reach is worth it in a way that topping up a merely-smaller pile is not.
+     */
+    private fun preferenceFor(mine: Double, other: Double): Double = when {
+        mine <= 0.0 && other > 0.0 -> DESPERATE_PREFERENCE
+        mine <= other -> SCARCITY_PREFERENCE
+        else -> 1.0
+    }
+
+    /**
+     * True when a gatherer is stockpiling the resource the town already has far too much of.
+     *
+     * The `&& other > 0.0` guards this used to carry disabled the brake at *exactly* zero, which is
+     * precisely when it mattered. A colony with no forest in reach gathers stone, wood stays at 0,
+     * the ratio test is switched off, and quarrying continues for ever: the 1,026-run sweep found 25
+     * runs that survived ten years or more having built **nothing at all**, one of them for 79 years
+     * with 125 people, 4,141 stone and 0 wood. Almost every building needs wood (AD-29), so the town
+     * was permanently unable to build anything and nothing in the simulation noticed.
+     *
+     * Zero is now the strongest possible signal of scarcity rather than an exemption from it.
+     */
     private fun gatheringTheWrongThing(world: World, cell: Int, civ: Civilization): Boolean {
         val wood = civ[Resource.WOOD]
         val stone = civ[Resource.STONE]
         return when (world.terrainAt(cell)) {
-            TerrainType.FOREST -> wood > stone * GLUT_RATIO && stone > 0.0
-            TerrainType.HILL -> stone > wood * GLUT_RATIO && wood > 0.0
+            TerrainType.FOREST -> glutOf(wood, stone)
+            TerrainType.HILL -> glutOf(stone, wood)
             else -> false
         }
     }
 
+    /** True when [mine] so outstrips [other] that gathering more of it is waste. */
+    private fun glutOf(mine: Double, other: Double): Boolean =
+        if (other <= 0.0) mine > MIN_GLUT_WITHOUT_ALTERNATIVE else mine > other * GLUT_RATIO
+
     /** How much a scarce resource outweighs an abundant one when choosing where to gather. */
     private const val SCARCITY_PREFERENCE = 2.0
 
+    /** And how much it outweighs one the town has none of, which is a different thing entirely. */
+    private const val DESPERATE_PREFERENCE = 6.0
+
     /** A gatherer abandons a cell once its resource outstrips the other by this much. */
     private const val GLUT_RATIO = 4.0
+
+    /**
+     * With none of the other resource at all, this much of one is already a glut.
+     *
+     * An absolute figure is needed because the ratio test is meaningless against zero, and a small
+     * one because the situation it covers — a town that cannot reach any forest — is one where every
+     * further day of quarrying is wasted labour that should be feeding people instead.
+     */
+    private const val MIN_GLUT_WITHOUT_ALTERNATIVE = 300.0
 
     /** Wood from forest, stone from hill and mountain-adjacent ground. */
     private fun gatherValue(world: World, cell: Int): Float = when (world.terrainAt(cell)) {

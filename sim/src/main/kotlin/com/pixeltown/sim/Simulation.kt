@@ -414,9 +414,13 @@ class Simulation(
 
         for (civ in civs) {
             if (civ.generationsAwarded >= due) continue
+            // The population check comes *first*. Marking the decade paid and then skipping it meant
+            // a civ that happened to read as empty at this instant forfeited the points permanently —
+            // and `population` is refreshed at the end of the tick, so it is one day stale here. For a
+            // truly extinct civ the difference is invisible; for a living one it is a lost decade.
+            if (civ.population == 0) continue // an extinct people grows no more
             val owed = due - civ.generationsAwarded
             civ.generationsAwarded = due
-            if (civ.population == 0) continue // an extinct people grows no more
 
             if (civ.unspentTraitPoints == 0) civ.oldestUnspentPointDay = day
             civ.unspentTraitPoints += owed * TraitConfig.GENERATION_POINTS_PER_AWARD

@@ -203,7 +203,7 @@ internal object BuildingSystem {
             foodStorageBonus = storage,
             careCapacity = care,
             moraleBonus = min(morale, MAX_MORALE_BONUS),
-            influencePerDay = influence,
+            influencePerDay = min(influence, MAX_INFLUENCE_PER_DAY),
             militaryStrength = military,
             safetyBonus = min(safety, MAX_SAFETY_BONUS),
             knowledgeMultiplier = min(knowledge, MAX_KNOWLEDGE_MULTIPLIER),
@@ -228,4 +228,16 @@ internal object BuildingSystem {
     private const val MAX_KNOWLEDGE_MULTIPLIER = 2.5
     private const val MAX_FARM_YIELD_BONUS = 2.0
     private const val MAX_BUILD_SPEED_BONUS = 2.0
+
+    /**
+     * The cap this list was missing.
+     *
+     * Influence was the only one of the seven aggregated effects left as a bare sum, and it has
+     * exactly the shape the others were capped for: every plaza, temple and theatre adds 0.04-0.06 a
+     * day and a mature town builds dozens. The 1,026-run sweep measured a median stock of **74,007**
+     * against a most-expensive action of 180 — 411 times the priciest lever in the game, which made
+     * all four of the player's levers free from about year 20 and the whole influence economy
+     * decorative. An oversight rather than a decision, which is why it is simply corrected.
+     */
+    private const val MAX_INFLUENCE_PER_DAY = 0.35
 }
