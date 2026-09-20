@@ -299,20 +299,27 @@ invariant tests measure whether the thing that happened was the game. Both gates
 Farming-8 people gains. Put the drain above the top of the band and the game stops growing
 everywhere; put it below the bottom and over-farming is a no-op again.
 
-**AD-57 — Logging is the sixth trait, and it exists because the other five kept implying it.**
+**AD-57 — Gathering is the sixth trait, and it exists because the other five kept implying it.**
 Almost every building costs wood, a town that never gathers it never builds anything (AD-29), and
 until now no trait touched gathering at all: a Farming-8 people and a Farming-1 people gathered
-timber at exactly the same rate. Logging drives both `gatherYield` and `buildRate`, which gives it
+timber at exactly the same rate. Gathering drives both `gatherYield` and `buildRate`, which gives it
 one legible identity — *this is the people who build things* — rather than making it a second
 resource dial. Two details are deliberate:
 
 - **Both derived stats are scaled so a base-3 people is unchanged.** `GATHER_YIELD_BASE 0.55 +
-  0.15 x Logging` is exactly 1.0 at 3, and `BUILD_RATE_BASE 0.70 + 0.10 x Logging` likewise. Every
+  0.15 x Gathering` is exactly 1.0 at 3, and `BUILD_RATE_BASE 0.70 + 0.10 x Gathering` likewise. Every
   balance table in this file was measured against five traits; scaling this way means they all still
   mean what they say, and the new trait is a change from the documented baseline in both directions.
-- **`TraitAllocation.of` accepts five values as well as six**, defaulting Logging to base. A great
+- **`TraitAllocation.of` accepts five values as well as six**, defaulting Gathering to base. A great
   many tests, saved games and the M3–M7 tables were written against the original five, and a
   migration would have invalidated all of them at once.
+
+It shipped for one commit as **Logging** and was renamed to Gathering the next day, which taught one
+thing worth keeping: `SaveGame.traitGrowthHistory` was `List<Trait>`, and kotlinx serialises an enum
+by *name*, so the rename would have made every existing save fail to decode in its entirety — not
+lose a field, fail. It is a `List<String>` decoded tolerantly now, the same shape as `techChoices`
+and for the same reason. **A saved enum name is a compatibility contract; renaming one is a format
+change.**
 
 **AD-58 — Stats are capped at 20 for life and 8 at the opening screen, and those are two different
 numbers.** The brief fixes the opening allocation at "max 8 in any one trait" and that still holds —

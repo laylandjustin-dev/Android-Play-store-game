@@ -81,15 +81,15 @@ object BalanceRunner {
         "pure-hunting" to TraitAllocation.of(3, 4, 8, 3, 4),
         "pure-elements" to TraitAllocation.of(3, 4, 3, 8, 4),
         "pure-farming" to TraitAllocation.of(3, 4, 3, 4, 8, 3),
-        "pure-logging" to TraitAllocation.of(3, 4, 3, 3, 4, 8),
-        // Logging is the sixth trait and the one AD-29 kept implying: a town that cannot gather
+        "pure-gathering" to TraitAllocation.of(3, 4, 3, 3, 4, 8),
+        // Gathering is the sixth trait and the one AD-29 kept implying: a town that cannot gather
         // never builds. This is the build that tests whether pairing it with food is viable.
-        "farm+logging" to TraitAllocation.of(3, 4, 3, 3, 6, 6),
+        "farm+gathering" to TraitAllocation.of(3, 4, 3, 3, 6, 6),
     )
 
     /** The six one-trait builds above, in trait order. */
     private val PURE = listOf(
-        "pure-speed", "pure-health", "pure-hunting", "pure-elements", "pure-farming", "pure-logging",
+        "pure-speed", "pure-health", "pure-hunting", "pure-elements", "pure-farming", "pure-gathering",
     )
 
     /** One simulation's result — one row of the CSV. */

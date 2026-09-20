@@ -45,7 +45,7 @@ class WebGame(
     elements: Int,
     farming: Int,
     /** Defaulted, so a shell built before the sixth trait existed still constructs a run. */
-    logging: Int = GameConfig.Traits.BASE_VALUE,
+    gathering: Int = GameConfig.Traits.BASE_VALUE,
     colonyName: String = ColonyName.DEFAULT,
     /** Cell the player picked on the map preview, or -1 to take the generator's choice. */
     startCell: Int = -1,
@@ -54,7 +54,7 @@ class WebGame(
     private val simulation = Simulation.newRun(
         RunConfig(
             seed = seed.toLong(),
-            traits = TraitAllocation(speed, health, hunting, elements, farming, logging),
+            traits = TraitAllocation(speed, health, hunting, elements, farming, gathering),
             colonyName = colonyName,
             startCell = startCell.takeIf { it >= 0 },
             colorIndex = colorIndex,
@@ -472,9 +472,9 @@ fun describeBuild(
     hunting: Int,
     elements: Int,
     farming: Int,
-    logging: Int = GameConfig.Traits.BASE_VALUE,
+    gathering: Int = GameConfig.Traits.BASE_VALUE,
 ): String {
-    val archetype = Archetype.of(TraitAllocation(speed, health, hunting, elements, farming, logging))
+    val archetype = Archetype.of(TraitAllocation(speed, health, hunting, elements, farming, gathering))
     return "{\"label\":\"${archetype.label}\",\"blurb\":\"${archetype.blurb}\"," +
         "\"shape\":\"${archetype.shape.name.lowercase()}\"}"
 }
@@ -487,9 +487,9 @@ fun previewTraits(
     hunting: Int,
     elements: Int,
     farming: Int,
-    logging: Int = GameConfig.Traits.BASE_VALUE,
+    gathering: Int = GameConfig.Traits.BASE_VALUE,
 ): String {
-    val traits = TraitAllocation(speed, health, hunting, elements, farming, logging)
+    val traits = TraitAllocation(speed, health, hunting, elements, farming, gathering)
     return "{\"work\":${fixed(traits.workMultiplier)}," +
         "\"lifespan\":${traits.lifespanYears.toInt()}," +
         "\"hunt\":${fixed(traits.huntYield)}," +

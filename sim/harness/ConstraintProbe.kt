@@ -44,7 +44,12 @@ object ConstraintProbe {
                 val player = GameConfig.World.PLAYER_CIV_ID
                 sim.pendingTechChoices(player).firstOrNull()?.let { sim.chooseTech(player, it) }
                 while (sim.pendingTraitPoints(player) > 0) {
-                    val trait = sim.needBasedGrowth(sim.civ(player)) ?: break
+                    // The weakest trait with room in it. Deliberately not `needBasedGrowth`, which
+                    // is internal to `:sim` and should stay that way — a development tool must not
+                    // be the reason a simulation API widens.
+                    val trait = sim.civ(player).traits.improvable.minByOrNull {
+                        sim.civ(player).traits[it] * Trait.entries.size + it.ordinal
+                    } ?: break
                     if (!sim.spendTraitPoint(player, trait)) break
                 }
                 if (!sim.step()) break

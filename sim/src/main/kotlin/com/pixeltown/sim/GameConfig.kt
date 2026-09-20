@@ -203,7 +203,7 @@ object GameConfig {
         const val FARM_YIELD_PER_FARMING = 0.16
 
         /**
-         * Wood and stone gathered per point of Logging.
+         * Wood and stone gathered per point of Gathering.
          *
          * The sixth trait, and the one the other five kept implying: almost every building costs
          * wood, a town that cannot gather it never builds anything (AD-29), and until now no trait
@@ -211,19 +211,19 @@ object GameConfig {
          * at working timber and stone as they are at farming.
          */
         const val GATHER_YIELD_BASE = 0.55
-        const val GATHER_YIELD_PER_LOGGING = 0.15
+        const val GATHER_YIELD_PER_GATHERING = 0.15
 
         /**
-         * buildRate = base + perPoint * Logging.
+         * buildRate = base + perPoint * Gathering.
          *
-         * Gathering alone would have made Logging a resource dial rather than a build: a town
+         * Yield alone would have made Gathering a resource dial rather than a build: a town
          * short of wood simply puts more people on gathering. Tying construction speed to the
          * same trait gives it one legible identity — *this is the people who build things* — and
          * it is the trait the fifty-year building gate (AD-50) actually answers to. Scaled, like
          * gathering, so a base-3 people builds at exactly the old rate.
          */
         const val BUILD_RATE_BASE = 0.70
-        const val BUILD_RATE_PER_LOGGING = 0.10
+        const val BUILD_RATE_PER_GATHERING = 0.10
 
         // Elements reduces cold/heat/storm penalties by 0.11 per point.
         const val ELEMENTS_PENALTY_REDUCTION_PER_POINT = 0.11

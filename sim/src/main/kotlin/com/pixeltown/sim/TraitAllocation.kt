@@ -17,7 +17,7 @@ data class TraitAllocation(
     val hunting: Int,
     val elements: Int,
     val farming: Int,
-    val logging: Int = TraitConfig.BASE_VALUE,
+    val gathering: Int = TraitConfig.BASE_VALUE,
 ) {
     init {
         for (value in values) {
@@ -27,7 +27,7 @@ data class TraitAllocation(
         }
     }
 
-    val values: IntArray get() = intArrayOf(speed, health, hunting, elements, farming, logging)
+    val values: IntArray get() = intArrayOf(speed, health, hunting, elements, farming, gathering)
 
     operator fun get(trait: Trait): Int = when (trait) {
         Trait.SPEED -> speed
@@ -35,7 +35,7 @@ data class TraitAllocation(
         Trait.HUNTING -> hunting
         Trait.ELEMENTS -> elements
         Trait.FARMING -> farming
-        Trait.LOGGING -> logging
+        Trait.GATHERING -> gathering
     }
 
     /**
@@ -102,10 +102,10 @@ data class TraitAllocation(
         (TraitConfig.WINTER_RATION_SURCHARGE * (1.0 - elementsShelterOf(elements))).coerceAtLeast(0.0)
 
     /** Wood and stone a gatherer brings back, per worked day. */
-    val gatherYield: Double = TraitConfig.GATHER_YIELD_BASE + TraitConfig.GATHER_YIELD_PER_LOGGING * logging
+    val gatherYield: Double = TraitConfig.GATHER_YIELD_BASE + TraitConfig.GATHER_YIELD_PER_GATHERING * gathering
 
     /** How fast this people raise a structure, relative to the baseline. */
-    val buildRate: Double = TraitConfig.BUILD_RATE_BASE + TraitConfig.BUILD_RATE_PER_LOGGING * logging
+    val buildRate: Double = TraitConfig.BUILD_RATE_BASE + TraitConfig.BUILD_RATE_PER_GATHERING * gathering
 
     /** Fraction by which weather, season and disaster penalties are reduced. */
     val elementsShelter: Double = TraitConfig.ELEMENTS_PENALTY_REDUCTION_PER_POINT * elements
@@ -154,15 +154,15 @@ data class TraitAllocation(
 
         /**
          * Builds an allocation from values in [Trait] order. Five values are accepted as well as
-         * six: Logging arrived after a great many tests and balance tables were written against
+         * six: Gathering arrived after a great many tests and balance tables were written against
          * the original five, and defaulting it to base keeps every one of them meaningful.
          */
         fun of(vararg values: Int): TraitAllocation {
             require(values.size == TraitConfig.COUNT || values.size == TraitConfig.COUNT - 1) {
-                "expected ${TraitConfig.COUNT} traits, or ${TraitConfig.COUNT - 1} without Logging"
+                "expected ${TraitConfig.COUNT} traits, or ${TraitConfig.COUNT - 1} without Gathering"
             }
-            val logging = if (values.size == TraitConfig.COUNT) values[5] else TraitConfig.BASE_VALUE
-            return TraitAllocation(values[0], values[1], values[2], values[3], values[4], logging)
+            val gathering = if (values.size == TraitConfig.COUNT) values[5] else TraitConfig.BASE_VALUE
+            return TraitAllocation(values[0], values[1], values[2], values[3], values[4], gathering)
         }
 
         /**

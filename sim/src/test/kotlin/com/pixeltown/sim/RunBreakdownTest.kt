@@ -76,14 +76,14 @@ class RunBreakdownTest {
                 sim.chooseTech(WorldConfig.PLAYER_CIV_ID, it)
             }
             if (sim.pendingTraitPoints(WorldConfig.PLAYER_CIV_ID) > 0) {
-                sim.spendTraitPoint(WorldConfig.PLAYER_CIV_ID, Trait.LOGGING)
+                sim.spendTraitPoint(WorldConfig.PLAYER_CIV_ID, Trait.GATHERING)
             }
             sim.step()
         }
         val player = sim.civ(WorldConfig.PLAYER_CIV_ID)
         assertTrue(player.traitGrowthHistory.isNotEmpty(), "three decades produced no growth at all")
         assertTrue(
-            player.traitGrowthHistory.all { it == Trait.LOGGING },
+            player.traitGrowthHistory.all { it == Trait.GATHERING },
             "a point went somewhere the player did not put it",
         )
         assertEquals(0, player.autoSpentTraitPoints, "the game spent a point during live play")

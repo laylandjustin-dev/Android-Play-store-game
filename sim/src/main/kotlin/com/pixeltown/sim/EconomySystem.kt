@@ -317,7 +317,7 @@ internal object EconomySystem {
                     world.wildGame[cell] = max(0f, world.wildGame[cell] - (game * TerrainConfig.HUNT_DEPLETION_PER_DAY).toFloat())
                 }
                 Job.GATHERER -> if (atWork) {
-                    // Logging is deliberately scaled so a base-3 people gathers exactly what
+                    // Gathering is deliberately scaled so a base-3 people gathers exactly what
                     // everyone gathered before the trait existed: the balance tables written
                     // against five traits still mean what they say.
                     val output = Economy.GATHERER_OUTPUT * traits.gatherYield * effort

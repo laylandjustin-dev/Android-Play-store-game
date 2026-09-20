@@ -375,9 +375,10 @@
       <div class="body help">
         <p><b>Spend ten points.</b> Six traits, genetic to your people, for the whole run. Farming
         and Speed decide how much food you grow; Health how little you need, how well you survive a
-        plague and how many children you have; Elements what winter costs you; Hunting what the
-        wild gives and what your soldiers are worth; Logging how much timber you gather and how
-        fast you build. No trait may open above 8, but every one of them can reach 20 in time.</p>
+        plague and how many children you have; Elements what winter costs you; Hunting what the wild
+        animals give and what your soldiers are worth; Gathering how much timber and stone you bring
+        in, and how fast you build with it. No trait may open above 8, but every one of them can
+        reach 20 in time.</p>
         <p><b>Your people grow.</b> Every ten years they earn a trait point, and the world stops
         until you spend it — the rival civilisations spend theirs the day they earn it, so nothing
         moves until everyone has. A new tech tier stops it the same way.</p>
@@ -627,24 +628,24 @@
   const TRAITS = [
     ['speed', 'Speed', 'Work rate, movement, building, research'],
     ['health', 'Health', 'Max HP, disease resistance, lifespan'],
-    ['hunting', 'Hunting', 'Yield from wild land — and military strength'],
+    ['hunting', 'Hunting', 'Yield from wild animals — and military strength'],
     ['elements', 'Elements', 'Resistance to weather, seasons and disaster'],
     ['farming', 'Farming', 'Yield from farmland, soil recovery, livestock'],
-    ['logging', 'Logging', 'Timber and stone gathered — and how fast you build']
+    ['gathering', 'Gathering', 'Timber and stone gathered — and how fast you build']
   ];
   // The lifetime ceiling, which a decade point may climb to; MAX below is only the opening cap.
   const TRAIT_CEILING = 20;
   const TRAIT_BLURB = {
     speed: 'Work rate, movement, building, research',
     health: 'Max HP, disease resistance, lifespan — and fertility',
-    hunting: 'Yield from wild land — and military strength',
+    hunting: 'Yield from wild animals — and military strength',
     elements: 'Resistance to weather, seasons and disaster',
     farming: 'Yield from farmland, soil recovery, livestock',
-    logging: 'Timber and stone gathered — and how fast you build'
+    gathering: 'Timber and stone gathered — and how fast you build'
   };
   // MAX is the opening cap; a trait can still climb to the ceiling above, one decade point at a time.
   const BASE = 3, BUDGET = 10, MAX = 8, MIN = 1;
-  const alloc = { speed: BASE, health: BASE, hunting: BASE, elements: BASE, farming: BASE, logging: BASE };
+  const alloc = { speed: BASE, health: BASE, hunting: BASE, elements: BASE, farming: BASE, gathering: BASE };
   const vals = () => TRAITS.map(([k]) => alloc[k]);
   let seed = Math.floor(Math.random() * 1e6) + 1;
 

@@ -2083,7 +2083,7 @@ class Simulation(
                 unspentTraitPoints = civ.unspentTraitPoints,
                 generationsAwarded = civ.generationsAwarded,
                 oldestUnspentPointDay = civ.oldestUnspentPointDay,
-                traitGrowthHistory = civ.traitGrowthHistory.toList(),
+                traitGrowthHistory = civ.traitGrowthHistory.map { it.name },
                 autoSpentTraitPoints = civ.autoSpentTraitPoints,
                 deathsByCause = civ.deathsByCause.toList(),
                 warsFought = civ.warsFought,
@@ -2318,7 +2318,12 @@ class Simulation(
                     civ.unspentTraitPoints = c.unspentTraitPoints
                     civ.generationsAwarded = c.generationsAwarded
                     civ.oldestUnspentPointDay = c.oldestUnspentPointDay
-                    civ.traitGrowthHistory.addAll(c.traitGrowthHistory)
+                    // A name this build does not know is dropped rather than throwing, exactly as
+                    // an unknown tech is: the record is presentation, and losing one entry of it is
+                    // never worth refusing to load a player's town.
+                    for (name in c.traitGrowthHistory) {
+                        Trait.entries.firstOrNull { it.name == name }?.let { civ.traitGrowthHistory.add(it) }
+                    }
                     civ.autoSpentTraitPoints = c.autoSpentTraitPoints
                     civ.warsFought = c.warsFought
                     civ.raidsSuffered = c.raidsSuffered

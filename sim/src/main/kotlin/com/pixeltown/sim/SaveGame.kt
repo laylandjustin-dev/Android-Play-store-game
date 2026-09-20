@@ -113,8 +113,14 @@ data class CivSave(
      * the order it was spent, how many of them the town spent for itself, and what killed people.
      * All defaulted — a save from before the breakdown existed loads with an empty record, which is
      * the truth about it.
+     *
+     * The history is a list of *names*, not of `Trait`, and decoded tolerantly. Enum-by-name is how
+     * kotlinx serialises an enum, so `List<Trait>` would have meant that renaming a trait — Logging
+     * to Gathering, which happened the day after this field was written — made every existing save
+     * fail to decode *in its entirety*. The same reasoning as `techChoices` above, learned the same
+     * way.
      */
-    val traitGrowthHistory: List<Trait> = emptyList(),
+    val traitGrowthHistory: List<String> = emptyList(),
     val autoSpentTraitPoints: Int = 0,
     val deathsByCause: List<Int> = emptyList(),
     val warsFought: Int = 0,

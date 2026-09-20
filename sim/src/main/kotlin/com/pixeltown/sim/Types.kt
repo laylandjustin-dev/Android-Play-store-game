@@ -14,7 +14,7 @@ enum class Job { CHILD, FARMER, HUNTER, GATHERER, BUILDER, SOLDIER, SCHOLAR, HEA
 enum class Resource { FOOD, WOOD, STONE, KNOWLEDGE, WEALTH }
 
 /** The five inherited traits allocated on the opening screen. */
-enum class Trait { SPEED, HEALTH, HUNTING, ELEMENTS, FARMING, LOGGING }
+enum class Trait { SPEED, HEALTH, HUNTING, ELEMENTS, FARMING, GATHERING }
 
 /** The five building categories a Premier's agenda is a weight vector over. */
 enum class BuildingCategory { FARMS, HEALTH, MILITARY, TECH, LIFESTYLE }

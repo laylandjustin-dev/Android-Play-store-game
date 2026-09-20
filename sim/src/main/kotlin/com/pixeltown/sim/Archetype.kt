@@ -30,7 +30,7 @@ enum class Archetype(val label: String, val blurb: String, val shape: MarkerShap
     /** Farming. Patient, rooted, and fed. */
     ROOTED("Rooted", "patient, rooted and fed", MarkerShape.SQUARE),
 
-    /** Logging. Timber, stone, and something built on every ridge. */
+    /** Gathering. Timber, stone, and something built on every ridge. */
     BUILDERS("Builders", "timber, stone, and always raising something", MarkerShape.CHEVRON_DOWN),
 
     /** No dominant trait at all: good at everything, best at nothing. */
@@ -62,7 +62,7 @@ enum class Archetype(val label: String, val blurb: String, val shape: MarkerShap
                 Trait.HUNTING -> WILD
                 Trait.ELEMENTS -> WEATHERED
                 Trait.FARMING -> ROOTED
-                Trait.LOGGING -> BUILDERS
+                Trait.GATHERING -> BUILDERS
             }
         }
 

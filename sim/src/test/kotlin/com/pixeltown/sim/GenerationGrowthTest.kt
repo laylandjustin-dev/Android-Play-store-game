@@ -259,8 +259,8 @@ class GenerationGrowthTest {
         assertTrue(reloaded.awaitingPlayer, "the reloaded run forgot it was waiting on a decision")
 
         // Spend the same point the same way on both sides, and they stay the same run.
-        assertTrue(sim.spendTraitPoint(WorldConfig.PLAYER_CIV_ID, Trait.LOGGING))
-        assertTrue(reloaded.spendTraitPoint(WorldConfig.PLAYER_CIV_ID, Trait.LOGGING))
+        assertTrue(sim.spendTraitPoint(WorldConfig.PLAYER_CIV_ID, Trait.GATHERING))
+        assertTrue(reloaded.spendTraitPoint(WorldConfig.PLAYER_CIV_ID, Trait.GATHERING))
         runSpending(sim, 5 * Time.DAYS_PER_YEAR)
         runSpending(reloaded, 5 * Time.DAYS_PER_YEAR)
         assertEquals(sim.stateHash(), reloaded.stateHash())
