@@ -145,6 +145,44 @@ class CouncilTest {
     // ------------------------------------------------------------------ buildings
 
     @Test
+    fun `a town whose favourite category is unaffordable builds something else`() {
+        // The bug this pins was latent for a long time and only surfaced when TRAIT_LEAN_WEIGHT rose
+        // to 0.55: placeBuildOrder gave up entirely when the chosen category had nothing the town
+        // could pay for, and a committed people picks the same category nearly every time. A
+        // Farming-8 town that could not afford a granary built *nothing at all* — three cases in
+        // this file failed together. A preference that cannot be met has to fall through to the next
+        // preference rather than cancel the decision.
+        //
+        // Asserted through the ranking rather than by contriving a bankrupt run, because what the
+        // fix depends on is that a second choice exists at all and that it agrees with the scoring
+        // the council actually uses.
+        val sim = newRun()
+        sim.runUnattended(4 * Time.DAYS_PER_YEAR)
+        val civ = sim.civ(0)
+        val premier = sim.premierOf(0)
+        assertNotNull(premier, "no Premier after four years, so this test proves nothing")
+
+        // A synthetic need map rather than the town's own, which is private — what matters here is
+        // that the ranking is total and shares the council's scoring, not what today's needs are.
+        val need = BuildingCategory.entries.associateWith { 1.0 }
+        val ranked = CouncilSystem.rankCategories(
+            premier,
+            need,
+            traitLean = CouncilSystem.traitLeanOf(civ.traits),
+        )
+        assertEquals(
+            BuildingCategory.entries.size,
+            ranked.size,
+            "the ranking dropped categories, so the fallback has nowhere to go",
+        )
+        assertEquals(
+            BuildingCategory.entries.toSet(),
+            ranked.toSet(),
+            "the ranking is not a permutation of the categories",
+        )
+    }
+
+    @Test
     fun `the Premier orders buildings and builders finish them`() {
         val sim = newRun()
         sim.runUnattended(20 * Time.DAYS_PER_YEAR)

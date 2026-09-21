@@ -671,19 +671,38 @@ class Simulation(
             traitLean = CouncilSystem.traitLeanOf(civ.traits),
             distress = distressOf(civ, members),
         )
-        val options = GameConfig.Buildings.available(category, civ.techTier)
-        if (options.isEmpty()) return
-
-        // Best available tier the civ can actually pay for.
         // What a structure costs *these* people. Wrights raise a building for a fifth less and
         // Tillers for a tenth; everyone else pays the catalogue price.
         val discount = civ.archetype.buildCostBonus
         fun woodFor(s: BuildingSpec) = s.woodCost * discount
         fun stoneFor(s: BuildingSpec) = s.stoneCost * discount
+        fun affordable(s: BuildingSpec) =
+            civ[Resource.WOOD] >= woodFor(s) && civ[Resource.STONE] >= stoneFor(s)
 
-        val spec = options.firstOrNull {
-            civ[Resource.WOOD] >= woodFor(it) && civ[Resource.STONE] >= stoneFor(it)
-        } ?: return
+        // The town's first choice, then anything else it can actually pay for.
+        //
+        // This used to give up the moment the chosen category had nothing affordable in it, which
+        // was survivable only because the choice varied: a town that picked FARMS today picked
+        // HOUSING tomorrow and built *something*. Raising TRAIT_LEAN_WEIGHT to 0.55 made a committed
+        // people pick the same category nearly every time, and a Farming-8 town that could not
+        // afford a granary therefore built **nothing at all** — 0 buildings in fifty years, which
+        // three CouncilTest cases caught at once and were right to.
+        //
+        // The bug was always there; the lean only stopped hiding it. A preference that cannot be
+        // met should fall through to the next preference, not cancel the decision — the same shape
+        // as AD-78's glut brake, whose guard could not be satisfied in exactly the case it existed
+        // for. Categories are tried in the order the council ranked them, so the fallback is still
+        // the town's own priorities rather than an arbitrary pick.
+        val ranked = listOf(category) + CouncilSystem.rankCategories(
+            premier,
+            need,
+            traitLean = CouncilSystem.traitLeanOf(civ.traits),
+            distress = distressOf(civ, members),
+        ).filter { it != category }
+
+        val spec = ranked.asSequence()
+            .flatMap { GameConfig.Buildings.available(it, civ.techTier).asSequence() }
+            .firstOrNull { affordable(it) } ?: return
 
         if (vetoPending[civ.id]) {
             vetoPending[civ.id] = false

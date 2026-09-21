@@ -1063,6 +1063,27 @@ this number (AD-72): the lean scales to zero as food stocks and survival scores 
 abandons its character and feeds itself whatever this is set to. It buys legibility in the good times
 and changes nothing in the bad.
 
+**And raising it uncovered a bug that had been there all along.** `placeBuildOrder` gave up entirely
+when the chosen category held nothing the town could pay for:
+
+```kotlin
+val spec = options.firstOrNull { affordable(it) } ?: return
+```
+
+That was survivable only because the choice varied — a town that picked FARMS today picked HOUSING
+tomorrow and built *something*. At a lean of 0.55 a committed people picks the same category nearly
+every time, so a Farming-8 town that could not afford a granary built **nothing at all**: 0 buildings
+in fifty years, nothing ordered in twenty, and elections at 96% unanimous because the whole town was
+in identical distress. Three `CouncilTest` cases failed together and every one of them was right.
+
+The fix is a fall-through, not a lower constant: the order now tries every category in the ranking the
+council itself produced, and takes the first affordable building in any of them. `rankCategories` and
+`chooseCategory` share one `scoreCategories`, because two rankings that could disagree is worse than
+none. *A preference that cannot be met should fall through to the next preference, not cancel the
+decision* — the same shape as AD-78's glut brake, whose guard could not be satisfied in precisely the
+case it existed for. **The third time this project has found a mechanism whose failure case was
+silent, and the second time a tuning change earned its keep by exposing one.**
+
 *The general lesson, and this project has now met it from both directions: before adding a concept,
 search for the one already there. AD-77 says a generated index cannot disagree with the simulation;
 this says the simulation must not be able to disagree with itself.* **It took two goes in one

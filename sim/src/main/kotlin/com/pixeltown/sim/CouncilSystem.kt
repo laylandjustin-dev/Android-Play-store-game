@@ -217,6 +217,23 @@ internal object CouncilSystem {
      * [Temperament.ZEALOT] follows their agenda almost regardless of it. That deviation is the
      * whole point of the office — an ideologue who builds temples through a famine is a story.
      */
+    /**
+     * Every category, best first, by the same arithmetic [chooseCategory] draws from.
+     *
+     * Exists so a build order can fall through to the town's *second* preference when its first is
+     * unaffordable, rather than cancelling the decision — see the comment at the call site. Shares
+     * the scoring with [chooseCategory] rather than restating it, because two rankings that could
+     * disagree is worse than none.
+     */
+    fun rankCategories(
+        premier: Premier,
+        need: Map<BuildingCategory, Double>,
+        traitLean: Map<BuildingCategory, Double> = emptyMap(),
+        distress: Double = 0.0,
+    ): List<BuildingCategory> = scoreCategories(premier, need, traitLean, distress)
+        .sortedByDescending { it.second }
+        .map { it.first }
+
     fun chooseCategory(
         premier: Premier,
         need: Map<BuildingCategory, Double>,
@@ -234,15 +251,7 @@ internal object CouncilSystem {
          */
         distress: Double = 0.0,
     ): BuildingCategory {
-        val deviation = PoliticsConfig.TEMPERAMENT_DEVIATION.getValue(premier.temperament)
-        val leanWeight = PoliticsConfig.TRAIT_LEAN_WEIGHT * (1.0 - distress.coerceIn(0.0, 1.0))
-        val scores = BuildingCategory.entries.map { category ->
-            val needScore = need[category] ?: 0.0
-            val agendaScore = premier.agenda[category]
-            val leanScore = traitLean[category] ?: 0.0
-            val political = (1.0 - deviation) * needScore + deviation * agendaScore
-            category to (1.0 - leanWeight) * political + leanWeight * leanScore
-        }
+        val scores = scoreCategories(premier, need, traitLean, distress)
         val total = scores.sumOf { it.second }
         if (total <= 0.0) return premier.agenda.dominant
 
@@ -299,6 +308,24 @@ internal object CouncilSystem {
             Job.SCHOLAR to remaining * tech / otherTotal,
             Job.ARTISAN to remaining * lifestyle / otherTotal,
         )
+    }
+
+    /** The one place a category's score is computed, shared by [chooseCategory] and [rankCategories]. */
+    private fun scoreCategories(
+        premier: Premier,
+        need: Map<BuildingCategory, Double>,
+        traitLean: Map<BuildingCategory, Double>,
+        distress: Double,
+    ): List<Pair<BuildingCategory, Double>> {
+        val deviation = PoliticsConfig.TEMPERAMENT_DEVIATION.getValue(premier.temperament)
+        val leanWeight = PoliticsConfig.TRAIT_LEAN_WEIGHT * (1.0 - distress.coerceIn(0.0, 1.0))
+        return BuildingCategory.entries.map { category ->
+            val needScore = need[category] ?: 0.0
+            val agendaScore = premier.agenda[category]
+            val leanScore = traitLean[category] ?: 0.0
+            val political = (1.0 - deviation) * needScore + deviation * agendaScore
+            category to (1.0 - leanWeight) * political + leanWeight * leanScore
+        }
     }
 
     // ------------------------------------------------------------------ unrest
