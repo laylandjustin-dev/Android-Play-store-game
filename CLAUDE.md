@@ -1027,9 +1027,23 @@ time either was edited. They are one enum now, and the older one won on two coun
   all** — the honest reading of "good at everything, best at nothing", and a test asserts every one of
   its six multipliers is exactly 1.0.
 
+**And the identity is visible where the decision is made.** `describeBuild` — which the setup screen
+already called for the label and blurb — now also returns the unique unit and every bonus that
+differs from no-change, read off `Archetype` rather than written into the page, so the panel cannot
+promise something the simulation does not apply (AD-68, AD-77). Each bonus is emitted as the raw
+change to the thing its label names, so "army strength +25%" and "building cost -20%" are both good
+news and the reader never has to work out which way the underlying multiplier runs. Verified in a
+real browser rather than asserted: five points into Hunting turns the panel into *"Wild — the wild
+feeds them, and arms them · army strength +25% · Unique unit: Beastmasters (needs an armoury)"*, with
+no console errors.
+
 *The general lesson, and this project has now met it from both directions: before adding a concept,
 search for the one already there. AD-77 says a generated index cannot disagree with the simulation;
-this says the simulation must not be able to disagree with itself.*
+this says the simulation must not be able to disagree with itself.* **It took two goes in one
+feature.** `CivArchetype` duplicated `Archetype`, and then a new `previewArchetype` façade function
+duplicated `describeBuild`, which the shell was already calling three lines from where the new panel
+was being written. Both were caught only at the moment of wiring them up, which is the expensive
+place to find them: the cheap check is to grep for the noun before writing the type.
 
 **The tie-break was documented one way and implemented another, and a test caught it.** `of()`
 iterated the archetype enum's declaration order while its own doc comment promised *trait* order —

@@ -203,6 +203,16 @@
   .preview .v, .stat .v { font-size: 16px; font-weight: 700; color: var(--ink-bright); }
   .archetype { padding: 12px 13px; color: var(--ink); border-top: 1px solid var(--line-soft); }
   .archetype b { color: var(--gold); }
+  .archetype .people { margin-bottom: 8px; }
+  .perks { display: flex; flex-wrap: wrap; gap: 6px; }
+  .perk {
+    font-size: 11px; padding: 2px 7px; border-radius: 999px;
+    border: 1px solid var(--line-soft); white-space: nowrap;
+  }
+  .perk.up { color: #9FD16B; }
+  .perk.down { color: #6FC2F2; }
+  .perk-unit { margin-top: 8px; font-size: 12px; }
+  .dim { color: var(--ink-dim); }
 
   #sitemap {
     display: block; width: 100%; aspect-ratio: 1; image-rendering: pixelated;
@@ -1024,9 +1034,22 @@
   // The simulation decides what a build is called, so the name here is the same one the HUD
   // shows and the same one the marker on the map stands for. A second opinion in JavaScript
   // would be a second implementation, which is the thing this project does not do.
-  function archetypeOf() {
+  function renderArchetype() {
     const a = JSON.parse(api.describeBuild(...vals()));
-    return [a.label, a.blurb];
+    // The bonuses come from the simulation, not from copy here, so this panel cannot promise
+    // something the game does not do. Only the ones that differ from no-change are sent.
+    const rows = (a.bonuses || []).map(b => {
+      const n = Math.round(b.pct);
+      const sign = n > 0 ? '+' : '';
+      return `<span class="perk ${n > 0 ? 'up' : 'down'}">${b.label} ${sign}${n}%</span>`;
+    }).join('');
+    const unit = a.unique
+      ? `<div class="perk-unit">Unique unit: <b>${a.unit}</b> <span class="dim">(needs an armoury)</span></div>`
+      : `<div class="perk-unit dim">No unique unit — a balanced people fields ${a.unit}.</div>`;
+    document.getElementById('archetype').innerHTML =
+      `<div class="people"><b>${a.label}</b> — ${a.blurb}</div>` +
+      (rows ? `<div class="perks">${rows}</div>` : '<div class="perks dim">No bonuses: best at nothing.</div>') +
+      unit;
   }
 
   function renderAlloc() {
@@ -1045,8 +1068,7 @@
       ['Fertility', p.fertility + 'x'], ['Rations eaten', p.ration + 'x'],
       ['Weathered', p.shelter], ['Winter yield', p.winter + 'x']
     ].map(([k, v]) => `<div><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
-    const [name, line] = archetypeOf();
-    document.getElementById('archetype').innerHTML = `<b>${name}</b> — ${line}`;
+    renderArchetype();
     renderBuys();
     if (preview) drawSurvey();
     // Founding with points unspent is a weaker start than any real allocation, and it starves:

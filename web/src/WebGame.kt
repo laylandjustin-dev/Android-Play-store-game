@@ -810,8 +810,30 @@ fun describeBuild(
     gathering: Int = GameConfig.Traits.BASE_VALUE,
 ): String {
     val archetype = Archetype.of(TraitAllocation(speed, health, hunting, elements, farming, gathering))
+
+    // Every bonus is reported as the raw change to the thing its label names, so the sign means what
+    // it says: "army strength +25%" and "building cost -20%" are both good news, and the reader never
+    // has to know which direction the underlying multiplier runs. Read off Archetype rather than
+    // written out here, so the setup screen cannot promise a bonus the simulation does not apply —
+    // the same reasoning as the generated building index (AD-77) and the effect rows (AD-68).
+    val bonuses = mutableListOf<String>()
+    fun row(label: String, multiplier: Double) {
+        if (multiplier == 1.0) return
+        val pct = (multiplier - 1.0) * 100.0
+        bonuses.add("{\"label\":\"${escapeJson(label)}\",\"pct\":$pct}")
+    }
+    row("army strength", archetype.strengthBonus)
+    row("march speed", archetype.marchBonus)
+    row("wall integrity", archetype.wallBonus)
+    row("disease resistance", archetype.diseaseBonus)
+    row("building cost", archetype.buildCostBonus)
+    row("building decay", archetype.decayBonus)
+
     return "{\"label\":\"${archetype.label}\",\"blurb\":\"${archetype.blurb}\"," +
-        "\"shape\":\"${archetype.shape.name.lowercase()}\"}"
+        "\"shape\":\"${archetype.shape.name.lowercase()}\"," +
+        "\"unit\":\"${escapeJson(archetype.uniqueUnit.label)}\"," +
+        "\"unique\":${archetype != Archetype.BALANCED}," +
+        "\"bonuses\":[${bonuses.joinToString(",")}]}"
 }
 
 /**
