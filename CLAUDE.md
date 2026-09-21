@@ -1012,6 +1012,25 @@ Four things about it are deliberate:
   upgrade — and `a people's unique unit needs the building for it` pins that. It keeps `UnitKind` a
   derivation (AD-74) rather than making it a choice.
 
+**This shipped for one commit as a second enum, and that was a mistake caught by going to wire it
+up.** `Archetype` already existed in `:sim` — the same derivation from the dominant trait, carrying
+a label, a blurb and the `MarkerShape` the renderer already draws — and `CivArchetype` was a parallel
+notion of *what kind of people is this* sitting beside it. Two of them would have drifted the first
+time either was edited. They are one enum now, and the older one won on two counts of its own:
+
+- **`DOMINANCE_MARGIN` is a better rule than "highest trait".** A people needs a trait three above
+  base before it is named, so 5/5/5/5/6 stays a balanced town that farms slightly better rather than
+  becoming a farming civilisation on one stray point. The bonuses now ride on that decision, so
+  `one stray point does not rename a people` pins it.
+- **`BALANCED` already existed for a people with no speciality**, where the duplicate had forced a
+  fallback to the farming archetype. It now fields the generic `MEN_AT_ARMS` and claims **no bonus at
+  all** — the honest reading of "good at everything, best at nothing", and a test asserts every one of
+  its six multipliers is exactly 1.0.
+
+*The general lesson, and this project has now met it from both directions: before adding a concept,
+search for the one already there. AD-77 says a generated index cannot disagree with the simulation;
+this says the simulation must not be able to disagree with itself.*
+
 **The tie-break was documented one way and implemented another, and a test caught it.** `of()`
 iterated the archetype enum's declaration order while its own doc comment promised *trait* order —
 the order a player reads on their allocation screen. Those are not the same order, and an allocation

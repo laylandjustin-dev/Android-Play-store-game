@@ -24,7 +24,7 @@ class Civilization(
      * this from current traits would let a people stop being Stalkers halfway through a run. A
      * nation is what it was founded as.
      */
-    val archetype: CivArchetype = CivArchetype.of(traits),
+    val archetype: Archetype = Archetype.of(traits),
 ) {
     val isPlayer: Boolean get() = id == GameConfig.World.PLAYER_CIV_ID
 

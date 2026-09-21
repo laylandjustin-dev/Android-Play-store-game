@@ -150,7 +150,7 @@ data class CivSave(
      */
     val meanWorkedFertility: Double = GameConfig.Terrain.PRISTINE_WORKED_FERTILITY,
     /**
-     * What kind of people this civ is, by [CivArchetype] name.
+     * What kind of people this civ is, by [Archetype] name.
      *
      * Saved rather than derived because it is taken from the allocation the civ was *founded* with,
      * and a save carries only current traits — a civ that spent three decade points on Farming would

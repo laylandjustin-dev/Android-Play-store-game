@@ -14,24 +14,65 @@ import com.pixeltown.sim.GameConfig.Traits as TraitConfig
  * deterministic — every legal allocation has exactly one archetype, including the even spread,
  * which gets its own.
  */
-enum class Archetype(val label: String, val blurb: String, val shape: MarkerShape) {
+enum class Archetype(
+    val label: String,
+    val blurb: String,
+    val shape: MarkerShape,
+    /**
+     * The unit only this people fields, once they have the armoury for it.
+     *
+     * [BALANCED] fields the generic [UnitKind.MEN_AT_ARMS], because a people with no speciality
+     * should not have a speciality unit — that is the honest reading of "best at nothing".
+     */
+    val uniqueUnit: UnitKind = UnitKind.MEN_AT_ARMS,
+    /** Multiplier on this civ's military strength. */
+    val strengthBonus: Double = 1.0,
+    /** Multiplier on how fast this civ's armies cross the map. */
+    val marchBonus: Double = 1.0,
+    /** Multiplier on the wood and stone a building costs this civ. */
+    val buildCostBonus: Double = 1.0,
+    /** Multiplier on how fast this civ's buildings fall into disrepair. */
+    val decayBonus: Double = 1.0,
+    /** Multiplier on the integrity of this civ's walls, which is what a siege must chew through. */
+    val wallBonus: Double = 1.0,
+    /** Multiplier on this people's resistance to disease. */
+    val diseaseBonus: Double = 1.0,
+) {
     /** Speed. Quick hands, long legs, first to everything. */
-    SWIFT("Swift", "quick hands and long legs", MarkerShape.CHEVRON),
+    SWIFT(
+        "Swift", "quick hands and long legs", MarkerShape.CHEVRON,
+        uniqueUnit = UnitKind.LANCERS, marchBonus = 1.45, strengthBonus = 1.05,
+    ),
 
     /** Health. They bury fewer of their own and shrug off the plagues that thin a neighbour. */
-    HARDY("Hardy", "they bury fewer of their own", MarkerShape.CROSS),
+    HARDY(
+        "Hardy", "they bury fewer of their own", MarkerShape.CROSS,
+        uniqueUnit = UnitKind.SHIELDBEARERS, strengthBonus = 1.10, diseaseBonus = 1.50,
+    ),
 
     /** Hunting. The wild feeds them, and the same skill points at their neighbours. */
-    WILD("Wild", "the wild feeds them, and arms them", MarkerShape.STAR),
+    WILD(
+        "Wild", "the wild feeds them, and arms them", MarkerShape.STAR,
+        uniqueUnit = UnitKind.BEASTMASTERS, strengthBonus = 1.25,
+    ),
 
     /** Elements. The seasons barely touch them. */
-    WEATHERED("Weathered", "the seasons barely touch them", MarkerShape.DIAMOND),
+    WEATHERED(
+        "Weathered", "the seasons barely touch them", MarkerShape.DIAMOND,
+        uniqueUnit = UnitKind.WALLWRIGHTS, decayBonus = 0.45, wallBonus = 1.55,
+    ),
 
     /** Farming. Patient, rooted, and fed. */
-    ROOTED("Rooted", "patient, rooted and fed", MarkerShape.SQUARE),
+    ROOTED(
+        "Rooted", "patient, rooted and fed", MarkerShape.SQUARE,
+        uniqueUnit = UnitKind.REAPERS, buildCostBonus = 0.90, decayBonus = 0.75,
+    ),
 
     /** Gathering. Timber, stone, and something built on every ridge. */
-    BUILDERS("Builders", "timber, stone, and always raising something", MarkerShape.CHEVRON_DOWN),
+    BUILDERS(
+        "Builders", "timber, stone, and always raising something", MarkerShape.CHEVRON_DOWN,
+        uniqueUnit = UnitKind.SAPPERS, buildCostBonus = 0.80, wallBonus = 1.30,
+    ),
 
     /** No dominant trait at all: good at everything, best at nothing. */
     BALANCED("Balanced", "good at everything, best at nothing", MarkerShape.RING),
@@ -68,6 +109,9 @@ enum class Archetype(val label: String, val blurb: String, val shape: MarkerShap
 
         /** How far above base a trait must stand before it names the people. */
         const val DOMINANCE_MARGIN = 3
+
+        /** Looked up by name, tolerantly, for decoding a save. See AD-57 on enum names. */
+        fun byNameOrNull(name: String): Archetype? = entries.firstOrNull { it.name == name }
     }
 }
 

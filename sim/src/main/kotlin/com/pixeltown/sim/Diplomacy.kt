@@ -125,6 +125,12 @@ data class RivalReport(
     val civId: Int,
     val name: String,
     val personality: Personality,
+    /**
+     * What kind of people this is (AD-80). Carried here because "militant" tells a player how a
+     * rival *behaves* and "Stalkers" tells them what it will be fielding when it arrives — the
+     * panel is the one place both facts are wanted at once.
+     */
+    val archetype: Archetype,
     val population: Int,
     val militaryStrength: Double,
     val techTier: Int,
@@ -236,7 +242,7 @@ internal object DiplomacySystem {
         traits: TraitAllocation,
         techMultiplier: Double,
         effects: CivEffects,
-        /** This people's own multiplier — see [CivArchetype.strengthBonus]. */
+        /** This people's own multiplier — see [Archetype.strengthBonus]. */
         archetypeBonus: Double = 1.0,
     ): Double {
         // Each soldier counts for what they are individually, not for an average: a levy of the

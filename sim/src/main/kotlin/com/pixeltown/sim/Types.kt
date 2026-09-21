@@ -68,7 +68,7 @@ enum class UnitKind(val label: String) {
     MEN_AT_ARMS("Men-at-arms"),
 
     // The unique units: one people fields each, and nobody else can. Derived from the civ's
-    // founding allocation (see CivArchetype), so they cost no content and cannot contradict the
+    // founding allocation (see Archetype), so they cost no content and cannot contradict the
     // trait sheet the player filled in.
 
     /** Tillers: farmhands who fight in season, and never run out of supply. */

@@ -1557,6 +1557,7 @@ class Simulation(
             civId = rival.id,
             name = rival.name,
             personality = rival.personality,
+            archetype = rival.archetype,
             population = rival.population,
             militaryStrength = strength[rival.id],
             techTier = rival.techTier,
@@ -2601,8 +2602,8 @@ class Simulation(
                     personality = c.personality,
                     homeSite = c.homeSite,
                     // Founding identity, not a derivation from the traits this civ has now.
-                    archetype = c.archetype?.let { CivArchetype.byNameOrNull(it) }
-                        ?: CivArchetype.of(TraitAllocation.of(*c.traits.toIntArray())),
+                    archetype = c.archetype?.let { Archetype.byNameOrNull(it) }
+                        ?: Archetype.of(TraitAllocation.of(*c.traits.toIntArray())),
                 ).also { civ ->
                     c.stores.copyInto(civ.stores)
                     civ.foodStorageCapacity = c.foodStorageCapacity
