@@ -1046,9 +1046,22 @@ see; now that a rival card headlines "Rooted · expansionist · upkeep -25% · R
 neighbours read as a bug. The bias comes from `MIN_VIABLE_FARMING` (4), which lifts Farming before the
 priors get a say and therefore makes Farming the dominant trait more often than any other.
 
-**Not fixed yet, and deliberately so:** rejecting duplicate archetypes means more draws from the RNG,
-which shifts every existing run's stream and so moves every outcome-based test. That is a change worth
-making on its own with its own suite run, not stacked on top of this one.
+**Fixed by rejecting the duplicate *identity*, not only the duplicate sheet.** `allocateAll` now runs
+two rejections in order of how badly they read: an identical sheet outright, then a different sheet
+that makes the same people. It is a preference rather than a guarantee — six rivals against seven
+archetypes, and the priors do not reach all of them equally — so after `DIVERSITY_ATTEMPTS` the
+duplicate is accepted rather than looped on. A second Rooted is worse than a copy, and both are
+better than a hang. Measured across five seeds: **5 or 6 distinct peoples out of 6**, where the worst
+case before was three identical. The test asserts the relationship — at most one duplicate, never
+three of a kind — rather than a figure the generator has no way to guarantee.
+
+**And a town now builds like its people within a run rather than a century.** `TRAIT_LEAN_WEIGHT`
+0.35 to 0.55. AD-80 gave a people a name, a unit and bonuses and then left every town building the
+same things; at 0.35 a civ's character was legible only over about a century, which is a long time to
+wait to find out who you are. What makes raising it safe is that the ceiling is `distressOf` and not
+this number (AD-72): the lean scales to zero as food stocks and survival scores fall, so a hungry town
+abandons its character and feeds itself whatever this is set to. It buys legibility in the good times
+and changes nothing in the bad.
 
 *The general lesson, and this project has now met it from both directions: before adding a concept,
 search for the one already there. AD-77 says a generated index cannot disagree with the simulation;

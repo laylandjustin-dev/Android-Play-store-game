@@ -1305,10 +1305,19 @@ object GameConfig {
          * How much of a build decision a people's own traits account for, when the town is
          * comfortable. Scaled to zero as distress rises, so survival always wins in the end.
          *
-         * At 0.35 a committed people's character is plainly visible in what they build over a
-         * century without the Premier's platform or the town's needs becoming decoration.
+         * At 0.35 a committed people's character was visible in what they built over a *century* —
+         * which is a long time to wait to see who you are. Raised to 0.55 so a town reads as its
+         * people within a normal run: a Wild civ's skyline is barracks and towers, a Builders civ
+         * sprawls, and a player comparing two rival towns on the map can tell which is which without
+         * opening a panel. That is the other half of AD-80, which gave a people a name, a unit and
+         * bonuses and then left every town building the same things.
+         *
+         * The ceiling is `distressOf` rather than this number (AD-72): the lean is scaled to zero as
+         * food stocks and survival scores fall, so a hungry town abandons its character and feeds
+         * itself whatever this is set to. That is what makes raising it safe — it buys legibility in
+         * the good times and changes nothing in the bad.
          */
-        const val TRAIT_LEAN_WEIGHT = 0.35
+        const val TRAIT_LEAN_WEIGHT = 0.55
 
         const val COST_OFFER_TRADE = 25
         const val COST_FORCE_WAR = 180

@@ -152,6 +152,36 @@ class ArchetypeIdentityTest {
     }
 
     @Test
+    fun `an island holds mostly different peoples`() {
+        // Before duplicate *identities* were rejected, a live run produced three Rooted neighbours
+        // in a row: allocateAll only rejected an identical sheet, so several Farming-dominant civs
+        // with different numbers came out the same people. MIN_VIABLE_FARMING biases toward exactly
+        // that, since Farming is raised before the priors get a say.
+        //
+        // Asserted as a relationship rather than a figure: the priors cannot reach all seven
+        // archetypes equally, so demanding six distinct peoples every time would be demanding
+        // something the generator has no way to guarantee. What it must not do is produce an island
+        // where a third of the neighbours are the same people.
+        for (seed in longArrayOf(1L, 42L, 1_000L, 8_919L, 777L)) {
+            val peoples = Simulation.newRun(seed, TraitAllocation.EVEN_SPREAD)
+                .civs.filter { !it.isPlayer }
+                .map { it.archetype }
+            val distinct = peoples.toSet().size
+            assertTrue(
+                distinct >= peoples.size - 1,
+                "seed $seed put ${peoples.size - distinct + 1} of the same people on one island: " +
+                    peoples.map { it.label },
+            )
+            val commonest = peoples.groupingBy { it }.eachCount().values.max()
+            assertTrue(
+                commonest <= 2,
+                "seed $seed has $commonest neighbours who are all the same people: " +
+                    peoples.map { it.label },
+            )
+        }
+    }
+
+    @Test
     fun `one stray point does not rename a people`() {
         // DOMINANCE_MARGIN exists so 5/5/5/5/6 is a balanced town that farms slightly better, not a
         // farming civilisation. Worth pinning, because the bonuses now ride on this decision.

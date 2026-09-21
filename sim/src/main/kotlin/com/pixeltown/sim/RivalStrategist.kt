@@ -81,7 +81,8 @@ object RivalStrategist {
         return TraitAllocation.of(*values)
     }
 
-    /** Allocations for a whole set of rivals, with no two of them identical. */
+    /** Allocations for a whole set of rivals, no two identical and, where it can manage it, no two
+     * the same *people*. */
     fun allocateAll(
         personalities: List<Personality>,
         rng: SimRandom,
@@ -91,9 +92,29 @@ object RivalStrategist {
         for (personality in personalities) {
             var candidate = allocate(personality, rng, budget)
             var attempts = 0
-            while (chosen.any { it.values.contentEquals(candidate.values) } && attempts < DIVERSITY_ATTEMPTS) {
+            // Two rejections, in order of how badly they read. An identical sheet is rejected
+            // outright. A *different* sheet that makes the same people is rejected too, because
+            // since AD-80 a rival card headlines what a civ is — "Rooted · upkeep -25% · Reapers" —
+            // and a live run produced three Rooted neighbours in a row, which reads as a bug even
+            // though their numbers differed. `MIN_VIABLE_FARMING` is what biases toward it: Farming
+            // is raised before the priors get a say, so it is the dominant trait more often than
+            // anything else.
+            //
+            // Identity diversity is a preference rather than a guarantee. There are six rivals and
+            // seven archetypes, but the priors do not reach all of them equally, so after
+            // DIVERSITY_ATTEMPTS the duplicate is accepted rather than looped on: a rival who is a
+            // second Rooted is worse than a rival who is a copy, and both are better than a hang.
+            while (attempts < DIVERSITY_ATTEMPTS &&
+                chosen.any { it.values.contentEquals(candidate.values) }
+            ) {
                 candidate = allocate(personality, rng, budget)
                 attempts++
+            }
+            val taken = chosen.mapTo(HashSet()) { Archetype.of(it) }
+            while (attempts < DIVERSITY_ATTEMPTS && Archetype.of(candidate) in taken) {
+                val next = allocate(personality, rng, budget)
+                attempts++
+                if (chosen.none { it.values.contentEquals(next.values) }) candidate = next
             }
             chosen.add(candidate)
         }
