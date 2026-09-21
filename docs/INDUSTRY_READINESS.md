@@ -6,14 +6,20 @@ this repository rather than a general principle.
 
 ## 1. Blockers — the game cannot ship without these
 
-**`:app` has never been compiled.** The sandbox cannot reach `dl.google.com`, so the whole Android
-front end is unverified: `MainActivity.kt`, `PixelCanvas.kt` and `WorldGestures.kt` are 280 lines
-that have parsed but never run. The playable build today is the web one. Until CI's Android job has
-gone green once, every statement about the app is a hypothesis.
+**~~`:app` has never been compiled.~~ It compiles; this entry was wrong.** The sandbox cannot reach
+`dl.google.com`, and I escalated that into "the app is unverified". CI disproves it: the Android job
+assembles debug and release (R8 + resource shrinking), passes lint, and uploads the APK, and has
+done on every run. The real gap is narrower and still real — the app has never been *run*. Nothing
+verifies that the gestures feel right or that zoom and pan hold 60fps, because there is no device
+and no instrumentation test. Compilation: settled. Behaviour on a phone: unknown.
 
-**There is no app identity.** `app/src/main/res` contains exactly one file, `values/strings.xml`.
-No launcher icon, no adaptive icon, no splash, no app theme of its own (the manifest borrows
-`@android:style/Theme.Material.NoActionBar.Fullscreen`). Play rejects an upload without an icon.
+**~~There is no app identity.~~ The launcher icon is now there.** An adaptive icon drawn from the
+game's own palette (`Palette.kt`): FOREST behind, the player civ's gold in front, a pixel settlement
+of three structures, worked ground and four single-pixel citizens, with a `monochrome` layer for
+themed icons. Every coordinate is a whole number, because nothing in this game is anti-aliased.
+Still outstanding: no splash, no app theme of its own (the manifest borrows
+`@android:style/Theme.Material.NoActionBar.Fullscreen`), and Play also wants a 512x512 PNG uploaded
+to the console, which is not an APK resource.
 
 **The Android UI is a fraction of the web UI.** `web/shell/index.html` is 1,774 lines carrying six
 screens, three modals, the people and relations tabs, the site survey and the allocation sheet.
@@ -66,11 +72,13 @@ run end, plus a crash reporter, before any further tuning by simulation.
 
 ## 3. Quality gaps the sweep already found
 
-**The Farming cliff is the game's headline problem.** The 1,026-run sweep measures a 157x spread
-between the best and worst single-trait build; a Gathering-8 people with Farming-3 survives 0.0 years.
-Five of six traits are decoration. A player who reads the allocation screen honestly and picks
-"builders" is handed a dead run. No amount of UI fixes this; it is a design decision about whether
-Health, Elements, Speed and Gathering touch food throughput at all, and it is still open.
+**~~The Farming cliff is the game's headline problem.~~ Fixed — see AD-79.** It was one formula: soil
+recovery answered to Farming alone and crossed the drain between Farming 5 and 6, so Farming was a
+pass/fail gate rather than a strength. Each trait now has its own route past the food gate, and the
+single-trait spread is **2.1x** against the 157x measured before, with Farming now the *weakest* solo
+build. What replaces it as an open question is the opposite worry: every viable build now ascends
+around year 85-97, so the game may be too forgiving. Only a full sweep against this state can say,
+and that has not been run.
 
 **All five balance targets in section 12 fail.** Recorded honestly in `CLAUDE.md`, which is right,
 but a game that misses every one of its own stated balance goals is not tuned.

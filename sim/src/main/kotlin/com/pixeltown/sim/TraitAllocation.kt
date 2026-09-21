@@ -110,9 +110,46 @@ data class TraitAllocation(
     /** Fraction by which weather, season and disaster penalties are reduced. */
     val elementsShelter: Double = TraitConfig.ELEMENTS_PENALTY_REDUCTION_PER_POINT * elements
 
-    /** Soil recovery per day, which is why a farming people can work land harder. */
+    /**
+     * Soil recovery per day, which is why a farming people can work land harder — and why a
+     * weathered one can too.
+     *
+     * Two traits reach it, deliberately. Farming raises recovery *and* yield; Elements raises only
+     * recovery, so a weathered people keeps its land without ever getting rich off it. Before
+     * Elements was in this formula, recovery crossed `FERTILITY_DRAIN_PER_FARM_DAY` between Farming
+     * 5 and 6 and nothing else in the game could move it, which made one of six traits a gate on
+     * the other five.
+     */
     val fertilityRecoveryPerDay: Double =
-        TraitConfig.FERTILITY_RECOVERY_BASE + TraitConfig.FERTILITY_RECOVERY_PER_FARMING * farming
+        TraitConfig.FERTILITY_RECOVERY_BASE +
+            TraitConfig.FERTILITY_RECOVERY_PER_FARMING * farming +
+            TraitConfig.FERTILITY_RECOVERY_PER_ELEMENTS * elements
+
+    /**
+     * The share of stored food that survives spoilage, relative to the baseline rate.
+     *
+     * Elements is shelter, and a granary is shelter for grain. The sweep measured a median 56% of
+     * all food produced rotting; AD-78 established that the workforce is the wrong place to attack
+     * that figure, because a healthy town's store is *supposed* to sit at its ceiling. Cutting the
+     * rate a weathered people loses is the other door, and it is the one that fits the trait.
+     *
+     * Measured from [TraitConfig.BASE_VALUE], not from zero, so a base people spoils food at exactly
+     * the documented rate and every table above still reads true — the same correction AD-61 and
+     * AD-64 each had to make, and which a test now pins.
+     */
+    val spoilageMultiplier: Double = (
+        1.0 - TraitConfig.ELEMENTS_PENALTY_REDUCTION_PER_POINT * (elements - TraitConfig.BASE_VALUE)
+        ).coerceIn(0.15, 1.0)
+
+    /**
+     * Fertility this people drain from a cell per day worked.
+     *
+     * Speed's route to sustainability: a quick people spread the same work over more ground, so each
+     * patch is turned over less often. See [GameConfig.Economy.DRAIN_REDUCTION_PER_SPEED].
+     */
+    val fertilityDrainPerFarmDay: Double = GameConfig.Terrain.FERTILITY_DRAIN_PER_FARM_DAY * (
+        1.0 - GameConfig.Economy.DRAIN_REDUCTION_PER_SPEED * (speed - TraitConfig.BASE_VALUE)
+        ).coerceIn(0.35, 1.0)
 
     /**
      * Seasonal multiplier on farm and hunt output.

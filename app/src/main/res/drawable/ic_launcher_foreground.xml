@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A pixel settlement: three blocky structures on a strip of worked ground, with four
+  citizens as single bright pixels. Every edge is axis-aligned and every coordinate is a
+  whole number, because the game's whole visual identity is that nothing is anti-aliased.
+
+  Adaptive icons are drawn on a 108x108 canvas of which only the central 66x66 is
+  guaranteed visible, so the drawing is kept inside x,y in [24, 84] and the mask can crop
+  to a circle, a squircle or a rounded square without clipping a building in half.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Worked ground: the farm accent, so the strip reads as soil rather than shadow. -->
+    <path
+        android:fillColor="#C9A227"
+        android:pathData="M24,72 H84 V80 H24 Z" />
+
+    <!-- Three structures, tallest in the middle: a town centre with outbuildings. -->
+    <path
+        android:fillColor="#F2C14E"
+        android:pathData="M26,50 H40 V72 H26 Z" />
+    <path
+        android:fillColor="#F2C14E"
+        android:pathData="M44,38 H62 V72 H44 Z" />
+    <path
+        android:fillColor="#F2C14E"
+        android:pathData="M66,46 H80 V72 H66 Z" />
+
+    <!-- The town hall's doorway, punched in the background colour: one dark notch is all
+         it takes to stop the middle block reading as a plain rectangle. -->
+    <path
+        android:fillColor="#22361F"
+        android:pathData="M50,60 H56 V72 H50 Z" />
+
+    <!-- Four citizens, one pixel each, which is the game's central conceit. -->
+    <path
+        android:fillColor="#E8DCB8"
+        android:pathData="M28,40 H33 V45 H28 Z M34,28 H39 V33 H34 Z M70,32 H75 V37 H70 Z M76,54 H81 V59 H76 Z" />
+</vector>

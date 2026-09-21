@@ -44,7 +44,12 @@ internal object EconomySystem {
         if (workers.isEmpty()) return
 
         val dailyConsumption = members.sumOf { it.dailyFoodNeed(civ.traits) }
-        val quotas = quotasFor(workers.size, foodWeighted(weights, civ.daysOfFood(dailyConsumption)))
+        val quotas = quotasFor(workers.size, foodWeighted(
+            weights,
+            civ.daysOfFood(dailyConsumption),
+            civ.traits,
+            civ.meanWorkedFertility,
+        ))
 
         // Keep people in the job they already hold wherever the quota allows it: skill is
         // expensive to rebuild, so churn is only worth it where the quota actually demands it.
@@ -117,22 +122,41 @@ internal object EconomySystem {
      * is build variety: a people with poor farming now lives permanently at a high food share —
      * small, slow and short of everything else, but *alive* — where before they were simply dead.
      */
-    private fun foodWeighted(weights: Map<Job, Double>, daysOfStock: Double): Map<Job, Double> {
+    private fun foodWeighted(
+        weights: Map<Job, Double>,
+        daysOfStock: Double,
+        traits: TraitAllocation,
+        workedFertility: Double,
+    ): Map<Job, Double> {
         val comfort = Economy.FOOD_COMFORTABLE_DAYS_OF_STOCK
         val ease = (daysOfStock / comfort).coerceIn(0.0, 1.0)
         val foodShare = Economy.CRISIS_FOOD_WORKER_SHARE +
             (Economy.MIN_FOOD_WORKER_SHARE - Economy.CRISIS_FOOD_WORKER_SHARE) * ease
-        val farmBias = (weights[Job.FARMER] ?: 1.0) + 0.001
-        val huntBias = (weights[Job.HUNTER] ?: 1.0) + 0.001
-        val foodTotal = farmBias + huntBias
+
+        // There are three ways to feed a town, and this function decides how many people do it.
+        // It used to rebuild the food group from FARMER and HUNTER alone, which silently discarded
+        // foraging: a Gathering-max people's job counts came out identical to a base people's —
+        // 36 farmers and 3 gatherers either way — because whatever the Council allocated to
+        // foraging was thrown away here every single assignment. The bug was invisible while
+        // nothing but farming and hunting fed anyone.
+        val split = CouncilSystem.foodSplitOf(traits, workedFertility)
+        val farmBias = split.farming + 0.001
+        val huntBias = split.hunting + 0.001
+        val forageBias = split.foraging
+        val foodTotal = farmBias + huntBias + forageBias
         val rest = 1.0 - foodShare
+
+        // GATHERER's weight in the incoming map is its infrastructure work only — timber and stone
+        // for the building layer — so it belongs in the non-food pool as well as the food one.
         val otherTotal = weights.filterKeys { it != Job.FARMER && it != Job.HUNTER }.values.sum()
         return buildMap {
             put(Job.FARMER, foodShare * farmBias / foodTotal)
             put(Job.HUNTER, foodShare * huntBias / foodTotal)
             for ((job, weight) in weights) {
                 if (job == Job.FARMER || job == Job.HUNTER) continue
-                put(job, if (otherTotal > 0) rest * weight / otherTotal else 0.0)
+                val infrastructure = if (otherTotal > 0) rest * weight / otherTotal else 0.0
+                val foraging = if (job == Job.GATHERER) foodShare * forageBias / foodTotal else 0.0
+                put(job, infrastructure + foraging)
             }
         }
     }
@@ -176,7 +200,13 @@ internal object EconomySystem {
         var best = World.NONE
         var bestScore = 0.0
 
-        val radius = Economy.WORK_SEARCH_RADIUS
+        // A quick people range further for work, which spreads their farming over more cells and
+        // so drains each one less often. See WORK_SEARCH_RADIUS_PER_SPEED.
+        val radius = (
+            Economy.WORK_SEARCH_RADIUS +
+                Economy.WORK_SEARCH_RADIUS_PER_SPEED *
+                (civ.traits.speed - GameConfig.Traits.BASE_VALUE)
+            ).toInt().coerceAtLeast(1)
         for (dy in -radius..radius) {
             for (dx in -radius..radius) {
                 val x = originX + dx
@@ -324,6 +354,8 @@ internal object EconomySystem {
         val unrestPenalty = 1.0 - GameConfig.Politics.UNREST_WORK_PENALTY_AT_MAX * civ.unrest
 
         var food = 0.0
+        var workedFertilitySum = 0.0
+        var workedCells = 0
         var wood = 0.0
         var stone = 0.0
         var knowledge = 0.0
@@ -343,11 +375,15 @@ internal object EconomySystem {
             when (citizen.job) {
                 Job.FARMER -> if (atWork) {
                     val fertility = world.fertility[cell].toDouble()
+                    // The town's read on its own land, accumulated here because this loop already
+                    // has the cell in hand (AD-31: no sweep for something a running sum can answer).
+                    workedFertilitySum += fertility
+                    workedCells++
                     food += fertility * traits.farmYield * effort * seasonMod *
                         Economy.FARM_OUTPUT_SCALE * effects.farmYieldBonus
                     world.fertility[cell] = max(
                         0f,
-                        world.fertility[cell] - TerrainConfig.FERTILITY_DRAIN_PER_FARM_DAY.toFloat(),
+                        world.fertility[cell] - traits.fertilityDrainPerFarmDay.toFloat(),
                     )
                 }
                 Job.HUNTER -> if (atWork) {
@@ -362,6 +398,21 @@ internal object EconomySystem {
                     // against five traits still mean what they say.
                     val output = Economy.GATHERER_OUTPUT * traits.gatherYield * effort
                     if (world.terrainAt(cell) == TerrainType.FOREST) wood += output else stone += output
+
+                    // And they forage. Gathering touched no food at all before this, which is why
+                    // a people built for it starved holding the timber for a granary. Forage draws
+                    // on the same wild game hunting does, so it has a ceiling and a rival.
+                    val forage = world.wildGame[cell].toDouble()
+                    if (forage > 0.0) {
+                        food += forage * traits.gatherYield * effort * Economy.FORAGE_FOOD_PER_GATHER_DAY
+                        world.wildGame[cell] = max(
+                            0f,
+                            world.wildGame[cell] - (
+                                forage * TerrainConfig.HUNT_DEPLETION_PER_DAY *
+                                    Economy.FORAGE_DEPLETION_SHARE
+                                ).toFloat(),
+                        )
+                    }
                 }
                 Job.SCHOLAR -> knowledge += Economy.SCHOLAR_OUTPUT * Economy.KNOWLEDGE_OUTPUT_SCALE *
                     effort * effects.knowledgeMultiplier
@@ -373,6 +424,11 @@ internal object EconomySystem {
 
             growSkill(citizen, skillGrowthMultiplier)
         }
+
+        // A town with nobody in the fields has no opinion about the fields, so it keeps the last
+        // one rather than reading zero — which would otherwise drive the farm share to its floor
+        // and keep it there, a feedback loop that latches.
+        if (workedCells > 0) civ.meanWorkedFertility = workedFertilitySum / workedCells
 
         // Mills turn surplus grain into money.
         if (effects.foodToWealth > 0.0) {

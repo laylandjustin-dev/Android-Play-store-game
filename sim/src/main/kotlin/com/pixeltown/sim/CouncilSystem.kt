@@ -2,6 +2,7 @@ package com.pixeltown.sim
 
 import com.pixeltown.sim.GameConfig.Politics as PoliticsConfig
 import com.pixeltown.sim.GameConfig.Survival as SurvivalConfig
+import com.pixeltown.sim.GameConfig.Terrain as TerrainConfig
 import com.pixeltown.sim.GameConfig.Traits as TraitConfig
 import kotlin.math.max
 import kotlin.math.min
@@ -261,7 +262,11 @@ internal object CouncilSystem {
      * below [GameConfig.Economy.MIN_FOOD_WORKER_SHARE], and materials, without which the town
      * cannot build whatever the Premier is elected to build. What is left is split by agenda.
      */
-    fun jobWeightsFor(agenda: Agenda, buildingInProgress: Boolean): Map<Job, Double> {
+    fun jobWeightsFor(
+        agenda: Agenda,
+        buildingInProgress: Boolean,
+        traits: TraitAllocation = TraitAllocation.BASE,
+    ): Map<Job, Double> {
         val farms = agenda[BuildingCategory.FARMS]
         val health = agenda[BuildingCategory.HEALTH]
         val military = agenda[BuildingCategory.MILITARY]
@@ -279,11 +284,14 @@ internal object CouncilSystem {
         val remaining = (discretionary * (1.0 - farms)).coerceAtLeast(0.0)
         val otherTotal = (health + military + tech + lifestyle).coerceAtLeast(1e-9)
 
-        // The farm/hunt split stays fixed; see AD-25 in CLAUDE.md.
-        val farmerShare = foodShare * FARM_SHARE_OF_FOOD
+        // The farm/hunt lean applies here; the three-way split including foraging is applied in
+        // EconomySystem.foodWeighted, which is where the size of the food workforce is actually
+        // decided and which overrides whatever this function says about it every assignment.
+        val split = foodSplitOf(traits)
+        val betweenFieldAndRange = (split.farming + split.hunting).coerceAtLeast(1e-9)
         return mapOf(
-            Job.FARMER to farmerShare,
-            Job.HUNTER to foodShare - farmerShare,
+            Job.FARMER to foodShare * split.farming / betweenFieldAndRange,
+            Job.HUNTER to foodShare * split.hunting / betweenFieldAndRange,
             Job.BUILDER to infraShare * GameConfig.Economy.BUILDER_SHARE_OF_INFRASTRUCTURE,
             Job.GATHERER to infraShare * (1.0 - GameConfig.Economy.BUILDER_SHARE_OF_INFRASTRUCTURE),
             Job.HEALER to remaining * health / otherTotal,
@@ -309,6 +317,113 @@ internal object CouncilSystem {
         }
     }
 
-    /** The share of food jobs that go to farming rather than hunting. */
+    /**
+     * The share of food jobs that go to farming rather than hunting, for a people with this
+     * [traits] sheet.
+     *
+     * AD-25 fixed this at 0.70 and AD-26 recorded the consequence as a known gap: a Hunting-8
+     * people put 46% of its workforce into farming it had no talent for and died in one or two
+     * years, while the allocation screen went on offering Hunting as a path. The sweep put a number
+     * on it — pure-hunting averaged 80 years against pure-farming's 264.
+     *
+     * What AD-25 actually rejected was splitting by the *coefficient ratio* of `farmYield` to
+     * `huntYield`. That failed for a reason which still holds: the two coefficients are similar, but
+     * a farm cell at fertility ~0.85 out-produces a game cell at ~0.5, so an even split by
+     * coefficient sends half the workforce to the weaker job. So the baseline stays farm-heavy and
+     * only *leans* with the gap between the two traits, bounded at both ends. A people equally good
+     * at both still farms 70% of the time, which is what keeps every balance table above honest;
+     * a people five points better at hunting than farming hunts most of its food, which is what
+     * makes the trait a choice rather than a decoration.
+     */
+    internal fun foodSplitOf(
+        traits: TraitAllocation,
+        workedFertility: Double = TerrainConfig.PRISTINE_WORKED_FERTILITY,
+    ): FoodSplit {
+        // One model for all three ways of feeding a town: weight each by how much a day of it is
+        // worth to *these* people on *this* land, then normalise.
+        //
+        // The baseline weights are 0.70 and 0.30 because that is what the game has always used, and
+        // a people of base competence on pristine ground still lands exactly there — every balance
+        // measurement taken before this describes the opening of a run unchanged. What the
+        // multipliers add is that the town moves its food workers toward whatever it is actually
+        // good at, and away from fields it is exhausting.
+        //
+        // Two earlier shapes of this function failed in ways worth recording. A fixed 70/30 meant a
+        // Hunting-8 people farmed badly on soil it could not restore and starved beside a full
+        // range. Then a soil term alone freed those farmers but handed them all to *hunting*,
+        // because hunting was the only alternative in the formula — which killed the Gathering build
+        // that had just started working, since a gathering people is no better at hunting than
+        // anyone else. An exodus has to have somewhere to go.
+        val soil = (workedFertility / TerrainConfig.PRISTINE_WORKED_FERTILITY).coerceIn(0.0, 1.0)
+        val base = TraitAllocation.BASE
+
+        val farmWeight = FARM_SHARE_OF_FOOD * soil *
+            competence(traits.farmYield / base.farmYield)
+        val huntWeight = HUNT_SHARE_OF_FOOD *
+            competence(traits.huntYield / base.huntYield)
+        // Foraging has no baseline share: an unspecialised people does not organise its food around
+        // the woods, so this term is zero at base and every table above still reads true.
+        val forageWeight = FORAGE_WEIGHT_PER_POINT * (traits.gathering - TraitConfig.BASE_VALUE) *
+            competence(traits.gatherYield / base.gatherYield)
+
+        val total = (farmWeight + huntWeight + forageWeight).coerceAtLeast(1e-9)
+        val farm = (farmWeight / total).coerceIn(MIN_FARM_SHARE, MAX_FARM_SHARE)
+        val remainder = 1.0 - farm
+        val nonFarm = (huntWeight + forageWeight).coerceAtLeast(1e-9)
+        return FoodSplit(
+            farming = farm,
+            hunting = remainder * huntWeight / nonFarm,
+            foraging = remainder * forageWeight / nonFarm,
+        )
+    }
+
+    /**
+     * How sharply a town leans toward what it is good at, given [ratio] — its yield at one food
+     * source over a base people's.
+     *
+     * Raised to a power above one because the linear reading is too timid to matter: a Hunting-8
+     * people is 1.96x a base people at hunting, which linearly moves the split from 70/30 to only
+     * 54/46 — and measurement showed such a people still farms itself to death at 38% farming.
+     * Cubing puts them at 24%, which they survive. A base people stays at exactly 1.0 whatever the
+     * exponent, since 1 to any power is 1, and that is the property that keeps the whole baseline
+     * intact.
+     */
+    private fun competence(ratio: Double): Double = ratio * ratio * ratio
+
+    /** How a town's food workers divide between the three ways of feeding it. Sums to 1. */
+    internal data class FoodSplit(val farming: Double, val hunting: Double, val foraging: Double)
+
+    /** The share of food jobs that go to farming for a people equally suited to both. */
     private const val FARM_SHARE_OF_FOOD = 0.70
+
+    /** The share a people of base competence puts on the range rather than the fields. */
+    private const val HUNT_SHARE_OF_FOOD = 0.30
+
+    /**
+     * Farming never falls below this share of the food workforce — but it falls a long way.
+     *
+     * This floor was 0.30 on the reasoning that a town needs a second food source, and measurement
+     * showed that to be precisely backwards. A Hunting-8 people put 30% of its food workers on
+     * fields at Farming 3, and those farmers were a *drag in both directions*: they were poor at
+     * the job and they drained soil their people could not restore, so mean fertility on worked
+     * cells fell 0.755 to 0.389 in 300 days and the colony starved with a full range beside it.
+     * Wild game, meanwhile, barely moved — 0.350 to 0.372 — so the fear this floor guarded against
+     * was not happening.
+     *
+     * A hunting people's second source is the range and a gathering people's is the woods. Farming
+     * is not the safety net; it is one of three options, and a people bad at it should mostly not
+     * do it.
+     */
+    private const val MIN_FARM_SHARE = 0.12
+
+    /** And farming never takes all of it either, or a famine has no second source. */
+    private const val MAX_FARM_SHARE = 0.85
+
+    /**
+     * How much of the food workforce one point of Gathering above base moves to foraging.
+     *
+     * Zero at base, so an unspecialised people divides its food work exactly as it always did and
+     * every balance table above still reads true.
+     */
+    private const val FORAGE_WEIGHT_PER_POINT = 0.13
 }

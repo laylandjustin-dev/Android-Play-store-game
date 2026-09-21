@@ -1618,7 +1618,7 @@ class Simulation(
     private fun jobWeightsFor(civ: Civilization): Map<Job, Double> {
         val premier = premiers[civ.id] ?: return Economy.DEFAULT_JOB_WEIGHTS
         val building = buildingsOf(civ.id).any { !it.isComplete }
-        return CouncilSystem.jobWeightsFor(premier.agenda, building)
+        return CouncilSystem.jobWeightsFor(premier.agenda, building, civ.traits)
     }
 
     /** Worked land belongs to the civ that works it, which is what the map shows as territory. */
@@ -1689,7 +1689,12 @@ class Simulation(
             val stored = civ[Resource.FOOD]
             if (stored > capacity) {
                 val excess = stored - capacity
-                val rotted = excess * Economy.SPOILAGE_PER_DAY_OVER_CAPACITY
+                // Elements is shelter, and a granary shelters grain: a weathered people lose less
+                // of what they cannot fit inside. This is the other door onto the sweep's 56%
+                // spoilage figure — the one AD-78 left open after the workforce door proved to be
+                // a growth cap.
+                val rotted = excess * Economy.SPOILAGE_PER_DAY_OVER_CAPACITY *
+                    civ.traits.spoilageMultiplier
                 civ[Resource.FOOD] = stored - rotted
                 // Booked here because spoilage writes the store directly rather than going through
                 // `take`, and because it is not consumption: nobody got the good of it.

@@ -855,6 +855,83 @@ surplus that funds growth, and the discretionary food share is the growth engine
 rounding error. If 56% is to come down, it has to come down through storage or through spoilage
 itself, not through the workforce. Recorded so it is not rebuilt.
 
+**AD-79 — Six traits, six routes past the food gate. The cliff was one formula, and closing it took
+a model rather than a constant.** The 1,026-run sweep measured a **157x** spread between the best and
+worst single-trait build, with five of six traits effectively dead. The cause was exact: soil recovery
+was `0.0022 + 0.00065 x Farming` against a drain of 0.0060, so it crossed the drain between Farming 5
+and 6, and the sweep's survival curve has its knee in precisely that place — 14.8 years at Farming 4,
+39.9 at 5, 101.6 at 6. **Farming was not strong, it was a pass/fail gate**, which is AD-54's own rule
+broken by AD-56. A player who read the allocation screen honestly and built anything else was handed a
+dead run.
+
+Each trait now reaches food by a route that belongs to it, and no route is a copy of Farming's:
+
+| trait | route | mechanism |
+|---|---|---|
+| Farming | yield *and* sustainability | unchanged: the only trait that buys both |
+| Elements | sustainability without yield | `FERTILITY_RECOVERY_PER_ELEMENTS`, plus less spoilage |
+| Speed | sustainability sideways | `DRAIN_REDUCTION_PER_SPEED` — a quick people does not linger on one patch |
+| Health | less food needed | `RATION_REDUCTION_PER_HEALTH` 0.035 to 0.09 |
+| Hunting | the range instead of the field | the food split follows the sheet, closing AD-26's gap |
+| Gathering | foraging | gatherers bring back food, at the same output scale as the other two food jobs |
+
+Measured at 100 years, one civ, seed 1, before and after:
+
+| build | before | after |
+|---|---|---|
+| solo-farming | the only viable one | 1,085 |
+| solo-hunting | dead in 1-2 years | **1,677** |
+| solo-gathering | dead in year 0 | **1,408** |
+| solo-elements | dead in year 0 | **1,791** |
+| solo-health | dead in year 1 | **2,262** |
+| solo-speed | dead in year 0 | **1,214** |
+| naive even spread | — | 1,898 |
+| nothing spent (all base) | dead in year 0 | dead in year 0, as it should be |
+
+**Spread: 157x to 2.1x**, and Farming is now the *weakest* solo build rather than the only one — a
+complete inversion. Five things this cost, all of them worth recording:
+
+- **The drain moved with the recovery.** Adding an Elements term lifts recovery for *every* build,
+  base included, so leaving the drain at 0.0060 would have been a global difficulty cut wearing a
+  trait fix's clothes. It is 0.0076 now, which holds the baseline deficit exactly where it was: a
+  people with nothing spent still cannot sustain a worked field, and a test pins that.
+- **The food split is one model, not three patches.** Each of the three ways to feed a town is
+  weighted by what a day of it is worth to *these* people on *this* land — `baseline x soil x
+  competence^3` — and normalised. A base people on pristine ground lands on exactly 0.70/0.30/0.00,
+  the historical split, because every multiplier is 1.0 and 1 to any power is 1. That property is
+  what let the model change without invalidating the opening of every measurement above. The cube is
+  measured, not chosen: linear moved a Hunting-8 people only from 70/30 to 54/46 and they still
+  farmed themselves to death at 38% farming; squared left them at 38%; cubed puts them at 24%, which
+  they survive.
+- **Two earlier shapes of that function failed instructively.** A fixed 70/30 (AD-25) meant a
+  Hunting-8 people farmed badly on soil it could not restore and starved beside a full range — wild
+  game on its hunters' cells moved only 0.350 to 0.372 while mean worked fertility fell 0.755 to
+  0.389. Then a soil term *alone* freed those farmers and handed every one of them to hunting,
+  because hunting was the only alternative in the formula — which killed the Gathering build that had
+  just started working, a people no better at hunting than anyone else. **An exodus has to have
+  somewhere to go.**
+- **`MIN_FARM_SHARE` was backwards.** It was 0.30 to guarantee a second food source. Measurement said
+  the floor *was* the failure: those farmers were a drag in both directions, poor at the job and
+  draining soil their people could not restore. A hunting people's second source is the range and a
+  gathering people's is the woods. It is 0.12.
+- **The town reads its own land.** `Civilization.meanWorkedFertility` is accumulated in the production
+  loop, which already has each worker's cell in hand, so it costs a running sum rather than a sweep
+  (AD-31). It is the same feedback shape the food *share* already used for stores: a village has no
+  crisis mode, it looks at what it has and decides. A town with nobody farming keeps its last reading
+  rather than reading zero, because zero would drive the farm share to its floor and latch there.
+
+Two things found and **not** settled:
+
+- **The game may now be too forgiving.** Every viable build above ascends around year 85-97, where
+  §12 wants Ascension rare. The spread target is met and the difficulty targets have probably moved
+  the wrong way; only the full sweep can say, and it has not been run against this state.
+- **Health sits on a knife edge.** It dies at `RATION_REDUCTION_PER_HEALTH` 0.075 and ascends at 2,262
+  people at 0.09. A trait whose viability flips between two adjacent values of one constant is not
+  tuned, it is balanced on a point, and the reason is that Health's only economic effect is on the
+  need side. AD-61's fertility bonus actively works against it — more children is more mouths the same
+  workforce feeds, which is AD-24's failure mode — so the ration cut has to outweigh Health's own
+  demographic gift before it can outweigh anything else.
+
 ### Decisions recorded ahead of implementation
 
 **AD-8 — Entitlements are read only at run start.** The simulation snapshots its starting
@@ -1074,8 +1151,15 @@ proves the app sources parse and that every symbol they use from `:sim` resolves
 signatures; it proves nothing about whether a Compose API is used correctly. It runs in the JVM
 CI job and has been verified to fail on a deliberately wrong call into `:sim`.
 
-So the first CI run is still the first real compile of `app/`. Treat its output as new information, not
-as flakiness. Everything in `app/` that could be moved somewhere testable has been: the renderer,
+**`:app` does compile, and CI is where that was established.** The sandbox limitation above is a
+limitation of *this machine*, and for a while this file overstated it into "the app is unverified".
+It is not: the `Android app` job installs platform 36, assembles **debug** (~3 min) and **release**
+with R8 and resource shrinking (~1 min), runs lint clean, and uploads the debug APK as a build
+artifact. That has held every run since the module's first, so the Android dependency versions
+listed above resolved and the Compose sources are genuinely compiled — the APK is downloadable from
+the run page. What remains unverified is *runtime* behaviour on a device: that the gestures feel
+right, that zoom and pan hold 60fps, and that the HUD lays out on a real screen. Compilation is
+settled; M1's "smoothly at 60fps" is not. Everything in `app/` that could be moved somewhere testable has been: the renderer,
 the viewport, and the screen-pixel-to-world-cell conversion all live in `:sim` with tests, and
 `app/` is left holding Compose plumbing, the bitmap upload, and the Activity.
 

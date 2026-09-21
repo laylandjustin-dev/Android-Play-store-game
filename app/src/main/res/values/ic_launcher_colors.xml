@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The icon is drawn from the game's own palette (sim/Palette.kt) rather than from a
+  designer's separate choice, so the thing a player taps is the colour of the thing that
+  opens: FOREST terrain behind, the player civ's warm gold in front.
+-->
+<resources>
+    <color name="ic_launcher_background">#22361F</color>
+</resources>

@@ -85,7 +85,7 @@ object GameConfig {
          * (0.86..1.42) leaves Speed clearly worth having without making it the only real choice.
          */
         const val WORK_MULT_BASE = 0.78
-        const val WORK_MULT_PER_SPEED = 0.08
+        const val WORK_MULT_PER_SPEED = 0.095
 
         /**
          * Cells per day a citizen can move, scaled by Speed.
@@ -162,7 +162,7 @@ object GameConfig {
          * and a weathered one does not, so Elements removes the winter surcharge rather than
          * lowering the baseline.
          */
-        const val RATION_REDUCTION_PER_HEALTH = 0.035
+        const val RATION_REDUCTION_PER_HEALTH = 0.09
         /**
          * A surcharge is a tax on *everybody*, and only its avoidance belongs to Elements, so it
          * cannot be sized freely: at 0.85 — the figure that would have matched Health's discount —
@@ -255,6 +255,22 @@ object GameConfig {
          */
         const val FERTILITY_RECOVERY_BASE = 0.0022
         const val FERTILITY_RECOVERY_PER_FARMING = 0.00065
+
+        /**
+         * Soil recovery per point of Elements, on top of [FERTILITY_RECOVERY_PER_FARMING].
+         *
+         * Land recovers because weather lets it. Before this, recovery answered to Farming alone,
+         * which made Farming a pass/fail gate rather than a strength: against a drain of
+         * `FERTILITY_DRAIN_PER_FARM_DAY` (0.0060), recovery of `0.0022 + 0.00065 x Farming` crosses
+         * the drain between Farming 5 and 6, and the sweep's survival curve has its knee in exactly
+         * that place — 14.8 years at Farming 4, 39.9 at 5, 101.6 at 6. A people that did not buy
+         * Farming died whatever else it bought, which is the failure AD-54 names.
+         *
+         * Elements now buys *sustainability without yield*: an Elements people works land it can
+         * keep, but each worked cell still produces at its own `farmYield`. That is a different
+         * proposition from Farming, which buys both, rather than a second copy of it.
+         */
+        const val FERTILITY_RECOVERY_PER_ELEMENTS = 0.00055
     }
 
     // ---------------------------------------------------------------- world
@@ -430,8 +446,34 @@ object GameConfig {
          * decide *sustainability* rather than merely speed. At 0.0060 a Farming-3 people runs a
          * deficit, a Farming-5 people breaks even, and a Farming-8 people gains: the trait sheet's
          * promise that farmers restore their land, made real.
+         *
+         * Raised from 0.0060 to 0.0076 when Elements joined the recovery formula
+         * ([FERTILITY_RECOVERY_PER_ELEMENTS]). That term adds 0.00165 to *every* build, base
+         * included, so leaving the drain alone would have been a difficulty cut dressed as a trait
+         * fix — the mistake AD-53 records in the other direction. The figure holds the baseline
+         * deficit where it was (0.0018 at Farming 3 / Elements 3) while giving each trait its own
+         * side of the line:
+         *
+         * | build | recovery | vs drain |
+         * |---|---|---|
+         * | Farming 3, Elements 3 (base) | 0.0058 | loses ground, exactly as before |
+         * | Farming 6, Elements 3 | 0.0078 | holds |
+         * | Farming 8, Elements 3 | 0.0091 | gains |
+         * | Farming 3, Elements 8 | 0.0086 | gains — the new route |
          */
-        const val FERTILITY_DRAIN_PER_FARM_DAY = 0.0060
+        const val FERTILITY_DRAIN_PER_FARM_DAY = 0.0076
+
+        /**
+         * The fertility of freshly chosen farmland, used as the reference the farm share is measured
+         * against.
+         *
+         * A town on ground this good farms exactly the share it always did, so every balance
+         * measurement taken before soil feedback existed still describes the opening of a run. As
+         * worked fertility falls below it the town moves people to the range and the woods, in
+         * proportion. Measured, not guessed: farmers' mean worked fertility on day 1 came out at
+         * 0.738-0.759 across the builds traced while this was being fixed.
+         */
+        const val PRISTINE_WORKED_FERTILITY = 0.75
 
         /**
          * The same two tables as flat arrays indexed by [TerrainType.ordinal].
@@ -767,6 +809,40 @@ object GameConfig {
 
         const val WORK_SEARCH_RADIUS = 12
 
+        /**
+         * Extra cells of work-search radius per point of Speed above base.
+         *
+         * Speed raised output and movement, and neither helped a people survive: output is drained
+         * out of the soil it comes from, so working *harder* on the same cells brought the fertility
+         * collapse on sooner. Speed had no answer to the constraint the whole economy turns on, and
+         * a solo-speed build died in year 0 while doing everything faster.
+         *
+         * Reach is the answer that belongs to the trait. AD-53 measured movement — not work rate —
+         * as what decides whether a people is viable, because work is spatial (AD-21) and a worker
+         * only counts as working beside their cell (AD-22). A people who cross ground quickly can
+         * spread the same farming over more land, so each cell is worked less often and the drain
+         * per cell falls without any change to the drain per worked day. It is the one route to
+         * sustainability that is about *where* people work rather than how well.
+         */
+        const val WORK_SEARCH_RADIUS_PER_SPEED = 3.0
+
+        /**
+         * How much of a cell's fertility drain one point of Speed above base avoids.
+         *
+         * Speed was the last trait with no answer to the constraint the whole economy turns on.
+         * It raised output and movement, and a solo-Speed people still died in year two, because
+         * output comes out of soil that base Farming cannot restore: working the same fields harder
+         * brings the collapse on sooner, and a wider search radius only finds *better* cells, not
+         * fresher ones, since the worker picks the best it can see and then drains that.
+         *
+         * The drain is charged per worked day per cell, so the thing a quick people genuinely does
+         * differently is not linger: the same work is spread over more ground, and each patch is
+         * turned over less often. At 0.05 a Speed-8 people pays 0.0057 a day against their own
+         * recovery of 0.0058 — sustainable by a hair, which is the right size for a trait that buys
+         * sustainability sideways rather than head-on the way Farming and Elements do.
+         */
+        const val DRAIN_REDUCTION_PER_SPEED = 0.05
+
         /** Default job weights before a Premier sets them (M4). Normalised at use. */
         val DEFAULT_JOB_WEIGHTS: Map<Job, Double> = mapOf(
             Job.FARMER to 0.46,
@@ -811,6 +887,46 @@ object GameConfig {
         const val CRISIS_FOOD_WORKER_SHARE = 0.85
 
         const val GATHERER_OUTPUT = 0.35
+
+        /**
+         * Food a gatherer forages per worked day, before their `gatherYield` scales it.
+         *
+         * Gathering was the one trait that touched no food at all: it drove timber, stone and build
+         * rate, so a Gathering-8 people with base Farming starved before it could build anything
+         * with the materials it was so good at collecting — 0.0 years in the sweep. Foraging is what
+         * gathering *is*, so the trait earns its food rather than being handed a farm bonus.
+         *
+         * Scaled like [FARM_OUTPUT_SCALE] and for the same reason (AD-23): the natural scale of
+         * `cellValue x yield` is about one person's ration, so a literal reading has a forager feed
+         * a third of a person. The first attempt at this constant was 0.55 unscaled, which made
+         * foraging a fifth as productive as farming — so staffing it, as the trait now does, cut
+         * food production by 40% and killed the build faster than leaving it alone. The job counts
+         * proved it: 28 gatherers producing less than the 6 they replaced.
+         *
+         * It is deliberately the *same* scale as [FARM_OUTPUT_SCALE] and [HUNT_OUTPUT_SCALE]: all
+         * three food jobs read `cellValue x yield x scale`, so one number governs how much a day's
+         * work feeds a town and the traits do the differentiating. At 2.4 a Gathering-8 forager
+         * brought back 2.4 food a day against a Farming-8 farmer's 3.1, and measurement showed that
+         * gap was the whole difference between a people that lived and one that starved at day 240
+         * with 37 foragers in the field. Parity of scale, difference by trait.
+         *
+         * Note this makes gathering a *partial* food source for every people, not only a specialised
+         * one — anyone in the woods picks something up. That is a real change from the five-trait
+         * baseline the M3-M7 tables were measured against, which is among the reasons those tables
+         * are marked provisional.
+         */
+        const val FORAGE_FOOD_PER_GATHER_DAY = 3.0
+
+        /**
+         * How fast foraging depletes a cell's wild game, as a share of [HUNT_DEPLETION_PER_DAY].
+         *
+         * Foraging draws on the same renewable pool hunting does, which is what stops it being free
+         * food: an unlimited source with no drain would have made Gathering the answer to every
+         * build rather than one answer among six. It also creates a real interaction — a hunting
+         * people and a gathering people on the same range compete — where a separate invented
+         * resource would have created none.
+         */
+        const val FORAGE_DEPLETION_SHARE = 0.45
         const val BUILDER_OUTPUT = 1.0
         const val SCHOLAR_OUTPUT = 0.20
 

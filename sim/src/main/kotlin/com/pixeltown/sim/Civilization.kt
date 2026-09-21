@@ -143,6 +143,22 @@ class Civilization(
     /** Food that rotted before anyone could eat it. Not "consumed": nobody got the good of it. */
     var spoiled: Double = 0.0
 
+    /**
+     * Mean fertility of the cells this civ's farmers actually worked on the last tick, or
+     * [Terrain.PRISTINE_WORKED_FERTILITY] while nobody is farming.
+     *
+     * A town's answer to "how many of us should be in the fields" has to answer to whether the
+     * fields are still worth working. Before this, the farm share was fixed at 70% of food workers
+     * whatever the land was doing, so a people who could not restore its soil — anything at base
+     * Farming, against a drain above base recovery — farmed the same ground until mean fertility
+     * fell from 0.74 to 0.41 and then starved beside an untouched range. Health and Speed builds
+     * died in year 1 of a problem neither trait has anything to do with.
+     *
+     * Accumulated in the production loop, which already visits every worker's cell, so it costs a
+     * running sum rather than a sweep — see AD-31.
+     */
+    var meanWorkedFertility: Double = GameConfig.Terrain.PRISTINE_WORKED_FERTILITY
+
     operator fun get(resource: Resource): Double = stores[resource.ordinal]
 
     operator fun set(resource: Resource, value: Double) {
