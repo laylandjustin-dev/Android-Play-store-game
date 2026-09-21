@@ -1037,6 +1037,19 @@ real browser rather than asserted: five points into Hunting turns the panel into
 feeds them, and arms them · army strength +25% · Unique unit: Beastmasters (needs an armoury)"*, with
 no console errors.
 
+**Making identity visible exposed a defect that was always there.** A live run showed three of six
+rivals reading **Rooted**, one after another. `RivalStrategist.allocateAll` rejects a duplicate only
+when the whole sheet matches — `values.contentEquals` — so three Farming-dominant peoples with
+different exact numbers pass the check and come out as the same *people*. AD-47's diversity principle
+was written against the raw build, which was the right unit while the build was all a player could
+see; now that a rival card headlines "Rooted · expansionist · upkeep -25% · Reapers", three identical
+neighbours read as a bug. The bias comes from `MIN_VIABLE_FARMING` (4), which lifts Farming before the
+priors get a say and therefore makes Farming the dominant trait more often than any other.
+
+**Not fixed yet, and deliberately so:** rejecting duplicate archetypes means more draws from the RNG,
+which shifts every existing run's stream and so moves every outcome-based test. That is a change worth
+making on its own with its own suite run, not stacked on top of this one.
+
 *The general lesson, and this project has now met it from both directions: before adding a concept,
 search for the one already there. AD-77 says a generated index cannot disagree with the simulation;
 this says the simulation must not be able to disagree with itself.* **It took two goes in one

@@ -212,6 +212,7 @@
   .perk.up { color: #9FD16B; }
   .perk.down { color: #6FC2F2; }
   .perk-unit { margin-top: 8px; font-size: 12px; }
+  .rival-perk { display: flex; gap: 6px; align-items: center; font-size: 11px; margin: 4px 0 2px; }
   .dim { color: var(--ink-dim); }
 
   #sitemap {
@@ -1413,6 +1414,7 @@
           <span class="who"><i class="dot" style="background:${r.colour}"></i>${r.name} · ${r.pop}</span>
           <span class="trait2">${r.war ? 'at war' : (r.pop === 0 ? 'destroyed' : `${r.archetype} · ${r.personality}`)}</span>
         </div>
+        ${r.pop === 0 ? '' : `<div class="rival-perk">${r.perk ? `<span class="perk up">${r.perk}</span>` : ''}<span class="dim">${r.unit}</span></div>`}
         <div class="tension"><i style="width:${Math.round(r.tension * 100)}%"></i></div>
       </div>`).join(''));
 

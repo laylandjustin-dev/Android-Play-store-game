@@ -29,6 +29,7 @@ import com.pixeltown.sim.TraitEffects
 import com.pixeltown.sim.World
 import com.pixeltown.sim.WorldGenerator
 import com.pixeltown.sim.WorldRenderer
+import kotlin.math.abs
 import kotlin.js.ExperimentalJsExport
 import kotlin.js.JsExport
 
@@ -430,8 +431,14 @@ class WebGame(
             sb.append("{\"civId\":").append(report.civId)
             sb.append(",\"name\":\"").append(escape(report.name)).append('"')
             sb.append(",\"personality\":\"").append(report.personality.name.lowercase()).append('"')
-            sb.append(",\"archetype\":\"")
-                .append(Archetype.of(simulation.civ(report.civId).traits).label).append('"')
+            // The people this rival was *founded* as, from the report rather than recomputed from
+            // its current traits — a civ that spent three decade points elsewhere is still what it
+            // was founded as (AD-80), and the panel must say the same thing the simulation does.
+            sb.append(",\"archetype\":\"").append(escapeJson(report.archetype.label)).append('"')
+            // And what that means for the player: the unit coming over the hill, and the single
+            // bonus that most changes how this neighbour fights. A rival card has room for one.
+            sb.append(",\"unit\":\"").append(escapeJson(report.archetype.uniqueUnit.label)).append('"')
+            sb.append(",\"perk\":\"").append(escapeJson(perkOf(report.archetype))).append('"')
             sb.append(",\"pop\":").append(report.population)
             sb.append(",\"tension\":").append(round2(report.tension))
             sb.append(",\"war\":").append(report.atWar)
@@ -855,6 +862,35 @@ fun previewTraitEffects(
     return Trait.entries.joinToString(",", "{", "}") { trait ->
         "\"${trait.name.lowercase()}\":${effectsJson(TraitEffects.of(traits, trait))}"
     }
+}
+
+/**
+ * The one bonus worth printing on a rival card, as a short phrase.
+ *
+ * A card has room for a single fact, so this picks the bonus that most changes what facing this
+ * neighbour is like, in a fixed priority: how hard they hit, then how fast they arrive, then how hard
+ * they are to break into. Read off [Archetype] so it cannot disagree with the simulation.
+ */
+private fun perkOf(archetype: Archetype): String {
+    fun signed(value: Double): String {
+        // Rounded, not truncated. toInt() truncates toward zero, and floating point makes
+        // (0.90 - 1.0) * 100 come out as -9.999999999999998, so a 10% discount displayed as "-9%".
+        val n = kotlin.math.round((value - 1.0) * 100.0).toInt()
+        return if (n > 0) "+$n%" else "$n%"
+    }
+    // The *largest* effect, not a fixed priority. A fixed order put strength first, which gave the
+    // Swift a headline of "army +5%" and hid the +45% march that is the entire point of them — the
+    // card described a people by its least interesting number.
+    val candidates = listOf(
+        "army" to archetype.strengthBonus,
+        "march" to archetype.marchBonus,
+        "walls" to archetype.wallBonus,
+        "disease" to archetype.diseaseBonus,
+        "builds" to archetype.buildCostBonus,
+        "upkeep" to archetype.decayBonus,
+    ).filter { it.second != 1.0 }
+    val biggest = candidates.maxByOrNull { abs(it.second - 1.0) } ?: return ""
+    return "${biggest.first} ${signed(biggest.second)}"
 }
 
 /** The derived numbers the allocation screen previews, without starting a run. */
