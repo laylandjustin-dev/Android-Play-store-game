@@ -920,6 +920,41 @@ complete inversion. Five things this cost, all of them worth recording:
   crisis mode, it looks at what it has and decides. A town with nobody farming keeps its last reading
   rather than reading zero, because zero would drive the farm share to its floor and latch there.
 
+**The suite is the third measurement of the generosity problem.** It went from 31 minutes to **1h17**
+with no test added, because tick cost is linear in population (AD-20) and colonies that peaked near
+300 now reach 1,500-2,000. Eight tests failed, and the split between them is the useful part:
+
+- **Two were real bugs.** `Civilization.meanWorkedFertility` is new *mutable* state and was not in the
+  save, so a reloaded run started from pristine while the live one carried its reading, took a
+  different food split and diverged immediately. Two `PersistenceTest` cases caught it. That is the
+  third time this project has learned that new civ state is a save-format change (AD-39, AD-40).
+- **One was a test doing its job.** `GameConfigTest` pins the documented deviations from the design's
+  formulas precisely so a third cannot appear silently (AD-54), and it failed on `WORK_MULT_PER_SPEED`
+  0.08 to 0.095. Reverted: that change was part of a tuning round and was not what made Speed viable
+  — the drain reduction was.
+- **One had changed meaning rather than broken.** `farming drains the soil it works` measured
+  exhaustion on a 5/5/5/5/3 sheet described as "careless with the land", and since Elements buys
+  recovery and Speed buys a lighter drain, that sheet is now land-*competent*: recovery 0.0069 against
+  a drain of 0.00684, a net gain. Carelessness costs three traits now, so the test asks for three at
+  base. The invariant is intact — a base people still loses 0.0058 against 0.0076, so over-farming is
+  still a real failure mode and AD-53's first finding has not been reintroduced.
+- **Five were one finding**, and re-anchoring them would have been exactly the mistake AD-55 records:
+  `no civ ever declined [2378, 1535, 3170, 7513, 4877]`, `no civilisation was destroyed in three
+  150-year runs`, a colony no longer paying for its rivals, and a town sprawling a hut 25 cells from
+  anything it owns because site distance scales with a population five times too large. The economy is
+  too productive. That is a tuning result, not a test problem.
+
+**And the attempt to fix it found something that corrects the table above.** Foraging was cut to 1.8
+with the yield term squared, to concentrate it on the people who choose it rather than handing every
+town a food stream — and it **killed the Hunting and Health builds outright**. Both were living on
+forage income rather than on their own routes: Hunting because the competence model still has it
+farming 24% of its food at Farming 3, Health because its only economic effect is on the need side and
+it sits on break-even whatever else is true. So "six traits, six routes" is honest about Farming,
+Elements, Speed and Gathering, and **overstated for Hunting and Health** — those two are above water
+partly on a shared margin. The cut is reverted rather than kept, because trait viability is the thing
+being fixed here and the generosity is a separate debt, but the dependency is recorded so the next
+tuning pass knows what it is holding.
+
 Two things found and **not** settled:
 
 - **The game may now be too forgiving.** Every viable build above ascends around year 85-97, where

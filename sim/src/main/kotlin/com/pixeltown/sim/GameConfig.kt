@@ -85,7 +85,7 @@ object GameConfig {
          * (0.86..1.42) leaves Speed clearly worth having without making it the only real choice.
          */
         const val WORK_MULT_BASE = 0.78
-        const val WORK_MULT_PER_SPEED = 0.095
+        const val WORK_MULT_PER_SPEED = 0.08
 
         /**
          * Cells per day a citizen can move, scaled by Speed.
@@ -912,8 +912,19 @@ object GameConfig {
          *
          * Note this makes gathering a *partial* food source for every people, not only a specialised
          * one — anyone in the woods picks something up. That is a real change from the five-trait
-         * baseline the M3-M7 tables were measured against, which is among the reasons those tables
-         * are marked provisional.
+         * baseline the M3-M7 tables were measured against, and it is load-bearing in a way that was
+         * not obvious until it was removed: cutting the scale to 1.8 and squaring the yield term, to
+         * concentrate foraging on the people who choose it, killed the **Hunting and Health** builds
+         * outright. Both were living on forage income rather than on their own routes — Hunting
+         * because the competence model still has it farming 24% of its food at Farming 3, Health
+         * because its only economic effect is on the need side and it sits on break-even either way.
+         *
+         * So this number is currently doing two jobs: it is Gathering's route, and it is the margin
+         * that keeps two other builds above water. That is a tuning debt, not a design, and it is
+         * why the economy is too generous overall (see the open items in AD-79). Separating the two
+         * needs the sweep, not another guess.
+         *
+         * The exponent experiment is recorded rather than kept: `FORAGE_YIELD_EXPONENT` is gone.
          */
         const val FORAGE_FOOD_PER_GATHER_DAY = 3.0
 

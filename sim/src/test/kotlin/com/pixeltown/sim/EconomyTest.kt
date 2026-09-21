@@ -160,8 +160,12 @@ class EconomyTest {
     @Test
     fun `farming drains the soil it works`() {
         // A Farming-8 people restore soil faster than they drain it, by design, so exhaustion has
-        // to be measured on a people who are careless with the land.
-        val sim = newRun(traits = TraitAllocation.of(5, 5, 5, 5, 3))
+        // to be measured on a people who are careless with the land — and since AD-79 that means
+        // three traits at base, not one. Elements buys soil recovery and Speed buys a lighter drain,
+        // so the 5/5/5/5/3 sheet this test used to pass was quietly a land-competent people:
+        // recovery 0.0069 against a drain of 0.00684, a net gain, and the field stopped degrading.
+        // Carelessness now costs Farming, Elements *and* Speed.
+        val sim = newRun(traits = TraitAllocation.of(3, 5, 5, 3, 3))
         sim.runUnattended(30)
         val farmer = mine(sim).first { it.job == Job.FARMER && it.workCell != World.NONE }
         val cell = farmer.workCell

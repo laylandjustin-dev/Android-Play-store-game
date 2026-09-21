@@ -137,6 +137,18 @@ data class CivSave(
     val produced: List<Double> = emptyList(),
     val consumed: List<Double> = emptyList(),
     val spoiled: Double = 0.0,
+    /**
+     * The town's read on its own farmland, which decides how many of its food workers farm.
+     *
+     * Part of the save because it is *state*, not a derivation: it is accumulated from the cells
+     * farmers actually worked, so a fresh load cannot recompute it and defaulted to pristine
+     * instead — which handed the reloaded run a different food split from the live one and diverged
+     * it immediately. Two `PersistenceTest` cases caught it, which is the third time this project
+     * has learned that new mutable civ state is a save-format change (AD-39, AD-40).
+     *
+     * Defaulted for older saves, which simply start from pristine and re-converge within a season.
+     */
+    val meanWorkedFertility: Double = GameConfig.Terrain.PRISTINE_WORKED_FERTILITY,
     /** An epidemic in progress is part of the run, not a detail to re-roll on load. */
     val epidemicDaysLeft: Int = 0,
     val epidemicCount: Int = 0,

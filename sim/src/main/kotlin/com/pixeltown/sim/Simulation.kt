@@ -2346,6 +2346,7 @@ class Simulation(
                 produced = civ.produced.toList(),
                 consumed = civ.consumed.toList(),
                 spoiled = civ.spoiled,
+                meanWorkedFertility = civ.meanWorkedFertility,
                 epidemicDaysLeft = civ.epidemicDaysLeft,
                 epidemicCount = civ.epidemicCount,
                 charter = civ.charter,
@@ -2591,6 +2592,7 @@ class Simulation(
                     for ((i, v) in c.produced.withIndex()) if (i < civ.produced.size) civ.produced[i] = v
                     for ((i, v) in c.consumed.withIndex()) if (i < civ.consumed.size) civ.consumed[i] = v
                     civ.spoiled = c.spoiled
+                    civ.meanWorkedFertility = c.meanWorkedFertility
                     // Sized from the save rather than copied wholesale: a cause added since the
                     // file was written must not run off the end of the array.
                     for ((i, count) in c.deathsByCause.withIndex()) {
