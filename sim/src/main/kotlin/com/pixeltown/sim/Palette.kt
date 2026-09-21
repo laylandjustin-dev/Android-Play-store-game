@@ -31,6 +31,8 @@ object Palette {
         0xFF3FA8A0.toInt(), // teal
         0xFF8A5BD6.toInt(), // violet
         0xFF9FD16B.toInt(), // pale green
+        0xFF6FC2F2.toInt(), // ice — the fifth rival
+        0xFFE85D9B.toInt(), // magenta — the sixth
     )
 
     /** Building accent colours, indexed by [BuildingCategory.ordinal]. */

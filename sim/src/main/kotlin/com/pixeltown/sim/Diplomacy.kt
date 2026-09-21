@@ -236,13 +236,15 @@ internal object DiplomacySystem {
         traits: TraitAllocation,
         techMultiplier: Double,
         effects: CivEffects,
+        /** This people's own multiplier — see [CivArchetype.strengthBonus]. */
+        archetypeBonus: Double = 1.0,
     ): Double {
         // Each soldier counts for what they are individually, not for an average: a levy of the
         // old and the hungry is worth less than the same number of prime, fed, trained people,
         // which is the whole reason a citizen carries a strength score.
         var sum = 0.0
         for (soldier in soldiers) sum += soldier.strength(traits)
-        return sum * techMultiplier + effects.militaryStrength
+        return sum * techMultiplier * archetypeBonus + effects.militaryStrength
     }
 
     /**

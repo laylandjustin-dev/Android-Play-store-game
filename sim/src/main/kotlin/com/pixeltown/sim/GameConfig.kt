@@ -307,7 +307,22 @@ object GameConfig {
 
         /** How far from the home site settlers are scattered when a civ is founded. */
         const val SETTLEMENT_SPAWN_RADIUS = 7
-        const val RIVAL_CIV_COUNT = 4
+        /**
+         * Rival civilisations on the island. The design brief fixes this at four; it is six by an
+         * explicit decision, because four was not enough to make the map contested.
+         *
+         * AD-79 removed the main cause of civilisations dying — a bad allocation — by giving every
+         * trait a route past the food gate. The consequence measured immediately: across three
+         * 150-year runs nobody declined and nobody was destroyed, with final populations of
+         * [380, 1903, 1175, 1991, 1658]. AD-75 had already established the other half, that a
+         * 400x400 island gives every civ roughly ten times the land it had at 128x128, so a fed civ
+         * never attacks. With allocation deaths gone and land abundant, there was no pressure of any
+         * kind left in the game.
+         *
+         * More neighbours is the lever that restores scarcity directly rather than by making people
+         * hungrier or angrier, and it is the one that cost the least of what the trait work bought.
+         */
+        const val RIVAL_CIV_COUNT = 6
         const val TOTAL_CIV_COUNT = RIVAL_CIV_COUNT + 1
         const val PLAYER_CIV_ID = 0
 

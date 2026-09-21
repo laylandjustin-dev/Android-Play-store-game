@@ -149,6 +149,20 @@ data class CivSave(
      * Defaulted for older saves, which simply start from pristine and re-converge within a season.
      */
     val meanWorkedFertility: Double = GameConfig.Terrain.PRISTINE_WORKED_FERTILITY,
+    /**
+     * What kind of people this civ is, by [CivArchetype] name.
+     *
+     * Saved rather than derived because it is taken from the allocation the civ was *founded* with,
+     * and a save carries only current traits — a civ that spent three decade points on Farming would
+     * reload as Tillers having been founded as Stalkers.
+     *
+     * A name, decoded tolerantly, for the reason AD-57 records: kotlinx serialises an enum by name,
+     * so a rename would make every existing save fail to decode in its entirety rather than lose a
+     * field. An unknown or absent name falls back to deriving from current traits, which is wrong
+     * only for a save written before this field existed — and wrong in a way that gives that run a
+     * plausible people rather than an error.
+     */
+    val archetype: String? = null,
     /** An epidemic in progress is part of the run, not a detail to re-roll on load. */
     val epidemicDaysLeft: Int = 0,
     val epidemicCount: Int = 0,

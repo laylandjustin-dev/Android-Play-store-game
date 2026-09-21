@@ -17,6 +17,14 @@ class Civilization(
     val personality: Personality,
     /** Cell index this civ was founded on. */
     val homeSite: Int,
+    /**
+     * What kind of people this is, from the allocation it was *founded* with.
+     *
+     * Taken once and never recomputed: a civ earns a trait point every decade (AD-50), so deriving
+     * this from current traits would let a people stop being Stalkers halfway through a run. A
+     * nation is what it was founded as.
+     */
+    val archetype: CivArchetype = CivArchetype.of(traits),
 ) {
     val isPlayer: Boolean get() = id == GameConfig.World.PLAYER_CIV_ID
 

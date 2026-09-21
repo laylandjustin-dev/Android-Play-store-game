@@ -967,6 +967,58 @@ Two things found and **not** settled:
   workforce feeds, which is AD-24's failure mode — so the ration cut has to outweigh Health's own
   demographic gift before it can outweigh anything else.
 
+**AD-80 — Six rivals, and a people is a nation rather than a stat sheet.** AD-79's own success
+created this: giving every trait a route past the food gate removed *the main cause of
+civilisations dying*, which was a bad allocation. Measured immediately afterwards across three
+150-year runs — nobody declined, nobody was destroyed, final populations `[380, 1903, 1175, 1991,
+1658]`. AD-75 had already established the other half, that a 400x400 island gives each civ roughly
+ten times the land it had at 128x128 and that a fed civ does not attack. With allocation deaths gone
+and land abundant, the map had no pressure of any kind left in it.
+
+AD-75 recorded two levers and deliberately took neither. The decision taken now is **both halves of
+the Age of Empires answer**: more neighbours, and neighbours who are somebody in particular.
+
+- **`RIVAL_CIV_COUNT` is 6.** The brief fixes it at four, so this is an explicit change to the
+  design, not a tune. It restores scarcity directly — by putting more peoples on the same island —
+  rather than by making everyone hungrier or angrier, which is what the alternatives amounted to and
+  what would have cost the trait work its balance. `the island holds every civilisation the config
+  asks for` tests the geometry on three seeds, because sites are separated and mainland-only
+  (AD-13), so "seven fit" is a claim rather than an assumption.
+- **`CivArchetype` derives a people from the allocation it was founded with.** Six traits, six
+  peoples — Tillers, Stalkers, Wrights, Wardens, the Enduring, Outriders — each with a blurb, two or
+  three bonuses, and a unit nobody else fields. It is *derived*, so it costs no authored content and
+  cannot contradict the sheet the player actually filled in, which is the same reasoning as AD-77's
+  generated building index.
+
+Four things about it are deliberate:
+
+- **Founding identity, not current traits.** A civ earns a point every decade (AD-50), so a people
+  derived from its *current* sheet could stop being Stalkers in year 40 because it spent two points
+  on Farming. That is a status effect; a nation is what it was founded as. `Civilization.archetype`
+  is set once — and therefore **saved**, because a save carries only current traits, and the field is
+  a tolerantly-decoded *name* for the reason AD-57 records.
+- **Every bonus sits outside the food economy, on purpose.** AD-79 spent a long pass balancing six
+  food routes against each other within a few percent. A bonus touching farm yield or ration size
+  would land on top of that and reopen the cliff from the other side. So these reach military
+  strength, march speed, building cost, decay, wall integrity and disease — the parts of the game the
+  food work does not price. The march bonus applies to *soldiers only* for the same reason: movement
+  decides whether farming works at all (AD-53), so a civilian multiplier would be a food change
+  wearing a flavour change's clothes.
+- **`no bonus is decoration` is a test.** A field that reads 1.0 for every people is a promise on the
+  setup screen the simulation never keeps, which is worse than not offering it. All six are wired:
+  strength into `DiplomacySystem.strengthOf`, march into `stepsToday`, cost into the build order,
+  decay into the upkeep grace period, wall integrity at construction, disease into the daily roll.
+- **The unique unit replaces the armoury tier**, so it is a reward for building rather than a free
+  upgrade — and `a people's unique unit needs the building for it` pins that. It keeps `UnitKind` a
+  derivation (AD-74) rather than making it a choice.
+
+**The tie-break was documented one way and implemented another, and a test caught it.** `of()`
+iterated the archetype enum's declaration order while its own doc comment promised *trait* order —
+the order a player reads on their allocation screen. Those are not the same order, and an allocation
+with one point in Speed and one in Farming came out Tillers where the stated rule says Outriders. The
+implementation now matches the promise. *A rule stated to the player is part of the contract; the
+iteration order of an enum is an implementation detail that should never be able to define it.*
+
 ### Decisions recorded ahead of implementation
 
 **AD-8 — Entitlements are read only at run start.** The simulation snapshots its starting

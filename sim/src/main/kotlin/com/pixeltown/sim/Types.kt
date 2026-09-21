@@ -66,6 +66,28 @@ enum class UnitKind(val label: String) {
 
     /** An armoury puts them in mail. */
     MEN_AT_ARMS("Men-at-arms"),
+
+    // The unique units: one people fields each, and nobody else can. Derived from the civ's
+    // founding allocation (see CivArchetype), so they cost no content and cannot contradict the
+    // trait sheet the player filled in.
+
+    /** Tillers: farmhands who fight in season, and never run out of supply. */
+    REAPERS("Reapers"),
+
+    /** Stalkers: hunters who treat a battle line as a herd. */
+    BEASTMASTERS("Beastmasters"),
+
+    /** Wrights: builders who bring down a wall the way they put one up. */
+    SAPPERS("Sappers"),
+
+    /** Wardens: masons who fight from their own stonework. */
+    WALLWRIGHTS("Wallwrights"),
+
+    /** The Enduring: infantry who are still standing when the line has gone. */
+    SHIELDBEARERS("Shieldbearers"),
+
+    /** Outriders: the reason a raid arrives before the warning does. */
+    LANCERS("Lancers"),
 }
 
 enum class Resource { FOOD, WOOD, STONE, KNOWLEDGE, WEALTH }

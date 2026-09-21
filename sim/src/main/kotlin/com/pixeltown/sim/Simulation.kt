@@ -675,8 +675,14 @@ class Simulation(
         if (options.isEmpty()) return
 
         // Best available tier the civ can actually pay for.
+        // What a structure costs *these* people. Wrights raise a building for a fifth less and
+        // Tillers for a tenth; everyone else pays the catalogue price.
+        val discount = civ.archetype.buildCostBonus
+        fun woodFor(s: BuildingSpec) = s.woodCost * discount
+        fun stoneFor(s: BuildingSpec) = s.stoneCost * discount
+
         val spec = options.firstOrNull {
-            civ[Resource.WOOD] >= it.woodCost && civ[Resource.STONE] >= it.stoneCost
+            civ[Resource.WOOD] >= woodFor(it) && civ[Resource.STONE] >= stoneFor(it)
         } ?: return
 
         if (vetoPending[civ.id]) {
@@ -688,8 +694,8 @@ class Simulation(
         }
 
         val site = BuildingSystem.findSite(world, civ, spec.footprint, buildingsOf(civ.id)) ?: return
-        civ.take(Resource.WOOD, spec.woodCost)
-        civ.take(Resource.STONE, spec.stoneCost)
+        civ.take(Resource.WOOD, woodFor(spec))
+        civ.take(Resource.STONE, stoneFor(spec))
 
         val building = Building(
             id = nextBuildingId++,
@@ -698,6 +704,10 @@ class Simulation(
             x = site % world.width,
             y = site / world.width,
         )
+        // A Warden's or a Wright's stonework takes longer to bring down. Applied here rather than
+        // in the spec because it is a property of *who built it*, not of what it is, and a wall is
+        // the only building anyone attacks (AD-60).
+        building.integrity *= civ.archetype.wallBonus
         allBuildings.add(building)
         buildingsByCiv[civ.id].add(building)
         BuildingSystem.place(world, building)
@@ -776,7 +786,11 @@ class Simulation(
                 continue
             }
             civ.unpaidUpkeepDays++
-            if (civ.unpaidUpkeepDays >= GameConfig.Buildings.UPKEEP_GRACE_DAYS) {
+            // Wardens and Tillers keep their buildings standing far longer on the same arrears:
+            // the grace period is divided by how fast their structures decay, so a decayBonus below
+            // one is more days before anything falls down.
+            val grace = (GameConfig.Buildings.UPKEEP_GRACE_DAYS / civ.archetype.decayBonus).toInt()
+            if (civ.unpaidUpkeepDays >= grace) {
                 civ.unpaidUpkeepDays = 0
                 ruinOneBuilding(civ)
             }
@@ -1329,6 +1343,7 @@ class Simulation(
 
         val attackStrength = DiplomacySystem.strengthOf(
             attackers, attackerCiv.traits, techMultiplier(attackerCiv), CivEffects.NONE,
+            attackerCiv.archetype.strengthBonus,
         )
         army.siegeDays++
 
@@ -1417,9 +1432,11 @@ class Simulation(
 
             val attackStrength = DiplomacySystem.strengthOf(
                 attackers, civ(army.civId).traits, techMultiplier(civ(army.civId)), CivEffects.NONE,
+                civ(army.civId).archetype.strengthBonus,
             )
             val defenceStrength = DiplomacySystem.strengthOf(
                 defendingSoldiers, defenderCiv.traits, techMultiplier(defenderCiv), effects[defenderCiv.id],
+                defenderCiv.archetype.strengthBonus,
             ) * wallBonus
 
             val (attackerLosses, defenderLosses) = DiplomacySystem.resolveBattleDay(
@@ -1474,8 +1491,13 @@ class Simulation(
         val result = LinkedHashMap<UnitKind, Int>()
         var left = soldiers
         if (hasArmoury) {
+            // The armoury is what fields a people's own unit: every civ's best troops are its own
+            // rather than the same men-at-arms in five colours. Which unit it is comes from the
+            // allocation the civ was founded with, so a player who reads "Stalkers" in the Rivals
+            // panel knows what is coming over the hill.
+            val kind = civ(civId).archetype.uniqueUnit
             val n = (soldiers * RivalConfig.SHARE_MEN_AT_ARMS).toInt().coerceAtMost(left)
-            if (n > 0) { result[UnitKind.MEN_AT_ARMS] = n; left -= n }
+            if (n > 0) { result[kind] = n; left -= n }
         }
         if (hasTower) {
             val n = (soldiers * RivalConfig.SHARE_ARCHERS).toInt().coerceAtMost(left)
@@ -1805,7 +1827,8 @@ class Simulation(
 
         for (citizen in living) {
             val traits = traitsOf(citizen)
-            val resist = (traits.diseaseResist + effects[citizen.civId].diseaseResistBonus)
+            val resist = ((traits.diseaseResist + effects[citizen.civId].diseaseResistBonus) *
+                civ(citizen.civId).archetype.diseaseBonus)
                 .coerceIn(0.0, 0.95)
 
             // The background rate: a citizen falls ill now and then and usually recovers.
@@ -2076,7 +2099,12 @@ class Simulation(
 
     /** Whole cells moved today; the fractional part of move speed is a daily coin flip. */
     private fun stepsToday(citizen: Citizen): Int {
-        val speed = traitsOf(citizen).moveSpeed
+        // Outriders march; everyone else walks. The bonus applies only to soldiers, because a
+        // people's reputation for arriving early is about its armies and not about its farmers
+        // getting to the field — and because movement decides whether farming works at all
+        // (AD-53), so a civilian multiplier here would be a food change in disguise.
+        val marching = if (citizen.job == Job.SOLDIER) civ(citizen.civId).archetype.marchBonus else 1.0
+        val speed = traitsOf(citizen).moveSpeed * marching
         val whole = speed.toInt()
         return whole + if (rng.chance(speed - whole)) 1 else 0
     }
@@ -2147,6 +2175,7 @@ class Simulation(
             civ.population = counts[civ.id]
             strength[civ.id] = DiplomacySystem.strengthOf(
                 soldiersOf(civ.id), civ.traits, techMultiplier(civ), effects[civ.id],
+                civ.archetype.strengthBonus,
             )
         }
     }
@@ -2347,6 +2376,7 @@ class Simulation(
                 consumed = civ.consumed.toList(),
                 spoiled = civ.spoiled,
                 meanWorkedFertility = civ.meanWorkedFertility,
+                archetype = civ.archetype.name,
                 epidemicDaysLeft = civ.epidemicDaysLeft,
                 epidemicCount = civ.epidemicCount,
                 charter = civ.charter,
@@ -2570,6 +2600,9 @@ class Simulation(
                     traits = TraitAllocation.of(*c.traits.toIntArray()),
                     personality = c.personality,
                     homeSite = c.homeSite,
+                    // Founding identity, not a derivation from the traits this civ has now.
+                    archetype = c.archetype?.let { CivArchetype.byNameOrNull(it) }
+                        ?: CivArchetype.of(TraitAllocation.of(*c.traits.toIntArray())),
                 ).also { civ ->
                     c.stores.copyInto(civ.stores)
                     civ.foodStorageCapacity = c.foodStorageCapacity
