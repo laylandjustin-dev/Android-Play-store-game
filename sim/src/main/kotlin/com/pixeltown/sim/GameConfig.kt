@@ -582,8 +582,21 @@ object GameConfig {
          * even-spread colony lives for centuries at ~90 people, and a farming colony reaches
          * 230-310 — which puts the 400-population Ascension condition back in reach as a
          * stretch rather than a formality.
+         *
+         * It was then raised to 0.0019 on a direct request for faster reproduction, and AD-61 added
+         * Health and Lifestyle multipliers on top, so effective fertility ran well above what that
+         * paragraph describes. Once AD-79 gave every trait a food route, the two compounded: rival
+         * civilisations reached 7,513 people where they used to peak near 900, nothing anywhere
+         * declined or died, and `RivalsTest` — 150 years across three seeds with five civs, so
+         * ~25,000 citizens a tick — stopped finishing at all. A test suite that cannot run is a
+         * worse problem than any balance figure in it.
+         *
+         * 0.0014 is a deliberate middle: still above the 0.0012 AD-24 measured, because the request
+         * for faster growth stands, but far enough below 0.0019 that a colony's population is
+         * something the map can push back against. The multipliers mean a healthy, well-housed town
+         * still conceives faster than this number alone suggests.
          */
-        const val CONCEIVE_BASE = 0.0019
+        const val CONCEIVE_BASE = 0.0014
 
         /**
          * Housing slack for a town with no housing at all. Not zero: a colony has to be able to
