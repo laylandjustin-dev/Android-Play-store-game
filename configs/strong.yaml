@@ -1,0 +1,46 @@
+# Longer runs (hours to days; a CUDA GPU is strongly recommended).
+# Larger network, more search per move and more data per iteration.
+# Expect each iteration to take many minutes even on a GPU.
+# Omitted keys use the defaults (see configs/default.yaml).
+
+run_dir: runs/strong
+
+model:
+  channels: 128
+  res_blocks: 10
+  value_hidden: 256
+
+search:
+  depth: 5
+  time_limit: 5.0
+  tt_size: 1000000
+
+mcts:
+  simulations: 400
+  c_puct: 2.0
+  dirichlet_alpha: 0.3
+  dirichlet_epsilon: 0.25
+  temperature: 1.0
+  temperature_moves: 30
+
+selfplay:
+  games_per_iteration: 64
+  max_moves: 300
+
+training:
+  iterations: 200
+  steps_per_iteration: 1000
+  batch_size: 256
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  replay_buffer_size: 500000
+  min_buffer_size: 10000
+  checkpoint_every: 5
+  keep_last: 20
+  device: auto
+
+evaluation:
+  games: 50
+  opponent: alphabeta
+  max_moves: 300
+  simulations: 200

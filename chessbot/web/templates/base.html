@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Chess Bot{% endblock %} · Chess Bot</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body data-page="{{ page }}">
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('page_play') }}">&#9822; Chess Bot</a>
+    <nav>
+      <a href="{{ url_for('page_play') }}" {% if page == 'play' %}aria-current="page"{% endif %}>Play</a>
+      <a href="{{ url_for('page_dashboard') }}" {% if page == 'dashboard' %}aria-current="page"{% endif %}>Dashboard</a>
+      <a href="{{ url_for('page_settings') }}" {% if page == 'settings' %}aria-current="page"{% endif %}>Settings</a>
+      <a href="{{ url_for('page_models') }}" {% if page == 'models' %}aria-current="page"{% endif %}>Models</a>
+    </nav>
+  </header>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+  <script src="{{ url_for('static', filename='common.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

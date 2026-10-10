@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<section class="panel">
+  <h2>Settings</h2>
+  {% if config_path %}
+  <p class="muted">Saved settings are written to <code>{{ config_path }}</code> and applied immediately to this server. A running training session keeps the settings it started with.</p>
+  {% else %}
+  <p class="muted">No config file was given to the server, so saved settings apply to this server session only (start with <code>--config FILE</code> to persist them).</p>
+  {% endif %}
+  <div id="form-errors" class="notice error" hidden></div>
+  <div id="form-ok" class="notice ok" hidden></div>
+  <form id="settings-form" novalidate>
+    <div id="sections">Loading&hellip;</div>
+    <div class="row sticky-actions">
+      <button type="submit">Save settings</button>
+      <button type="button" class="secondary" id="reload">Discard changes</button>
+      <button type="button" class="secondary" id="defaults">Fill defaults</button>
+    </div>
+  </form>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='settings.js') }}"></script>{% endblock %}

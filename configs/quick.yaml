@@ -1,0 +1,37 @@
+# Quick CPU demo: a tiny network and few simulations so that one training
+# iteration finishes in roughly a minute or two on a laptop CPU. The bot will
+# not play well; this is for checking that the whole pipeline works and for
+# watching the loss curves move on the dashboard.
+# Omitted keys use the defaults (see configs/default.yaml).
+
+run_dir: runs/quick
+
+model:
+  channels: 32
+  res_blocks: 2
+  value_hidden: 64
+
+search:
+  depth: 2
+
+mcts:
+  simulations: 32
+  temperature_moves: 12
+
+selfplay:
+  games_per_iteration: 4
+  max_moves: 120
+
+training:
+  iterations: 5
+  steps_per_iteration: 50
+  batch_size: 64
+  replay_buffer_size: 20000
+  min_buffer_size: 128
+  keep_last: 5
+  device: cpu
+
+evaluation:
+  games: 10
+  max_moves: 200
+  simulations: 32

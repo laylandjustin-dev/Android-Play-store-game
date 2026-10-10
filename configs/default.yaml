@@ -1,0 +1,60 @@
+# Default configuration for the self-learning chess bot.
+# Every value here equals the built-in default in chessbot/config.py.
+# See docs/CONFIGURATION.md for the type, valid range and effect of each key.
+# Any key may be omitted; missing keys fall back to the built-in defaults.
+
+# Run directory: holds checkpoints/, replay_buffer.npz and metrics.jsonl.
+run_dir: runs/default
+
+model:                       # PolicyValueNet (AlphaZero-style ResNet)
+  channels: 64               # conv filters per residual block   [1, 512]
+  res_blocks: 4              # residual blocks (depth)           [0, 40]
+  value_hidden: 128          # hidden units in value head        [1, 2048]
+
+search:                      # classical alpha-beta engine
+  depth: 3                   # max iterative-deepening depth (plies)  [1, 64]
+  time_limit: null           # seconds per move (> 0) or null = depth only
+  quiescence: true           # extend leaves with captures/promotions
+  quiescence_depth: 6        # max extra quiescence plies         [0, 32]
+  tt_size: 200000            # max transposition-table entries (0 = off)
+
+mcts:                        # PUCT Monte-Carlo tree search
+  simulations: 64            # network evaluations per move       >= 1
+  c_puct: 1.5                # exploration constant               > 0
+  dirichlet_alpha: 0.3       # root noise concentration (self-play)   > 0
+  dirichlet_epsilon: 0.25    # root noise weight (self-play)      [0, 1]
+  temperature: 1.0           # sampling temperature, opening plies    >= 0
+  temperature_moves: 20      # plies sampled with temperature, then greedy
+
+selfplay:
+  games_per_iteration: 8     # self-play games per training iteration  >= 1
+  max_moves: 200             # plies before a game is adjudicated a draw
+
+training:
+  iterations: 10             # iterations for `chessbot train`    >= 1
+  steps_per_iteration: 100   # gradient steps per iteration       >= 0
+  batch_size: 128            # samples per gradient step          >= 1
+  learning_rate: 0.001       # optimizer step size                (0, 10]
+  weight_decay: 0.0001       # L2 regularisation via optimizer    >= 0
+  optimizer: adam            # adam | sgd
+  momentum: 0.9              # sgd only                           [0, 1)
+  value_loss_weight: 1.0     # weight of value MSE in total loss  >= 0
+  replay_buffer_size: 50000  # max stored positions (FIFO)        >= 1
+  min_buffer_size: 256       # no training until buffer holds this many
+  checkpoint_every: 1        # save iter_*.pt every N iterations  >= 1
+  keep_last: 10              # iter_*.pt files kept (0 = all)
+  device: auto               # auto | cpu | cuda
+  seed: null                 # integer for reproducibility, null = random
+
+evaluation:
+  games: 20                  # games per evaluation match         >= 1
+  opponent: random           # random | alphabeta | checkpoint
+  baseline_checkpoint: null  # required when opponent == checkpoint
+  max_moves: 300             # plies before an eval game is a draw
+  simulations: null          # MCTS sims for evaluation; null = mcts.simulations
+
+ui:
+  host: 127.0.0.1            # bind address of the web server
+  port: 5000                 # [1, 65535]
+  bot_player: mcts           # mcts | alphabeta | alphabeta_nn | random
+  bot_checkpoint: latest     # latest | file name in checkpoints/ | null (untrained)

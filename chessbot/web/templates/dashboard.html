@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<section class="panel">
+  <div class="row spread">
+    <h2>Training</h2>
+    <span id="train-badge" class="badge">idle</span>
+  </div>
+  <form id="train-form" class="row">
+    <label class="inline">Iterations <input type="number" min="1" step="1" name="iterations" id="iterations" value="1"></label>
+    <button type="submit" id="train-start">Start training</button>
+    <button type="button" class="secondary" id="train-stop" disabled>Stop</button>
+  </form>
+  <p id="train-summary" class="muted"></p>
+  <div id="train-error" class="notice error" hidden></div>
+  <details open>
+    <summary>Log</summary>
+    <pre id="train-log" class="log">No log output yet.</pre>
+  </details>
+</section>
+
+<section>
+  <div class="row spread"><h2>Metrics</h2><span class="muted small" id="metrics-count"></span></div>
+  <p id="no-data" class="notice" hidden>No data yet &mdash; metrics appear here after the first training iteration finishes (read from <code>metrics.jsonl</code> in the run directory).</p>
+  <div id="charts" class="charts"></div>
+  <div id="eval-section" hidden>
+    <h2>Evaluation</h2>
+    <div class="table-wrap"><table id="eval-table" class="data"></table></div>
+  </div>
+  <div id="last-section" hidden>
+    <h2>Latest iteration</h2>
+    <div class="table-wrap"><table id="last-table" class="data kv"></table></div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='charts.js') }}"></script>
+<script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+{% endblock %}

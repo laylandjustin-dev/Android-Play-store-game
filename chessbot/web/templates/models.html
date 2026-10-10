@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Models{% endblock %}
+{% block content %}
+<section class="panel">
+  <div class="row spread">
+    <h2>Checkpoints</h2>
+    <div class="row">
+      <button type="button" class="secondary" id="use-latest">Use latest</button>
+      <button type="button" class="secondary" id="use-untrained">Use untrained net</button>
+    </div>
+  </div>
+  <p class="muted">Directory: <code id="ckdir"></code> &middot; Bot uses: <strong id="selected"></strong></p>
+  <div id="models-error" class="notice error" hidden></div>
+  <div class="table-wrap">
+    <table class="data" id="models-table">
+      <thead><tr><th>Name</th><th class="num">Iteration</th><th class="num">Global step</th><th>Saved</th><th class="num">Size</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <p id="no-models" class="notice" hidden>No checkpoints yet. Start training on the Dashboard; checkpoints are saved after each iteration.</p>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='models.js') }}"></script>{% endblock %}

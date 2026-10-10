@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Play{% endblock %}
+{% block content %}
+<div class="play-layout">
+  <section class="board-wrap">
+    <div id="board" class="board" role="grid" aria-label="Chess board"></div>
+    <div id="promo" class="promo" hidden>
+      <div class="promo-box" role="dialog" aria-label="Choose promotion piece">
+        <p>Promote to</p>
+        <div class="promo-choices">
+          <button type="button" data-piece="q">&#9819;</button>
+          <button type="button" data-piece="r">&#9820;</button>
+          <button type="button" data-piece="b">&#9821;</button>
+          <button type="button" data-piece="n">&#9822;</button>
+        </div>
+        <button type="button" class="secondary" id="promo-cancel">Cancel</button>
+      </div>
+    </div>
+  </section>
+  <aside class="panel side">
+    <h2>New game</h2>
+    <form id="new-game" class="stack">
+      <label>Play as
+        <select name="color">
+          <option value="white">White</option>
+          <option value="black">Black</option>
+          <option value="random">Random</option>
+        </select>
+      </label>
+      <label>Bot
+        <select name="bot" id="bot-kind">
+          {% for k in player_kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Checkpoint
+        <select name="checkpoint" id="checkpoint"></select>
+      </label>
+      <div class="row">
+        <button type="submit">New game</button>
+        <button type="button" class="secondary" id="flip">Flip board</button>
+      </div>
+    </form>
+    <div id="status" class="status" aria-live="polite">Start a new game.</div>
+    <div id="warning" class="notice warn" hidden></div>
+    <div id="error" class="notice error" hidden></div>
+    <p class="muted small" id="bot-name"></p>
+    <h3>Moves</h3>
+    <ol id="history" class="history"></ol>
+  </aside>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='play.js') }}"></script>{% endblock %}
