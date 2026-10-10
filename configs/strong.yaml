@@ -22,6 +22,7 @@ mcts:
   dirichlet_epsilon: 0.25
   temperature: 1.0
   temperature_moves: 30
+  leaf_batch_size: null       # leaves per network call; null = auto (self-play), 1 (play)
 
 selfplay:
   games_per_iteration: 64

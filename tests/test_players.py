@@ -34,3 +34,27 @@ def test_missing_checkpoint_raises(tiny_config):
         make_player("alphabeta_nn", tiny_config, checkpoint="latest")
     with pytest.raises(FileNotFoundError):
         make_player("mcts", tiny_config, checkpoint="nope.pt")
+
+
+def test_leaf_batch_size_setting_is_honoured(tiny_config, monkeypatch):
+    import chessbot.ml.selfplay as selfplay
+    from chessbot.ml.model import PolicyValueNet
+
+    tiny_config.mcts.leaf_batch_size = 3
+    assert make_player("mcts", tiny_config).mcts.leaf_batch_size == 3
+    tiny_config.mcts.leaf_batch_size = None
+    assert make_player("mcts", tiny_config).mcts.leaf_batch_size == 1
+
+    seen = []
+    real = selfplay.MCTS
+
+    def spy(*a, **kw):
+        seen.append(kw["leaf_batch_size"])
+        return real(*a, **kw)
+
+    monkeypatch.setattr(selfplay, "MCTS", spy)
+    tiny_config.mcts.leaf_batch_size = 2
+    tiny_config.selfplay.max_moves = 4
+    selfplay.play_selfplay_game(PolicyValueNet(tiny_config.model), tiny_config.mcts,
+                                tiny_config.selfplay, rng=0)
+    assert seen == [2]

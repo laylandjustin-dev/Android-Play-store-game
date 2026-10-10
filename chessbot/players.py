@@ -105,7 +105,8 @@ class MCTSPlayer:
         if simulations is not None:
             mcts_cfg.simulations = simulations
         self.temperature = temperature
-        self.mcts = MCTS(self.model, mcts_cfg, device="cpu", rng=np.random.default_rng(seed))
+        self.mcts = MCTS(self.model, mcts_cfg, device="cpu", rng=np.random.default_rng(seed),
+                         leaf_batch_size=mcts_cfg.leaf_batch_size or 1)
 
     def select_move(self, board: chess.Board) -> chess.Move:
         move, _ = self.mcts.select_move(board, temperature=self.temperature, add_noise=False)

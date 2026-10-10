@@ -46,6 +46,7 @@ class MCTSConfig:
     dirichlet_epsilon: float = 0.25   # root noise weight (self-play only)
     temperature: float = 1.0      # sampling temperature for early moves
     temperature_moves: int = 20   # plies sampled with `temperature`, then greedy
+    leaf_batch_size: int | None = None  # leaves per network call; None = auto (self-play) / 1 (play)
 
 
 @dataclass
@@ -270,6 +271,8 @@ def validate_config(cfg: Config) -> list[str]:
     check(lambda: 0 <= mc.dirichlet_epsilon <= 1, "mcts.dirichlet_epsilon: must be in [0, 1]")
     check(lambda: mc.temperature >= 0, "mcts.temperature: must be >= 0")
     check(lambda: mc.temperature_moves >= 0, "mcts.temperature_moves: must be >= 0")
+    check(lambda: mc.leaf_batch_size is None or 1 <= mc.leaf_batch_size <= 256,
+          "mcts.leaf_batch_size: must be in [1, 256] or null")
     check(lambda: sp.games_per_iteration >= 1, "selfplay.games_per_iteration: must be >= 1")
     check(lambda: sp.max_moves >= 1, "selfplay.max_moves: must be >= 1")
     check(lambda: t.iterations >= 1, "training.iterations: must be >= 1")
@@ -341,6 +344,8 @@ FIELD_HELP: dict[str, str] = {
     "mcts.dirichlet_epsilon": "Weight of root noise vs network prior in self-play (0 disables noise).",
     "mcts.temperature": "Sampling temperature for the opening plies of self-play (1 = proportional to visits).",
     "mcts.temperature_moves": "Number of plies sampled with temperature before switching to greedy moves.",
+    "mcts.leaf_batch_size": "Leaves evaluated per network call (virtual loss). Blank = auto in self-play "
+                            "(sims/8, max 8), 1 when playing. Higher = faster, slightly weaker search.",
     "selfplay.games_per_iteration": "Self-play games generated each iteration (more data per iteration, slower).",
     "selfplay.max_moves": "Plies after which a self-play game is adjudicated a draw.",
     "training.iterations": "Iterations run by `chessbot train` and the default for the dashboard's start button.",

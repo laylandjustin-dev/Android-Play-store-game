@@ -69,6 +69,8 @@ def play_selfplay_game(model, mcts_config: MCTSConfig, selfplay_config: SelfPlay
     if rng is None or isinstance(rng, (int, np.integer)):
         rng = np.random.default_rng(rng)
     if leaf_batch_size is None:
+        leaf_batch_size = getattr(mcts_config, "leaf_batch_size", None)
+    if leaf_batch_size is None:
         leaf_batch_size = default_leaf_batch(mcts_config.simulations)
     mcts = MCTS(model, mcts_config, device=device, rng=rng, leaf_batch_size=leaf_batch_size)
     board = start_board.copy() if start_board is not None else chess.Board()

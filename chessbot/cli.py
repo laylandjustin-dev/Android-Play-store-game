@@ -137,7 +137,14 @@ def cmd_play(args, cfg) -> int:
 def cmd_serve(args, cfg) -> int:
     from chessbot.web.app import create_app
 
-    app = create_app(cfg, config_path=args.config)
+    # Settings saved from the web UI go to a per-run file by default, so the
+    # shipped presets in configs/ are never overwritten.
+    from pathlib import Path
+
+    save_path = args.save_config or str(Path(cfg.run_dir) / "config.yaml")
+    print(f"Settings changes will be saved to {save_path} "
+          f"(restart with --config {save_path} to reuse them)")
+    app = create_app(cfg, config_path=save_path)
     app.run(host=args.host or cfg.ui.host, port=args.port or cfg.ui.port, threaded=True)
     return 0
 
@@ -186,6 +193,8 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("serve", help="start the web UI (board, dashboard, settings, models)")
     s.add_argument("--host", default=None)
     s.add_argument("--port", type=int, default=None)
+    s.add_argument("--save-config", default=None,
+                   help="where the settings page saves YAML (default: <run_dir>/config.yaml)")
     s.set_defaults(func=cmd_serve)
 
     c = sub.add_parser("config", help="print the effective config or write it to a file")

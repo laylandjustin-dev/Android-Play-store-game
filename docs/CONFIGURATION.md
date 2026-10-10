@@ -183,6 +183,17 @@ noise and temperature settings below only affect self-play.
   more repetitive data. `0` = always greedy (no opening diversity except
   noise).
 
+### `mcts.leaf_batch_size`
+* **Type / default / range:** int or null, `null`, [1, 256].
+* **Effect:** how many leaves MCTS collects (using virtual loss) before one
+  batched network call. `null` = automatic: `simulations // 8` clamped to
+  [1, 8] in self-play, and `1` (plain sequential AlphaZero search) for the
+  MCTS bot on the play page / in evaluation. Larger values make self-play
+  2-3x faster on CPU (measured 19.8 s -> 7.2 s per game for the default
+  network at 64 simulations) because the network runs on batches, but the
+  virtual loss slightly distorts the search, so very large values relative
+  to `simulations` weaken play.
+
 ---
 
 ## `selfplay` (`chessbot.ml.selfplay.play_selfplay_game`, `Trainer.run_iteration`)
