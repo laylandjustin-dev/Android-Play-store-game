@@ -8,7 +8,8 @@ that is not a :class:`chess.Move`) causes :class:`IllegalMoveError`.
 Game termination (checked before every move, in this order by python-chess):
 checkmate, stalemate, insufficient material, seventy-five-move rule,
 fivefold repetition, and the *claimable* draws (threefold repetition,
-fifty-move rule), which the arena always claims on behalf of the players.
+fifty-move rule) once they have actually occurred on the board, which the
+arena always claims on behalf of the players (never "in advance").
 If ``max_moves`` plies have been played without a result, the game is
 adjudicated a draw with termination ``"max_moves"``.
 
@@ -96,6 +97,25 @@ DEFAULT_OPENINGS: list[str] = [_line_to_fen(line) for line in OPENING_LINES.valu
 _RESULT_STR = {True: "1-0", False: "0-1", None: "1/2-1/2"}
 
 
+def _game_over(board: chess.Board) -> tuple[bool, tuple[str, str]]:
+    """Referee check. Returns (ended, (result, termination)).
+
+    Note: ``board.outcome(claim_draw=True)`` is deliberately NOT used: in
+    python-chess it also ends the game when the side to move merely *could*
+    reach a threefold repetition / 100 halfmoves with its next move, which
+    would force a draw on a side that might be winning. The arena only
+    claims draws that have actually occurred on the board.
+    """
+    outcome = board.outcome(claim_draw=False)
+    if outcome is not None:
+        return True, (_RESULT_STR[outcome.winner], outcome.termination.name.lower())
+    if board.halfmove_clock >= 100:
+        return True, ("1/2-1/2", "fifty_moves")
+    if board.is_repetition(3):
+        return True, ("1/2-1/2", "threefold_repetition")
+    return False, ("", "")
+
+
 def _player_name(player: Any) -> str:
     return str(getattr(player, "name", type(player).__name__))
 
@@ -119,10 +139,9 @@ def play_game(white: Any, black: Any, max_moves: int = 300,
 
     result, termination = "1/2-1/2", "max_moves"
     while True:
-        outcome = board.outcome(claim_draw=True)
-        if outcome is not None:
-            result = _RESULT_STR[outcome.winner]
-            termination = outcome.termination.name.lower()
+        ended, result_t = _game_over(board)
+        if ended:
+            result, termination = result_t
             break
         if len(moves) >= max_moves:
             break
