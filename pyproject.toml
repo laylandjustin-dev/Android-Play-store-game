@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chessbot"
+version = "0.1.0"
+description = "Self-learning chess bot: alpha-beta engine and AlphaZero-style self-play with PyTorch"
+requires-python = ">=3.10"
+dependencies = ["chess>=1.10", "torch>=2.1", "numpy>=1.24", "PyYAML>=6.0", "flask>=3.0"]
+
+[project.optional-dependencies]
+test = ["pytest>=7.4"]
+
+[project.scripts]
+chessbot = "chessbot.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["chessbot*"]
+
+[tool.setuptools.package-data]
+"chessbot.web" = ["templates/*", "static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: longer-running tests (deselect with -m 'not slow')"]
