@@ -108,8 +108,6 @@ def _load_model(cfg):
         from chessbot.ml.encoding import encode_board
     except ImportError as e:
         raise Skip(f"ml/torch not importable: {e}")
-    if args_global.threads:
-        torch.set_num_threads(args_global.threads)
     model = PolicyValueNet(cfg.model).eval()
     return torch, model, encode_board
 
@@ -130,22 +128,32 @@ def bench_nn(cfg, args) -> list[dict]:
     planes = np.stack([encode_board(x) for x in boards]).astype(np.float32)
     n_params = sum(p.numel() for p in model.parameters())
     rows = []
-    for batch in (1, 64):
-        x = torch.from_numpy(planes[:batch])
-        with torch.no_grad():
-            for _ in range(3):
-                model(x)
-            reps = 0
-            t0 = time.perf_counter()
-            while True:
-                model(x)
-                reps += 1
-                dt = time.perf_counter() - t0
-                if dt >= args.min_time and reps >= 3:
-                    break
-        rows.append({"batch": batch, "reps": reps, "ms_per_batch": round(1000 * dt / reps, 3),
-                     "positions_per_sec": round(batch * reps / dt),
-                     "params": n_params, "threads": torch.get_num_threads()})
+    default_threads = torch.get_num_threads()
+    # Tiny batch-1 forwards are very sensitive to OpenMP thread count when
+    # other processes compete for cores, so measure default and 1 thread.
+    thread_settings = [args.threads] if args.threads else sorted({default_threads, 1}, reverse=True)
+    try:
+        for threads in thread_settings:
+            torch.set_num_threads(threads)
+            for batch in (1, 64):
+                x = torch.from_numpy(planes[:batch])
+                with torch.no_grad():
+                    for _ in range(3):
+                        model(x)
+                    reps = 0
+                    t0 = time.perf_counter()
+                    while True:
+                        model(x)
+                        reps += 1
+                        dt = time.perf_counter() - t0
+                        if dt >= args.min_time and reps >= 3:
+                            break
+                rows.append({"batch": batch, "reps": reps,
+                             "ms_per_batch": round(1000 * dt / reps, 3),
+                             "positions_per_sec": round(batch * reps / dt),
+                             "params": n_params, "threads": threads})
+    finally:
+        torch.set_num_threads(default_threads)
     # encoding cost (CPU, numpy)
     t0 = time.perf_counter()
     for _ in range(5):
@@ -214,7 +222,6 @@ def bench_selfplay(cfg, args) -> list[dict]:
 
 BENCHES = {"movegen": bench_movegen, "alphabeta": bench_alphabeta, "nn": bench_nn,
            "mcts": bench_mcts, "selfplay": bench_selfplay}
-args_global = argparse.Namespace(threads=None)
 
 
 def _print_table(title: str, rows: list[dict]) -> None:
@@ -260,7 +267,6 @@ def main(argv: list[str] | None = None) -> dict:
         args.perft_depth, args.depth, args.min_time = 3, 3, 0.2
         args.simulations = args.simulations or 16
         args.selfplay_max_moves = args.selfplay_max_moves or 40
-    args_global.threads = args.threads
     sections = [s.strip() for s in args.sections.split(",") if s.strip()]
     unknown = [s for s in sections if s not in BENCHES]
     if unknown:
@@ -274,7 +280,9 @@ def main(argv: list[str] | None = None) -> dict:
     try:
         import torch
         env["torch"] = torch.__version__
-        env["torch_threads"] = args.threads or torch.get_num_threads()
+        if args.threads:
+            torch.set_num_threads(args.threads)
+        env["torch_threads"] = torch.get_num_threads()
     except ImportError:
         env["torch"] = None
     print("Environment:", json.dumps(env))

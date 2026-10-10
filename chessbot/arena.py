@@ -116,6 +116,12 @@ def _game_over(board: chess.Board) -> tuple[bool, tuple[str, str]]:
     return False, ("", "")
 
 
+def game_over(board: chess.Board) -> tuple[bool, str | None, str | None]:
+    """Public referee check: (ended, result like "1-0", termination name)."""
+    ended, (result, termination) = _game_over(board)
+    return (True, result, termination) if ended else (False, None, None)
+
+
 def _player_name(player: Any) -> str:
     return str(getattr(player, "name", type(player).__name__))
 
@@ -176,7 +182,7 @@ _SCORE_CLAMP = 1e-3
 def elo_from_score(score: float) -> float:
     """Logistic Elo difference for an expected score in (0, 1)."""
     score = min(max(score, _SCORE_CLAMP), 1.0 - _SCORE_CLAMP)
-    return -400.0 * math.log10(1.0 / score - 1.0)
+    return -400.0 * math.log10(1.0 / score - 1.0) + 0.0  # + 0.0 normalises -0.0
 
 
 @dataclass

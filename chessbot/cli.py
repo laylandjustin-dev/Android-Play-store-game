@@ -114,7 +114,7 @@ def cmd_play(args, cfg) -> int:
     human = chess.WHITE if args.color == "white" else chess.BLACK
     board = chess.Board()
     print(f"Playing against {bot.name}. Enter moves in UCI (e2e4) or SAN (Nf3); 'quit' to exit.")
-    while not board.is_game_over(claim_draw=True):
+    while not game_over(board)[0]:
         print("\n" + board.unicode(borders=True, orientation=human))
         if board.turn == human:
             text = input("your move> ").strip()
@@ -130,7 +130,8 @@ def cmd_play(args, cfg) -> int:
             print(f"{bot.name} plays {board.san(move)}")
         board.push(move)
     print("\n" + board.unicode(borders=True, orientation=human))
-    print("Game over:", board.result(claim_draw=True))
+    _, result, termination = game_over(board)
+    print(f"Game over: {result} ({termination})")
     return 0
 
 

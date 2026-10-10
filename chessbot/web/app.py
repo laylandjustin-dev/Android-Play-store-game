@@ -126,10 +126,11 @@ def _checkpoint_exists(config: Config, spec: str) -> bool:
 # ---------------------------------------------------------------------------
 
 def _result_info(board: chess.Board) -> tuple[bool, str | None, str | None]:
-    outcome = board.outcome(claim_draw=True)
-    if outcome is None:
-        return False, None, None
-    return True, outcome.result(), outcome.termination.name.lower()
+    # Only draws that have actually occurred end the game (python-chess's
+    # claim_draw=True would also end it when a draw is merely claimable next move).
+    from chessbot.arena import game_over
+
+    return game_over(board)
 
 
 class GameSession:
@@ -400,7 +401,7 @@ def create_app(config: Config, config_path: str | None = None,
         return data if isinstance(data, dict) else {}
 
     def bot_play(game: GameSession) -> None:
-        if game.board.is_game_over(claim_draw=True):
+        if _result_info(game.board)[0]:
             return
         move = game.player.select_move(game.board.copy())
         if move not in game.board.legal_moves:
@@ -493,7 +494,7 @@ def create_app(config: Config, config_path: str | None = None,
             if game is None:
                 return err("no game in progress; start a new game first")
             board = game.board
-            if board.is_game_over(claim_draw=True):
+            if _result_info(board)[0]:
                 return err("game is over", state=game.state())
             if board.turn != game.human_color:
                 return err("it is not your turn", state=game.state())
@@ -520,7 +521,7 @@ def create_app(config: Config, config_path: str | None = None,
             game = state["game"]
             if game is None:
                 return err("no game in progress; start a new game first")
-            if game.board.is_game_over(claim_draw=True):
+            if _result_info(game.board)[0]:
                 return err("game is over", state=game.state())
             if game.board.turn == game.human_color:
                 return err("it is not the bot's turn", state=game.state())
