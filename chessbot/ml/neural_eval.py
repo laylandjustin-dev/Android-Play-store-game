@@ -13,18 +13,21 @@ import numpy as np
 import torch
 
 from chessbot.ml.encoding import encode_board, move_to_index
+from chessbot.ml.mcts import DEFAULT_INFERENCE_THREADS, limit_torch_threads
 from chessbot.ml.model import select_device
 
 MATE_SCORE = 100_000   # mirrors chessbot.engine.evaluation.MATE_SCORE (not imported on purpose)
 
 
 class NeuralEvaluator:
-    def __init__(self, model, device="cpu", scale_cp: float = 600.0, cache_size: int = 50_000):
+    def __init__(self, model, device="cpu", scale_cp: float = 600.0, cache_size: int = 50_000,
+                 inference_threads: int | None = DEFAULT_INFERENCE_THREADS):
         self.device = select_device(device)
         self.model = model.to(self.device)
         self.model.eval()
         self.scale_cp = float(scale_cp)
         self.cache_size = int(cache_size)
+        self.inference_threads = inference_threads
         self._cache: OrderedDict = OrderedDict()   # position key -> (logits np, value)
 
     def _key(self, board: chess.Board):
@@ -39,7 +42,8 @@ class NeuralEvaluator:
             self._cache.move_to_end(key)
             return hit
         x = torch.from_numpy(encode_board(board)).unsqueeze(0).to(self.device)
-        logits, value = self.model(x)
+        with limit_torch_threads(self.inference_threads):
+            logits, value = self.model(x)
         out = (logits[0].float().cpu().numpy(), float(value.item()))
         if self.cache_size > 0:
             self._cache[key] = out

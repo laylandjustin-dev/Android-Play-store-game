@@ -127,3 +127,17 @@ def test_neural_evaluator(net):
     pri = ev.move_prior(b, moves)
     assert len(pri) == len(moves) and abs(sum(pri) - 1) < 1e-6
     assert ev.move_prior(b, []) == []
+
+
+def test_search_thread_cap_is_restored(net):
+    from chessbot.ml.mcts import limit_torch_threads
+
+    before = torch.get_num_threads()
+    with limit_torch_threads(1):
+        assert torch.get_num_threads() == 1
+        with limit_torch_threads(1):
+            pass
+        assert torch.get_num_threads() == 1
+    assert torch.get_num_threads() == before
+    MCTS(net, MCTSConfig(simulations=4), rng=0).run(chess.Board())
+    assert torch.get_num_threads() == before

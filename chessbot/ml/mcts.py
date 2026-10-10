@@ -19,6 +19,8 @@ search is the exact sequential AlphaZero algorithm.
 from __future__ import annotations
 
 import math
+import threading
+from contextlib import contextmanager
 
 import chess
 import numpy as np
@@ -29,6 +31,42 @@ from chessbot.ml.encoding import encode_board, move_to_index
 from chessbot.ml.model import PolicyValueNet, select_device
 
 VIRTUAL_LOSS = 1.0
+DEFAULT_INFERENCE_THREADS = 1
+
+_threads_lock = threading.Lock()
+_threads_active = 0
+_threads_saved: int | None = None
+
+
+@contextmanager
+def limit_torch_threads(n: int | None):
+    """Temporarily cap torch intra-op threads (process-wide) while searching.
+
+    MCTS runs many tiny forward passes (batch 1-8). With several OpenMP threads
+    these are barely faster on an idle machine and catastrophically slower when
+    other processes compete for the cores (measured 0.4 ms -> 155 ms per
+    forward with 4 threads on a loaded 4-core box). Nested / concurrent
+    searches are reference-counted so the original setting is restored once.
+    """
+    global _threads_active, _threads_saved
+    if n is None:
+        yield
+        return
+    with _threads_lock:
+        if _threads_active == 0:
+            _threads_saved = torch.get_num_threads()
+            if _threads_saved != n:
+                torch.set_num_threads(n)
+        _threads_active += 1
+    try:
+        yield
+    finally:
+        with _threads_lock:
+            _threads_active -= 1
+            if _threads_active == 0 and _threads_saved is not None:
+                if torch.get_num_threads() != _threads_saved:
+                    torch.set_num_threads(_threads_saved)
+                _threads_saved = None
 
 
 def terminal_value(board: chess.Board, moves: list[chess.Move] | None = None) -> float | None:
@@ -64,7 +102,8 @@ class Node:
 
 class MCTS:
     def __init__(self, model: PolicyValueNet, config: MCTSConfig, device=None, rng=None,
-                 leaf_batch_size: int = 1):
+                 leaf_batch_size: int = 1,
+                 inference_threads: int | None = DEFAULT_INFERENCE_THREADS):
         self.model = model
         self.config = config
         if device is not None:
@@ -76,6 +115,7 @@ class MCTS:
             rng = np.random.default_rng(rng)
         self.rng = rng
         self.leaf_batch_size = max(1, int(leaf_batch_size))
+        self.inference_threads = inference_threads   # None = leave torch's setting alone
         self.last_root: Node | None = None
 
     # ------------------------------------------------------------------ network
@@ -121,7 +161,8 @@ class MCTS:
         if was_training:
             self.model.eval()
         try:
-            return self._run(board, add_noise)
+            with limit_torch_threads(self.inference_threads):
+                return self._run(board, add_noise)
         finally:
             if was_training:
                 self.model.train()
