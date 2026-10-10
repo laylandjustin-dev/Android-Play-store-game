@@ -26,12 +26,14 @@ const CHARTS = [
     series: [{ key: "buffer_size", label: "positions", color: "--series-1" }], zeroBased: true },
 ];
 
-// Evaluation records (type == "eval") are written by the evaluation tooling;
-// whichever of these numeric keys are present get plotted.
-const EVAL_KEYS = [["score", "score"], ["elo_diff", "Elo diff"], ["elo", "Elo"]];
+// Evaluation records (type == "eval", written by `chessbot evaluate` / train --eval-every)
+// carry score (0..1) and an Elo-difference estimate. They have different scales, so
+// each present key gets its own single-axis chart.
+const EVAL_KEYS = [["score", "Evaluation score vs opponent", "(wins + draws/2) / games"],
+                   ["elo", "Estimated Elo difference vs opponent", "positive = candidate stronger"]];
 
 const charts = {};
-let evalChart = null;
+const evalCharts = {};
 let lastRunning = null;
 
 function ensureCharts() {
@@ -92,13 +94,14 @@ async function loadMetrics() {
   const evalSection = document.getElementById("eval-section");
   evalSection.hidden = !evals.length;
   if (evals.length) {
-    const keys = EVAL_KEYS.filter(([k]) => evals.some((r) => typeof r[k] === "number"));
-    if (keys.length && evals.some((r) => typeof r.iteration === "number")) {
-      if (!evalChart) {
-        evalChart = new LineChart(chartsEl, { title: "Evaluation", sub: "from evaluation records", integerX: true,
-          series: keys.map(([, label], i) => ({ label, color: `--series-${i + 1}` })) });
+    for (const [key, title, sub] of EVAL_KEYS) {
+      const pts = seriesOf(evals, key).filter(([x]) => x >= 0);
+      if (!pts.length) continue;
+      if (!evalCharts[key]) {
+        evalCharts[key] = new LineChart(chartsEl, { title, sub, integerX: true,
+          series: [{ label: key, color: "--series-1" }] });
       }
-      evalChart.setData(keys.map(([k]) => seriesOf(evals, k)));
+      evalCharts[key].setData([pts]);
     }
     renderTable(document.getElementById("eval-table"), evals);
   }

@@ -53,6 +53,7 @@ function fmtBytes(n) {
 function fmtNum(v) {
   if (v === null || v === undefined || v === "") return "";
   if (typeof v !== "number") return String(v);
+  if (Object.is(v, -0)) v = 0;
   if (Number.isInteger(v)) return v.toLocaleString();
   const a = Math.abs(v);
   if (a !== 0 && (a < 0.001 || a >= 1e6)) return v.toExponential(2);

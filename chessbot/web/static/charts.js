@@ -12,7 +12,7 @@ function niceTicks(min, max, count) {
   const step0 = span / Math.max(1, count);
   const mag = Math.pow(10, Math.floor(Math.log10(step0)));
   const norm = step0 / mag;
-  const step = (norm >= 5 ? 10 : norm >= 2 ? 5 : norm >= 1 ? 2 : 1) * mag;
+  const step = (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * mag;
   const lo = Math.floor(min / step) * step;
   const hi = Math.ceil(max / step) * step;
   const ticks = [];
